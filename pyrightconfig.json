@@ -1,0 +1,14 @@
+{
+  "typeCheckingMode": "standard",
+  "include": ["src/jpec", "tests", "examples"],
+  "exclude": ["**/__pycache__", "notebooks"],
+  "extraPaths": ["tests"],
+  "venvPath": ".",
+  "venv": ".venv",
+  "reportMissingTypeStubs": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownVariableType": false,
+  "reportUnknownArgumentType": false,
+  "reportUnknownParameterType": false,
+  "reportUnusedCallResult": false
+}

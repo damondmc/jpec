@@ -1,0 +1,118 @@
+r"""Prepare an injection run: the band, its files, and the bank at one mismatch.
+
+Usage:
+
+  jpec injection-setup examples/injection.yaml \
+      --sft-metadata setup/sfdb_204_metadata.json --mismatch 0.8 \
+      --output setup/injection_204_mu0.8_setup.json
+"""
+
+import argparse
+import importlib.metadata
+from pathlib import Path
+
+import jax.numpy as jnp
+
+from jpec.bank.tiling import LatticeTiling
+from jpec.config import (
+    DataSetup,
+    InjectionConfig,
+    InjectionSetup,
+    SFTMetadata,
+    read_config,
+    read_json,
+)
+from jpec.detector.site import reference_epoch, times_and_velocity
+from jpec.engine.data import band_edges_for_f0
+from jpec.pipelines.monitor import RunLogger
+
+
+def run(args: argparse.Namespace) -> None:
+    """Build the injection band, its files and the lattice at one mismatch, and write the setup.
+
+    Args:
+        args: The parsed flags.
+    """
+    # the metric is taken in float64, on the host
+    output = Path(args.output)
+    run_logger = RunLogger("injection_setup", output.parent, platform="cpu", x64=True)
+    config = read_config(args.config, InjectionConfig)
+    sft_metadata = read_json(args.sft_metadata, SFTMetadata)
+    box_config = config.parameter_space
+
+    # the run's SFTs, epoch and detector motion
+    tsft = sft_metadata.tsft
+    t_ref = reference_epoch(sft_metadata.timestamps, tsft=tsft)
+    times, velocity = times_and_velocity(
+        sft_metadata.timestamps, tsft=tsft, t_ref=t_ref
+    )
+
+    # the band the sources land in, and the files holding it
+    injection_prior = box_config.prior()
+    freq_low, freq_high = band_edges_for_f0(injection_prior, *box_config.f0, tsft=tsft)
+
+    # the lattice, at the flag's mismatch if one is given
+    mismatch = (
+        args.mismatch if args.mismatch is not None else config.template_bank.mismatch
+    )
+    tiling = LatticeTiling.from_metric(
+        injection_prior,
+        times=jnp.asarray(times),
+        velocity=jnp.asarray(velocity),
+        tsft=tsft,
+        mismatch=mismatch,
+        n_ap_blocks=config.template_bank.n_ap_blocks,
+        window=sft_metadata.window,
+    )
+    run_logger.info(f"Mismatch {mismatch:g}: f0 step {tiling.f0_step:.3e} Hz")
+
+    setup = InjectionSetup(
+        jpec=importlib.metadata.version("jpec"),
+        data=DataSetup(
+            sft_glob=config.sft_glob,
+            detectors=sft_metadata.detectors,
+            n_sfts=sft_metadata.n_sfts,
+            tsft=tsft,
+            window=sft_metadata.window,
+            t_ref=t_ref,
+        ),
+        freq_low=float(freq_low),
+        freq_high=float(freq_high),
+        files=sft_metadata.files_covering(
+            freq_low, freq_high, sft_glob=config.sft_glob
+        ),
+        parameter_space=box_config,
+        tiling=tiling.to_dict(),
+        trials=config.trials,
+        recovery_curve=config.recovery_curve,
+        search_loop=config.search_loop,
+        thresholds=config.thresholds,
+    )
+    run_logger.save_setup(output.stem, setup)
+
+
+def add_arguments(p: argparse.ArgumentParser) -> None:
+    """Add the command's flags.
+
+    Args:
+        p: The command's parser.
+    """
+    p.add_argument(
+        "config", help="YAML describing the injection run; see examples/injection.yaml"
+    )
+    p.add_argument(
+        "--sft-metadata",
+        required=True,
+        help="jpec check-sft result, the data to inject into",
+    )
+    p.add_argument(
+        "--mismatch",
+        type=float,
+        default=None,
+        help="mismatch of the bank, in place of the config's template_bank.mismatch",
+    )
+    p.add_argument(
+        "--output",
+        default="setup/injection_setup.json",
+        help="JSON file the setup is written to",
+    )

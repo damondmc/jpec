@@ -1,0 +1,26 @@
+.claude/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+benchmarks/
+out_*/
+.ruff_cache/
+*.sft
+*.npz
+docs/
+data/
+results/
+setup/
+notebooks/
+# run files, kept with the run, not in the package
+pipelines/*
+!pipelines/fetch_sfts.sh
+!pipelines/upload_sfts.sh
+
+docs/*.pdf
+.ipynb_checkpoints/
+.DS_Store

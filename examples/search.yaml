@@ -1,0 +1,22 @@
+parameter_space:
+  f0: [204.0, 204.05]           # Hz, at the Solar System Barycenter; inside the band the SFTs cover
+  ap: [5.0, 15.0]              # light-seconds, the published O4a prior
+  period: [7.0, 15.0]           # days, the published O4a prior
+
+template_bank:
+  mismatch: 0.4
+  n_ap_blocks: 1                # ap blocks; each adds a full period grid, and so a full set of transforms
+
+compute:
+  memory_gb: 15.5               # what one job may hold; leave the card its own headroom here
+  hours: 96.0                   # what one job may take, at the rates of the jpec time-search run given to the setup
+
+n_toplist: 100000               # loudest templates kept per job
+
+search_loop:
+  period_batch_size: 32         # trial periods per transform; the orbital basis, a job's largest
+                                # memory term, grows with it
+  f0_batch_size: 32             # f0 points matched at once, which caps the S(phi_b) held
+  n_sub_bin_offsets: 8          # template offsets across one bin; an f0 point takes the nearest
+
+sft_glob: /path/to/sfts/*.sft   # the glob jpec check-sft was given, as the jobs will see it
