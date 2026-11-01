@@ -80,7 +80,7 @@ class LoudestTemplates(NamedTuple):
         )
 
 
-class TopList:
+class Toplist:
     """A heap queue of the loudest templates, at most `n_toplist` of them."""
 
     def __init__(self, n_toplist: int) -> None:

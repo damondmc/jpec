@@ -83,7 +83,7 @@ def orbit_offset(point, times):
 
 
 def search_template_harmonics(modulation_depth_bins, window, *, bin_offsets=None):
-    """``tau[j, k]`` on the phase grid and harmonic count a modulation depth needs."""
+    """`tau[j, k]` on the phase grid and harmonic count a modulation depth needs."""
     j_max = harmonic_count(modulation_depth_bins)
     if bin_offsets is None:
         bin_offsets = arc_bin_offsets(modulation_depth_bins, pad_bins=ARC_PAD_BINS)
@@ -104,7 +104,7 @@ def harmonic_transform(plane):
 def search_data_harmonics(
     sft, point, *, floor, velocity, times, half_width_bins, j_max
 ):
-    """Data ``F[j, k]`` at a point via the search loop, and its bin offsets from f0."""
+    """Data `F[j, k]` at a point via the search loop, and its bin offsets from f0."""
     f0 = float(point.f0)
     sft_power = doppler_corrected_power(
         [jnp.fft.ifft(jnp.asarray(sft.sft_data), axis=-1)],

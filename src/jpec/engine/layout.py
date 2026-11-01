@@ -44,7 +44,7 @@ class SubgridLayout(NamedTuple):
         sub_bin_offsets: The sub-bin offsets some f0 point takes, the ones template
             harmonics are built at [bins].
         sub_bin_offset_idxs: Which of `sub_bin_offsets` each f0 point takes.
-        omega: Angular orbital frequency of each trial period [rad/s], the last
+        omega: Orbital angular frequency of each trial period [rad/s], the last
             repeated `period_batch_size - 1` times so every batch reads a full run.
         period_batches: The period batches that hold an in-box template.
         period_batch_size: Trial periods every batch is transformed and matched over,
@@ -68,16 +68,16 @@ class SubgridLayout(NamedTuple):
 
 def split_periods(
     in_box: Bool[np.ndarray, "n_period n_modulation_depth"],
-    ap_block_idx: Int[np.ndarray, " n_period"],
+    ap_block_idxs: Int[np.ndarray, " n_period"],
     batch_size: int,
 ) -> tuple[list[PeriodBatch], int]:
-    """Periods of one ap block, `batch_size` at a time, each with its depth window.
+    """Periods of one ap block, `batch_size` at a time, with a modulation-depth window.
 
     The windows share one width.
 
     Args:
         in_box: Whether each (period, modulation depth) lies in its ap block.
-        ap_block_idx: The ap block each period belongs to, ap block after ap block.
+        ap_block_idxs: The ap block each period belongs to, ap block after ap block.
         batch_size: Trial periods per transform call.
 
     Returns:
@@ -87,8 +87,10 @@ def split_periods(
     n_periods, n_modulation_depths = in_box.shape
     # a batch across two ap blocks would need both their windows, and widen
     # every batch's
-    # the period index each ap block starts at, where ap_block_idx changes
-    blk_start_idxs = np.flatnonzero(np.diff(ap_block_idx, prepend=ap_block_idx[0] - 1))
+    # the period index each ap block starts at, where ap_block_idxs changes
+    blk_start_idxs = np.flatnonzero(
+        np.diff(ap_block_idxs, prepend=ap_block_idxs[0] - 1)
+    )
     # one past each ap block's last period: the next block's first, then n_periods
     blk_stop_idxs = np.append(blk_start_idxs[1:], n_periods)
     period_batches = []
@@ -112,8 +114,8 @@ def split_periods(
             n_window_modulation_depths = max(
                 n_window_modulation_depths, stop_idx - start_idx
             )
-    # every window takes the widest width, so one that would run past the last depth
-    # starts lower
+    # every window takes the widest width, so one that would run past the last
+    # modulation depth starts lower
     max_start_idx = n_modulation_depths - n_window_modulation_depths
     return [
         batch._replace(
@@ -219,9 +221,7 @@ def subgrid_layout(
     transformed_start_idx = int(window_start_idxs.min())
     transformed_stop_idx = int(window_start_idxs.max()) + n_window_bins
     transformed_bin_idxs = slice(transformed_start_idx, transformed_stop_idx)
-    window_start_idxs = (
-        window_start_idxs - transformed_start_idx
-    )  # only keep data in transformed_start/stop_idx
+    window_start_idxs = window_start_idxs - transformed_start_idx
 
     # Doppler references at the centres of equal pieces of the f0 range; each f0 point
     # takes the nearest
@@ -249,7 +249,7 @@ def subgrid_layout(
     period_batch_size = min(period_batch_size, period.size)
     period_batches, n_window_modulation_depths = split_periods(
         template_grid.orbital_subgrid.in_box,
-        template_grid.orbital_subgrid.ap_block_idx,
+        template_grid.orbital_subgrid.ap_block_idxs,
         batch_size=period_batch_size,
     )
     # the last batch starts at most at the last period, so it reads

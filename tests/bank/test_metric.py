@@ -6,7 +6,7 @@ from signals import DAY, Case, search_data_harmonics, search_template_harmonics
 
 from jpec.bank.metric import freq_bin_curvature, physical_metric, project_out
 from jpec.constant import (
-    CURVATURE_POSITIONS,
+    N_CURVATURE_POSITIONS,
     SHIFT_MARGIN_BINS,
     V_MAX,
 )
@@ -65,8 +65,8 @@ class ObservedSignal:
             window=case.window,
         )
         face_on = Injection(self.parameters, Orientation(cos_iota=1.0, psi=0.0))
-        unit_signal = simulated_signal_sft_data(empty, face_on, t_ref=self.t_ref)
-        self.sft = sft_with_simulated_signal(empty, np.asarray(unit_signal), h0=1.0)
+        unit_sft_data = simulated_signal_sft_data(empty, face_on, t_ref=self.t_ref)
+        self.sft = sft_with_simulated_signal(empty, np.asarray(unit_sft_data), h0=1.0)
         self.times = jnp.asarray(self.sft.timestamps_midpoints - self.t_ref)
         self.floor = jnp.ones(self.sft.sft_data.shape)  # ones for a noise-free signal
         self.peak = self.statistic(self.parameters)
@@ -95,7 +95,7 @@ class ObservedSignal:
         return float(value)
 
     def metric(self, true: Parameters, times) -> np.ndarray:
-        """The closed-form 6x6 metric at ``true``, absolute units."""
+        """The closed-form 6x6 metric at `true`, absolute units."""
         return np.asarray(
             physical_metric(
                 true,
@@ -103,7 +103,7 @@ class ObservedSignal:
                 velocity=jnp.asarray(self.sft.velocity),
                 tsft=self.tsft,
                 g_freq_bin=freq_bin_curvature(
-                    self.case.window, n_positions=CURVATURE_POSITIONS
+                    self.case.window, n_positions=N_CURVATURE_POSITIONS
                 ),
             )
         )

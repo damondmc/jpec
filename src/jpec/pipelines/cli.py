@@ -19,16 +19,16 @@ COMMANDS = {
 
 def main() -> None:
     """Parse the subcommand and its flags, and run it."""
-    p = argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         prog="jpec", description=(__doc__ or "").splitlines()[0]
     )
-    subparsers = p.add_subparsers(dest="command", required=True, metavar="COMMAND")
+    subparsers = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
     for name, module in COMMANDS.items():
         summary = (module.__doc__ or "").splitlines()[0]
         subparser = subparsers.add_parser(name, help=summary, description=summary)
         module.add_arguments(subparser)
         subparser.set_defaults(run=module.run)
-    args = p.parse_args()
+    args = parser.parse_args()
     args.run(args)
 
 

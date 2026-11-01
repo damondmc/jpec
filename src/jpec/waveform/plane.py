@@ -13,14 +13,14 @@ def arc_bin_offsets(
     """Bin offsets from f0 wide enough to hold the arc and its leakage.
 
     Args:
-        modulation_depth_bins: Half-width of the arc [bins].
+        modulation_depth_bins: Half-width of the frequency arc [bins].
         pad_bins: Extra bins beyond the arc on each side.
 
     Returns:
         Integer bin offsets from f0, ascending.
     """
     half = jnp.ceil(modulation_depth_bins) + pad_bins
-    return jnp.arange(-half, half + 1.0)  # [-n, -n+1, ..., n-1, n]
+    return jnp.arange(-half, half + 1.0)  # [-half, ..., half]
 
 
 def plane_from_arc(
@@ -51,8 +51,9 @@ def amplitude_from_arc(
     """Complex amplitude in each bin at each SFT for a unit sinusoid at the arc.
 
     Args:
-        arc: Signal offset from f0 at each SFT [bins].
-        bin_offsets: Frequency bin centres, as offsets from f0 [bins].
+        arc: Signal position at each SFT [bins], from the origin of `bin_offsets`.
+        bin_offsets: Frequency bin centres [bins], from f0 for a template or from
+            the band's first bin for an injection.
         window: The window the SFTs were made with.
 
     Returns:
@@ -75,8 +76,8 @@ def template_plane(
 
     Args:
         bin_offsets: Frequency bin centres, as offsets from f0 [bins].
-        theta: Orbital phases the plane is sampled at (omega*t - phi_b) [rad].
-        modulation_depth_bins: Half-width of the arc [bins].
+        theta: Orbital phases the plane is sampled at, `omega t - phi_b` [rad].
+        modulation_depth_bins: Half-width of the frequency arc [bins].
         window: The window the SFTs were made with.
 
     Returns:

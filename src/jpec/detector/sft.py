@@ -43,7 +43,7 @@ class SFTData:
 
     @property
     def sft_power(self) -> Float[np.ndarray, "n_sft n_freq"]:
-        """`2*|SFT|**2`, the observed plane.
+        """`2*|sft_data|**2`, the observed plane.
 
         Take this only after any Doppler correction: squaring is irreversible.
         """
@@ -146,7 +146,7 @@ def read_sft_band(
             dtype=np.float64,
         )
         # a row per SFT by construction; rows in ascending time, and column k the bin at
-        # f0 + k deltaF of one ascending set of bins in every row
+        # freq_low + k / tsft of one ascending set of bins in every row
         if np.any(np.diff(timestamps) <= 0.0):
             raise ValueError(f"{detector_name} SFTs are not in strictly ascending time")
         bins = {(float(sft.f0), float(sft.deltaF)) for sft in sfts.data}
@@ -264,21 +264,21 @@ def load_sft_data(
     return [sft.rescaled(STRAIN_UNIT) for sft in recorded_sfts]
 
 
-def write_sfts(sfts: SFTData, path: str, *, comment: str) -> None:
+def write_sfts(sft: SFTData, path: str, *, comment: str) -> None:
     """Write one detector's SFTs to a file, in strain x s as recorded SFTs hold them.
 
     Args:
-        sfts: The SFTs.
+        sft: The SFTs.
         path: The file written.
         comment: Description recorded in the file.
     """
-    sft_vector = lalpulsar.CreateSFTVector(sfts.n_sfts, sfts.sft_data.shape[1])
-    for sft, start, sft_data in zip(sft_vector.data, sfts.timestamps, sfts.sft_data):
-        sft.name = sfts.detector.name
-        sft.epoch = lal.LIGOTimeGPS(float(start))
-        sft.f0 = sfts.freq_low
-        sft.deltaF = sfts.delta_f
-        sft.data.data[:] = (sfts.strain_unit * sft_data).astype(np.complex64)
+    sft_vector = lalpulsar.CreateSFTVector(sft.n_sfts, sft.sft_data.shape[1])
+    for lal_sft, start, sft_data in zip(sft_vector.data, sft.timestamps, sft.sft_data):
+        lal_sft.name = sft.detector.name
+        lal_sft.epoch = lal.LIGOTimeGPS(float(start))
+        lal_sft.f0 = sft.freq_low
+        lal_sft.deltaF = sft.delta_f
+        lal_sft.data.data[:] = (sft.strain_unit * sft_data).astype(np.complex64)
     lalpulsar.WriteSFTVector2NamedFile(
-        sft_vector, path, sfts.window.kind, sfts.window.beta, comment
+        sft_vector, path, sft.window.kind, sft.window.beta, comment
     )

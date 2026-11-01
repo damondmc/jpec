@@ -1,5 +1,5 @@
 parameter_space:                # the box the sources are drawn from and the bank is built over
-  f0: [204.0, 204.1]            # Hz, the band the depth is measured over
+  f0: [204.0, 204.1]            # Hz, the f0 range the sensitivity depth is measured over
   ap: [5.0, 15.0]              # light-seconds, the published O4a prior
   period: [7.0, 15.0]           # days, the published O4a prior
   phi_b: [0.0, 6.283185307179586]   # rad, orbital phase at the reference epoch
@@ -21,9 +21,9 @@ recovery_curve:
   sensitivity_depth: [15.0, 30.0] # sqrt(Sn) / h0 of the first scan, loud to weak; a refinement
                                 # steps out by 2x when the scan misses the efficiency
   n_amplitudes: 8
-  efficiency: 0.95              # the recovered fraction h95 is quoted at
-  tolerance: 0.05               # stop once h95 is known to this relative error
-  n_refinements: 4              # h0 points added one at a time at the fitted h95 until then
+  efficiency: 0.95              # the recovered fraction h0_ul is quoted at
+  tolerance: 0.05               # stop once h0_ul is known to this relative error
+  n_refinements: 4              # h0 points added one at a time at the fitted h0_ul until then
 
 search_loop:
   period_batch_size: 32         # trial periods per transform; the orbital basis, a job's largest
@@ -32,8 +32,8 @@ search_loop:
   n_sub_bin_offsets: 8          # template offsets across one bin; an f0 point takes the nearest
 
 thresholds: [0.02835, 0.02716, 0.02591, 0.02460]
-                                # on S, one depth measured at each; set them from the Gaussian null of
-                                # the same band, here 1, 10, 100 and 1000 noise templates expected
+                                # on S, one sensitivity depth measured at each; set them from the
+                                # Gaussian null of the same band, here 1, 10, 100 and 1000 noise templates expected
                                 # above it over 0.1 Hz at 204 Hz
 
 sft_glob: /path/to/sfts/*.sft   # the glob jpec check-sft was given, as the jobs will see it

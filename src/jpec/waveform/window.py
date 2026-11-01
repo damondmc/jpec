@@ -25,7 +25,7 @@ def rectangular_spectrum(offset: Float[Array, "..."]) -> Float[Array, "..."]:
         offset: Distance from the sinusoid to the frequency bin's centre [bins].
 
     Returns:
-        Fourier transform window.
+        Fourier transform of the window at `offset`.
     """
     return jnp.sinc(offset)
 
@@ -34,7 +34,7 @@ def tukey_window(length: int, beta: float) -> Float[Array, " length"]:
     """The Tukey window sampled over `length` points.
 
     With `d = min(i, length - 1 - i)` the distance to the nearer end and
-    `T = round(beta * length)` the taper width in samples::
+    `T = round(beta * length)` the taper width in samples:
 
         Y    = (2d - (T - 1)) / (T - 1)
         w[i] = cos(pi/2 * Y)**2            , 0 <= d < (T + 1) // 2
@@ -72,11 +72,10 @@ def tukey_spectrum(offset: Float[Array, "..."], *, beta: float) -> Float[Array, 
 
     Args:
         offset: Distance from the sinusoid to the frequency bin's centre [bins].
-        beta: Fraction of the window that is tapered, beta = 0: rectangular,
-            beta = 1: Hann.
+        beta: Fraction of the window that is tapered, in `(0, 1]`; beta = 1: Hann.
 
     Returns:
-        Fourier transform window.
+        Fourier transform of the window at `offset`.
     """
     flat_halfwidth = 0.5 * (1.0 - beta)
     taper_width = 0.5 * beta
@@ -105,7 +104,7 @@ class Window:
 
     Attributes:
         kind: `"rectangular"`, `"tukey"` or `"hann"`, the Tukey window at beta = 1.
-        beta: Fraction of the window that is not flat, in `(0, 1]`; used only by
+        beta: Fraction of the window that is tapered, in `(0, 1]`; used only by
             `"tukey"`.
     """
 

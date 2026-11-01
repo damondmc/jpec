@@ -64,7 +64,7 @@ class Detector:
     def velocity(
         self, gps_times: Float[np.ndarray, " n_time"]
     ) -> Float[np.ndarray, "n_time 3"]:
-        """Velocity of the site in the solar-system barycenter frame, `v/c`.
+        """Velocity of the site in the Solar System Barycenter frame, `v/c`.
 
         Cached on the timestamps, so a run walked twice costs one pass through LAL.
 
@@ -95,7 +95,7 @@ class Detector:
             psi: Polarization angle [rad].
 
         Returns:
-            `F_plus` and `F_cross`, each in `[-1, 1]`.
+            `F_+` and `F_x`, each in `[-1, 1]`.
         """
         f_plus, f_cross = np.empty(gps_times.size), np.empty(gps_times.size)
         for time_idx, time in enumerate(gps_times):

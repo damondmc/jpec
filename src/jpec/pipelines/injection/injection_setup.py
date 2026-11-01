@@ -91,27 +91,27 @@ def run(args: argparse.Namespace) -> None:
     run_logger.save_setup(output.stem, setup)
 
 
-def add_arguments(p: argparse.ArgumentParser) -> None:
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     """Add the command's flags.
 
     Args:
-        p: The command's parser.
+        parser: The command's parser.
     """
-    p.add_argument(
+    parser.add_argument(
         "config", help="YAML describing the injection run; see examples/injection.yaml"
     )
-    p.add_argument(
+    parser.add_argument(
         "--sft-metadata",
         required=True,
         help="jpec check-sft result, the data to inject into",
     )
-    p.add_argument(
+    parser.add_argument(
         "--mismatch",
         type=float,
         default=None,
         help="mismatch of the bank, in place of the config's template_bank.mismatch",
     )
-    p.add_argument(
+    parser.add_argument(
         "--output",
         default="setup/injection_setup.json",
         help="JSON file the setup is written to",

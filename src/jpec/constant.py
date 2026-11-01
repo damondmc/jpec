@@ -10,7 +10,7 @@ V_MAX = 1.1e-4
 # numerical: template bank
 
 # fractional bin positions the window's curvature is averaged over
-CURVATURE_POSITIONS = 200
+N_CURVATURE_POSITIONS = 200
 
 # numerical: search
 

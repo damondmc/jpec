@@ -528,27 +528,27 @@ def run(args: argparse.Namespace) -> None:
     run_logger.save_setup(output.stem, setup)
 
 
-def add_arguments(p: argparse.ArgumentParser) -> None:
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     """Add the command's flags.
 
     Args:
-        p: The command's parser.
+        parser: The command's parser.
     """
-    p.add_argument(
+    parser.add_argument(
         "config", help="YAML describing the search; see examples/search.yaml"
     )
-    p.add_argument(
+    parser.add_argument(
         "--sft-metadata",
         required=True,
         help="jpec check-sft result, the data to search",
     )
-    p.add_argument(
+    parser.add_argument(
         "--timing",
         default=None,
         help="jpec time-search result, the rates the jobs are priced at; without one "
         "the jobs are cut on memory alone",
     )
-    p.add_argument(
+    parser.add_argument(
         "--output",
         default="setup/search_setup.json",
         help="JSON file the setup is written to",

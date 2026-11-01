@@ -160,7 +160,7 @@ class RecoveryCurveConfig(BaseModel):
     sensitivity_depth: tuple[float, float] = (15.0, 45.0)
     # h0 points of the first scan, evenly spaced in log over that range
     n_amplitudes: int = Field(default=4, ge=2)
-    # the recovered fraction the quoted amplitude is read at (e.g. 0.95 for h95)
+    # the recovered fraction the quoted amplitude h0_ul is read at
     efficiency: float = Field(default=0.95, gt=0.0, lt=1.0)
     # standard error of the fitted amplitude, relative to it, that ends the refinement
     tolerance: float = Field(default=0.05, gt=0.0)
@@ -182,7 +182,7 @@ class InjectionConfig(BaseModel):
     trials: InjectionTrialConfig = Field(default_factory=InjectionTrialConfig)
     recovery_curve: RecoveryCurveConfig = Field(default_factory=RecoveryCurveConfig)
     search_loop: SearchLoopConfig = Field(default_factory=SearchLoopConfig)
-    thresholds: list[float] = Field(min_length=1)  # detection stat threshold
+    thresholds: list[float] = Field(min_length=1)  # thresholds on the statistic S
     sft_glob: str  # glob of the SFT files, as the run will find them
 
 
@@ -368,7 +368,7 @@ class InjectionSetup(BaseModel):
         recovery_curve: Where the recovered fraction is sampled, and when its fit is
             good enough.
         search_loop: How the search loop batches its work.
-        thresholds: Detection statistic thresholds, one depth each.
+        thresholds: Thresholds on the statistic `S`, one sensitivity depth each.
     """
 
     model_config = ConfigDict(extra="forbid")

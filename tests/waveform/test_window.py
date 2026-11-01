@@ -44,7 +44,7 @@ def test_window_is_lals_window(length, beta):
 
 
 def test_window_taper_is_a_whole_number_of_samples():
-    """``round(beta * length)`` split across both ends, so the flat part is 1 - beta."""
+    """`round(beta * length)` split across both ends, so the flat part is 1 - beta."""
     for beta in (0.25, 0.5):
         w = np.asarray(tukey_window(100001, beta))
         assert w[w.size // 2] == pytest.approx(1.0)
@@ -119,7 +119,7 @@ def test_hann_power_special_values():
 
 
 def test_hann_power_is_continuous_through_its_singularity():
-    """``x = +/-1`` is removable; the limit is substituted, not evaluated."""
+    """`x = +/-1` is removable; the limit is substituted, not evaluated."""
     near = Window(kind="hann").power(jnp.array([1.0 - 1e-5, 1.0, 1.0 + 1e-5]))
     assert jnp.all(jnp.isfinite(near))
     assert jnp.allclose(near, 0.25, atol=1e-4)
@@ -129,7 +129,7 @@ def test_lvk_production_taper_is_rectangular_for_our_purposes():
     """beta = 0.001 is the LAL default: 4e-4 from no window at all.
 
     Small enough that a rectangular template matches such data to 1.0000, which
-    is why the SFTs in ``data/`` need no Tukey kernel.
+    is why the SFTs in `data/` need no Tukey kernel.
     """
     x = jnp.linspace(-30.0, 30.0, 6001)
     lvk = Window(kind="tukey", beta=0.001).power(x)

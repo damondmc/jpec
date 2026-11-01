@@ -150,14 +150,14 @@ def run(args: argparse.Namespace) -> None:
     run_logger.save_setup(output.stem, sft_metadata)
 
 
-def add_arguments(p: argparse.ArgumentParser) -> None:
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     """Add the command's flags.
 
     Args:
-        p: The command's parser.
+        parser: The command's parser.
     """
-    p.add_argument("sft_glob", help="glob of SFT files, e.g. 'data/*/*.sft'")
-    p.add_argument(
+    parser.add_argument("sft_glob", help="glob of SFT files, e.g. 'data/*/*.sft'")
+    parser.add_argument(
         "--window",
         nargs=2,
         default=None,
@@ -165,7 +165,7 @@ def add_arguments(p: argparse.ArgumentParser) -> None:
         help="the window the SFTs were made with, e.g. tukey 0.5; taken only when "
         "their headers record none, as SFTs converted from another format do not",
     )
-    p.add_argument(
+    parser.add_argument(
         "--output",
         default="setup/sft_metadata.json",
         help="JSON file the metadata is written to",

@@ -14,7 +14,7 @@ repository, not in this one.
 | `jpec search-setup` | a search config, that metadata, and optionally a `time-search` result | the lattice's steps from the metric, and the f0 intervals the search is cut into, each sized in memory and, with the timing, priced in hours |
 | `jpec search` | the setup | the loudest templates of each job |
 | `jpec injection-setup` | an injection config and the metadata | the band, the bank at one mismatch, and the thresholds the config gives |
-| `jpec sensitivity` | that setup | the depth at the setup's mismatch for each threshold, with every injected source and whether it was recovered at each $h_0$ |
+| `jpec sensitivity` | that setup | the sensitivity depth at the setup's mismatch for each threshold, with every injected source and whether it was recovered at each $h_0$ |
 | `jpec time-search` | a search setup | seconds per call of each stage of the search loop on one sky point, and the rates `search-setup` prices jobs with |
 
 A search on Gaussian noise runs the same way, on SFT files written first with

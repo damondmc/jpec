@@ -92,8 +92,9 @@ def test_gappy_harmonics_converge_with_more_sfts(case: Case):
 
 @pytest.fixture
 def sfts(case: Case) -> SFTData:
-    """Twenty days of complex SFTs of the signal in Gaussian noise, Doppler-shifted
-    by H1's motion.
+    """Twenty days of complex SFTs of the signal in Gaussian noise.
+
+    The signal is Doppler-shifted by H1's motion.
 
     Each SFT is the FFT of a Tukey-windowed complex sinusoid at the frequency
     the detector sees at that SFT's midpoint, so the amplitudes carry the

@@ -21,13 +21,12 @@ from jpec.bank.metric import (
     physical_metric,
     project_out,
 )
-from jpec.constant import CURVATURE_POSITIONS
+from jpec.constant import N_CURVATURE_POSITIONS
 from jpec.params import Parameters, Prior
 from jpec.waveform.window import Window
 
-# (alpha, delta) [rad]: the orbital metric depends on the sky only through the 1 + v.n
-# of its f0 entry, which moves it by under 2e-4 over the sky, so it is taken at one
-# position
+# (alpha, delta) [rad]: reference sky position for the orbital metric computation
+# 1 + v.n_hat  moves it by under 2e-4 over the sk only so taken at one position
 METRIC_SKY_POSITION = (1.2, 0.3)
 # f0, modulation depth, omega^2 and two sky coordinates share the mismatch
 N_AXES = 5
@@ -96,13 +95,13 @@ class LatticeTiling:
             tsft: SFT length [s].
             mismatch: Mismatch budget over every axis.
             n_ap_blocks: ap blocks the box is cut into.
-            window: The window the data was made with.
+            window: The window the SFTs were made with.
 
         Returns:
             The lattice, its steps measured.
         """
         mismatch_per_axis = mismatch / N_AXES
-        g_freq_bin = freq_bin_curvature(window, n_positions=CURVATURE_POSITIONS)
+        g_freq_bin = freq_bin_curvature(window, n_positions=N_CURVATURE_POSITIONS)
         top = Parameters(
             f0=prior.f0[1],
             ap=prior.ap[1],

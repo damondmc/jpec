@@ -17,7 +17,7 @@ from jpec.bank.tiling import LatticeTiling
 from jpec.config import SearchLoopConfig
 from jpec.constant import DAY
 from jpec.detector.site import Detector, reference_epoch, times_and_velocity
-from jpec.engine.candidates import Candidate, TopList
+from jpec.engine.candidates import Candidate, Toplist
 from jpec.engine.data import SearchData, band_edges_for_f0
 from jpec.engine.loop import HarmonicBank, orbital_statistics
 from jpec.injection.signal import Injection, Orientation, simulated_source
@@ -33,7 +33,8 @@ DAYS = 20.0
 TSFT = 1800.0
 DETECTORS = ("H1", "L1")
 WINDOW = Window(kind="tukey", beta=0.5)
-# noise amplitude spectral density [1/sqrt(Hz)], and the source at depth sqrt(Sn) / h0
+# noise amplitude spectral density [1/sqrt(Hz)], and the source's sensitivity depth
+# sqrt(Sn) / h0
 SQRT_SN = 1e-23
 SENSITIVITY_DEPTH = 15.0
 # sampling rate of the baseband noise series [Hz], above the band's width
@@ -58,7 +59,7 @@ FIGURE = Path(__file__).with_name("inject_and_search.png")
 
 
 def loudest_templates(
-    data: SearchData,
+    search_data: SearchData,
     harmonic_bank: HarmonicBank,
     search_loop_config: SearchLoopConfig,
     n_toplist: int,
@@ -66,7 +67,7 @@ def loudest_templates(
     """The toplist of a search over the bank.
 
     Args:
-        data: The band searched.
+        search_data: The band searched.
         harmonic_bank: The bank's template harmonics, laid out on the band.
         search_loop_config: How the search loop batches its work.
         n_toplist: Templates kept.
@@ -74,10 +75,10 @@ def loudest_templates(
     Returns:
         The loudest templates, loudest first.
     """
-    toplist = TopList(n_toplist)
+    toplist = Toplist(n_toplist)
     for sky_idx in range(harmonic_bank.bank.alpha.size):
         loudest_per_grid = orbital_statistics(
-            data,
+            search_data,
             harmonic_bank,
             sky_idx=sky_idx,
             f0_batch_size=search_loop_config.f0_batch_size,
@@ -139,7 +140,7 @@ def main() -> None:
     ]
     noise_data = SearchData(noise_sfts, floor=floor, t_ref=t_ref)
 
-    # the source, face on, injected at its depth
+    # the source, face on, injected at its sensitivity depth
     injection = Injection(
         parameters=SOURCE, orientation=Orientation(cos_iota=1.0, psi=0.0)
     )

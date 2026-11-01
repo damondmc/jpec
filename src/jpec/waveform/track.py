@@ -38,7 +38,7 @@ def roemer_delay(
         t: Times [s].
         ap: Projected semi-major axis [light-seconds].
         omega: Orbital angular frequency [rad/s].
-        phi_b: Orbital phase [rad].
+        phi_b: Orbital phase at the epoch of `t` [rad].
 
     Returns:
         Delay [s], amplitude `ap`.
@@ -62,7 +62,7 @@ def frequency_offset(
         t: Times [s].
         modulation_depth: Modulation depth [Hz].
         omega: Orbital angular frequency [rad/s].
-        phi_b: Orbital phase [rad].
+        phi_b: Orbital phase at the epoch of `t` [rad].
 
     Returns:
         Frequency offset [Hz], within `+/- modulation_depth`.
@@ -88,7 +88,7 @@ def observed_frequency(
         f0: Signal frequency at the Solar System Barycenter [Hz].
         ap: Projected semi-major axis [light-seconds].
         omega: Orbital angular frequency [rad/s].
-        phi_b: Orbital phase [rad].
+        phi_b: Orbital phase at the epoch of `t` [rad].
         doppler: Observer's line-of-sight velocity over c, per time.
 
     Returns:

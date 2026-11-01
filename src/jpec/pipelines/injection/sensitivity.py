@@ -2,7 +2,8 @@ r"""Sensitivity depth of the search on real SFTs, measured by injection.
 
 Usage:
 
-  jpec sensitivity --setup setup/injection_204_setup.json --platform gpu --seed 0 \
+  jpec sensitivity --setup setup/injection_204_mu0.8_setup.json --platform gpu \
+      --seed 0 \
       --output results
 """
 
@@ -27,7 +28,7 @@ from jpec.stat.efficiency import RecoveryCurve
 def measure_sensitivity_depth(
     run_logger: RunLogger, setup: InjectionSetup, args: argparse.Namespace
 ) -> None:
-    """Inject sources, search around each, and fit the depth per threshold.
+    """Inject sources, search around each, and fit the sensitivity depth per threshold.
 
     Args:
         run_logger: The run's log and output.
@@ -39,7 +40,7 @@ def measure_sensitivity_depth(
     curve_config = setup.recovery_curve
     search_loop_config = setup.search_loop
 
-    data = SearchData.load(
+    search_data = SearchData.load(
         setup.data,
         setup.files,
         setup.freq_low,
@@ -60,7 +61,7 @@ def measure_sensitivity_depth(
 
     # the part of the band each source's search reads, and the source simulated on it
     source_data = [
-        data.around_f0(prior, float(injection.parameters.f0))
+        search_data.around_f0(prior, float(injection.parameters.f0))
         for injection in injections
     ]
     sources = [
@@ -76,7 +77,7 @@ def measure_sensitivity_depth(
             TemplateBank.around_point(
                 tiling,
                 injection.parameters,
-                velocity=data.velocity,
+                velocity=search_data.velocity,
                 window=setup.data.window,
                 n_sky_neighbours=trials_config.n_sky_neighbours,
                 n_steps=trials_config.n_steps,
@@ -94,7 +95,9 @@ def measure_sensitivity_depth(
     # statistics
     thresholds = setup.thresholds
     curves = [RecoveryCurve(efficiency=curve_config.efficiency) for _ in thresholds]
-    run_logger.injection_summary(setup, data, setup_path=args.setup, seed=args.seed)
+    run_logger.injection_summary(
+        setup, search_data, setup_path=args.setup, seed=args.seed
+    )
 
     # every h0 tried, in order, with the statistics at each
     h0_values: list[float] = []
@@ -132,39 +135,40 @@ def measure_sensitivity_depth(
             f"{np.mean(loudest >= threshold):.1%}" for threshold in thresholds
         )
         run_logger.info(
-            f"  h0 {h0:.4e}  depth {data.sqrt_sn / h0:>6.1f}  recovered {recovered}"
+            f"  h0 {h0:.4e}  sensitivity depth {search_data.sqrt_sn / h0:>6.1f}  "
+            f"recovered {recovered}"
         )
 
-    # h0 loop: the first scan, then per threshold one point at its fitted h95 until it
-    # is known to tolerance; every point added feeds every curve
+    # h0 loop: the first scan, then per threshold one point at its fitted h0_ul until
+    # it is known to tolerance; every point added feeds every curve
     loud_depth, weak_depth = curve_config.sensitivity_depth
-    for h0 in data.sqrt_sn / np.geomspace(
+    for h0 in search_data.sqrt_sn / np.geomspace(
         weak_depth, loud_depth, curve_config.n_amplitudes
     ):
         search_injections_at(float(h0))
-    h95 = np.full(len(thresholds), np.nan)
-    h95_error = np.full(len(thresholds), np.nan)
+    h0_ul = np.full(len(thresholds), np.nan)
+    h0_ul_error = np.full(len(thresholds), np.nan)
     for threshold_idx, curve in enumerate(curves):
-        h95[threshold_idx], h95_error[threshold_idx] = curve.fit()
+        h0_ul[threshold_idx], h0_ul_error[threshold_idx] = curve.fit()
         for _ in range(curve_config.n_refinements):
             if (
-                np.isfinite(h95[threshold_idx])
-                and h95_error[threshold_idx] / h95[threshold_idx]
+                np.isfinite(h0_ul[threshold_idx])
+                and h0_ul_error[threshold_idx] / h0_ul[threshold_idx]
                 <= curve_config.tolerance
             ):
                 break
-            search_injections_at(curve.next_h0(h95[threshold_idx]))
-            h95[threshold_idx], h95_error[threshold_idx] = curve.fit()
+            search_injections_at(curve.next_h0(h0_ul[threshold_idx]))
+            h0_ul[threshold_idx], h0_ul_error[threshold_idx] = curve.fit()
     elapsed = time.perf_counter() - started
 
-    depth = data.sqrt_sn / h95
-    depth_error = data.sqrt_sn * h95_error / h95**2
-    for threshold, threshold_depth, threshold_depth_error, threshold_h95 in zip(
-        thresholds, depth, depth_error, h95
+    sensitivity_depth = search_data.sqrt_sn / h0_ul
+    sensitivity_depth_error = search_data.sqrt_sn * h0_ul_error / h0_ul**2
+    for threshold, threshold_depth, threshold_depth_error, threshold_h0_ul in zip(
+        thresholds, sensitivity_depth, sensitivity_depth_error, h0_ul
     ):
         run_logger.info(
-            f"Depth at S {threshold:.4g}: {threshold_depth:.1f} "
-            f"+- {threshold_depth_error:.1f} (h95 {threshold_h95:.3e})"
+            f"Sensitivity depth at S {threshold:.4g}: {threshold_depth:.1f} "
+            f"+- {threshold_depth_error:.1f} (h0_ul {threshold_h0_ul:.3e})"
         )
     run_logger.info(f"Done: time used {elapsed:.1f} s")
 
@@ -175,8 +179,8 @@ def measure_sensitivity_depth(
             "seed": args.seed,
             "mismatch": setup.tiling["mismatch"],
             "thresholds": thresholds,
-            "t_ref": data.t_ref,
-            "sqrt_sn": data.sqrt_sn,
+            "t_ref": search_data.t_ref,
+            "sqrt_sn": search_data.sqrt_sn,
             "search_loop": search_loop_config.model_dump(),
             "efficiency": curve_config.efficiency,
             "seconds": elapsed,
@@ -204,16 +208,16 @@ def measure_sensitivity_depth(
                 for threshold in thresholds
             ],
             # per threshold
-            "h95": h95.tolist(),
-            "h95_error": h95_error.tolist(),
-            "depth": depth.tolist(),
-            "depth_error": depth_error.tolist(),
+            "h0_ul": h0_ul.tolist(),
+            "h0_ul_error": h0_ul_error.tolist(),
+            "sensitivity_depth": sensitivity_depth.tolist(),
+            "sensitivity_depth_error": sensitivity_depth_error.tolist(),
         },
     )
 
 
 def run(args: argparse.Namespace) -> None:
-    """Measure the depth at the setup's mismatch, one per threshold.
+    """Measure the sensitivity depth at the setup's mismatch, one per threshold.
 
     Args:
         args: The parsed flags.
@@ -224,20 +228,20 @@ def run(args: argparse.Namespace) -> None:
     measure_sensitivity_depth(run_logger, read_json(args.setup, InjectionSetup), args)
 
 
-def add_arguments(p: argparse.ArgumentParser) -> None:
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     """Add the command's flags.
 
     Args:
-        p: The command's parser.
+        parser: The command's parser.
     """
-    p.add_argument(
+    parser.add_argument(
         "--platform",
         choices=["cpu", "gpu"],
         default=None,
         help="JAX backend; default is whatever JAX picks",
     )
-    p.add_argument(
+    parser.add_argument(
         "--output", default="results", help="directory the JSON result is written into"
     )
-    p.add_argument("--setup", required=True, help="jpec injection-setup result")
-    p.add_argument("--seed", type=int, default=0, help="seed of the drawn sources")
+    parser.add_argument("--setup", required=True, help="jpec injection-setup result")
+    parser.add_argument("--seed", type=int, default=0, help="seed of the drawn sources")

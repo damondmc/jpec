@@ -11,10 +11,10 @@ from jpec.waveform.window import Window
 
 
 def harmonic_count(modulation_depth_bins: float) -> int:
-    """The highest orbital harmonic jmax that carries signal.
+    """The highest orbital harmonic `j_max` that carries signal.
 
     Args:
-        modulation_depth_bins: Half-width of the arc [bins].
+        modulation_depth_bins: Half-width of the frequency arc [bins].
 
     Returns:
         Highest harmonic carrying signal, at least 1.
@@ -53,7 +53,7 @@ def template_harmonics(
 
     Args:
         bin_offsets: Bin centres, as offsets from f0 [bins].
-        modulation_depth_bins: Half-width of the arc [bins].
+        modulation_depth_bins: Half-width of the frequency arc [bins].
         n_theta: Orbital phases sampled, uniform over `[0, 2*pi)`; more than
             `2*j_max`.
         j_max: Highest harmonic kept.

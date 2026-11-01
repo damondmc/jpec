@@ -69,8 +69,8 @@ def noise(timestamps, *, seed: int, sqrt_sn: float) -> SFTData:
 
 def inject(sft: SFTData, *, t_ref: float, h0: float) -> SFTData:
     """The test signal added to some SFTs."""
-    unit_signal = simulated_signal_sft_data(sft, FACE_ON, t_ref=t_ref)
-    return sft_with_simulated_signal(sft, np.asarray(unit_signal), h0=h0)
+    unit_sft_data = simulated_signal_sft_data(sft, FACE_ON, t_ref=t_ref)
+    return sft_with_simulated_signal(sft, np.asarray(unit_sft_data), h0=h0)
 
 
 def test_gaussian_sfts_have_the_asked_for_floor(timestamps):

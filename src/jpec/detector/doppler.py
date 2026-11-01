@@ -32,7 +32,7 @@ def shift_spectrum(
 ) -> Complex[Array, "n_sft n_band"]:
     """Correct the spectrum for Doppler shift, moving bin `k + dk` to bin `k`.
 
-        Y[k] = X[k + dk],  by  y[n] = x[n] * exp(-2*pi*i * dk * n/n_band_bins)
+        Y[k] = X[k + dk],  by  y[m] = x[m] exp(-2 pi i dk m / n_band_bins)
 
     The phase factor multiplies the inverse transform of the band, not the strain, so
     the shift is circular within the band: anything pushed past the top edge
@@ -41,9 +41,9 @@ def shift_spectrum(
     ends, which is why the band wants margin beyond the template's.
 
     Args:
-        sft_time_series: `x[n]`, the inverse transform of each SFT's band; it does not
+        sft_time_series: `x[m]`, the inverse transform of each SFT's band; it does not
             depend on the shift, so it is taken once.
-        shift: dk(t) to apply on the time axis to move.
+        shift: `dk` at each SFT [bins].
 
     Returns:
         The shifted spectrum, in `sft_time_series.dtype`.
@@ -67,12 +67,15 @@ def doppler_corrected_power(
 ) -> Float[Array, "n_sft n_band"]:
     """A band Doppler-corrected toward one sky position, squared and normalized.
 
-        shift(t) = doppler_reference * (v(t).n/c) * tsft   [bins]
+        shift(t) = doppler_reference (v(t) . n_hat) tsft   [bins]
+
+    with `v` the detector velocity over c and `n_hat` the direction to the sky
+    position.
 
     Args:
         sft_time_series: Inverse transform of the scaled SFT amplitudes' band, per
             detector.
-        floor: Mean noise power at each point per detector.
+        floor: Mean noise power in each SFT and bin, per detector.
         velocity_per_detector: Detector velocity `v/c` at each SFT, per detector.
         tsft: SFT length [s].
         alpha: Right ascension [rad].

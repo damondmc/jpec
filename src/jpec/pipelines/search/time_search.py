@@ -61,7 +61,7 @@ def run(args: argparse.Namespace) -> None:
     job_setup = setup.jobs[0]
     search_loop_config = setup.search_loop
 
-    data = SearchData.load(
+    search_data = SearchData.load(
         setup.data,
         job_setup.files,
         job_setup.freq_low,
@@ -73,13 +73,13 @@ def run(args: argparse.Namespace) -> None:
         LatticeTiling.from_dict(setup.tiling),
         job_setup.f0_low,
         job_setup.f0_high,
-        velocity=data.velocity,
+        velocity=search_data.velocity,
         window=setup.data.window,
     )
     layout = subgrid_layout(
         bank.template_grids[0],
-        freq_low=data.freq_low,
-        n_band_bins=data.n_band_bins,
+        freq_low=search_data.freq_low,
+        n_band_bins=search_data.n_band_bins,
         n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
         period_batch_size=search_loop_config.period_batch_size,
     )
@@ -101,11 +101,11 @@ def run(args: argparse.Namespace) -> None:
 
     def doppler_correction() -> Float[Array, "n_doppler_reference n_sft n_band"]:
         return doppler_corrected_power_per_reference(
-            data.sft_time_series,
-            data.floor,
-            data.velocity_per_detector,
+            search_data.sft_time_series,
+            search_data.floor,
+            search_data.velocity_per_detector,
             layout.doppler_references,
-            tsft=data.tsft,
+            tsft=search_data.tsft,
             alpha=float(bank.alpha[0]),
             delta=float(bank.delta[0]),
         )
@@ -122,7 +122,7 @@ def run(args: argparse.Namespace) -> None:
 
         def orbital_basis() -> Complex[Array, "n_period n_harmonic n_sft"]:
             return jitted_orbital_basis(
-                data.times, omega=layout.omega[period_idxs], j_max=j_max
+                search_data.times, omega=layout.omega[period_idxs], j_max=j_max
             )
 
         batch_orbital_basis = orbital_basis()
@@ -185,10 +185,10 @@ def run(args: argparse.Namespace) -> None:
     }
     sky_point_seconds = sum(seconds_per_sky_point.values())
 
-    # what jpec search-setup prices a job with: seconds per band point of the Doppler
+    # what jpec search-setup prices a job with: seconds per SFT bin of the Doppler
     # correction at one reference, per element of the basis, per multiply-add of the
     # transform at one reference and of the match
-    orbital_basis_work = period_batch_size * j_max * data.n_sfts
+    orbital_basis_work = period_batch_size * j_max * search_data.n_sfts
     match_work = (
         n_f0_points
         * period_batch_size
@@ -198,7 +198,7 @@ def run(args: argparse.Namespace) -> None:
     )
     rates = {
         "doppler_correction": stages["doppler correction"][0]
-        / (data.n_sfts * data.n_band_bins),
+        / (search_data.n_sfts * search_data.n_band_bins),
         "orbital_basis": stages["orbital basis"][0] / orbital_basis_work,
         "transform": stages["transform"][0] / (orbital_basis_work * n_transformed_bins),
         "match": stages["match"][0] / match_work,
@@ -208,8 +208,8 @@ def run(args: argparse.Namespace) -> None:
         f"{n_f0_points} f0 points, {n_period_batches} period batches of "
         f"{period_batch_size}, "
         f"{n_window_modulation_depths} window modulation depths, j_max {j_max}, "
-        f"{n_window_bins} window bins, {data.n_band_bins} band bins, "
-        f"{n_transformed_bins} transformed, {data.n_sfts} SFTs, "
+        f"{n_window_bins} window bins, {search_data.n_band_bins} band bins, "
+        f"{n_transformed_bins} transformed, {search_data.n_sfts} SFTs, "
         f"{n_doppler_references} Doppler references, "
         f"{n_subgrids} subgrids"
     )
@@ -235,9 +235,9 @@ def run(args: argparse.Namespace) -> None:
             "n_window_modulation_depths": n_window_modulation_depths,
             "j_max": j_max,
             "n_window_bins": n_window_bins,
-            "n_band_bins": data.n_band_bins,
+            "n_band_bins": search_data.n_band_bins,
             "n_transformed_bins": n_transformed_bins,
-            "n_sfts": data.n_sfts,
+            "n_sfts": search_data.n_sfts,
             "n_doppler_references": n_doppler_references,
             "n_subgrids": n_subgrids,
             "seconds_per_call": {name: call for name, (call, _) in stages.items()},
@@ -250,27 +250,27 @@ def run(args: argparse.Namespace) -> None:
     )
 
 
-def add_arguments(p: argparse.ArgumentParser) -> None:
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     """Add the command's flags.
 
     Args:
-        p: The command's parser.
+        parser: The command's parser.
     """
-    p.add_argument(
+    parser.add_argument(
         "--platform",
         choices=["cpu", "gpu"],
         default=None,
         help="JAX backend; default is whatever JAX picks",
     )
-    p.add_argument(
+    parser.add_argument(
         "--output", default="results", help="directory the JSON result is written into"
     )
-    p.add_argument("--setup", required=True, help="jpec search-setup result")
-    p.add_argument(
+    parser.add_argument("--setup", required=True, help="jpec search-setup result")
+    parser.add_argument(
         "--batches",
         dest="n_period_batches_timed",
         type=int,
         default=3,
         help="period batches timed",
     )
-    p.add_argument("--repeats", type=int, default=3, help="timed calls per stage")
+    parser.add_argument("--repeats", type=int, default=3, help="timed calls per stage")

@@ -96,7 +96,7 @@ def test_taper_reaches_the_kernel_from_every_level(case: Case, theta, beta):
 
 
 def test_arc_turns_at_the_full_depth(case: Case, offsets):
-    """``theta = 0`` and ``pi`` are the turning points of the frequency sweep."""
+    """`theta = 0` and `pi` are the turning points of the frequency sweep."""
     plane = template_plane(
         offsets,
         theta=jnp.array([0.0, np.pi]),
@@ -158,7 +158,7 @@ def test_template_depends_on_depth_only(case: Case, theta, offsets):
 
 
 def test_plane_reproduces_the_frequency(case: Case, theta, offsets):
-    """Cross-check against ``f(t) = f0 - df*cos(theta)`` written out in full.
+    """Cross-check against `f(t) = f0 - modulation_depth*cos(theta)` in full.
 
     The badly-conditioned route, kept only to pin the sign convention. It agrees
     to its own float64 cancellation floor, not to machine epsilon.

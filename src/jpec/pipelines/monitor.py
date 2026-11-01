@@ -214,28 +214,28 @@ class RunLogger:
         if report is not None:
             self.info(report)
 
-    def data_summary(self, data: SearchData) -> None:
+    def data_summary(self, search_data: SearchData) -> None:
         """Log the band as loaded, the lines a search and an injection run share.
 
         Args:
-            data: The band as loaded.
+            search_data: The band as loaded.
         """
-        first_detector_sfts = data.sfts[0]
+        first_detector_sfts = search_data.sfts[0]
         sfts_per_detector = ", ".join(
-            f"{sft.detector.name} {sft.n_sfts}" for sft in data.sfts
+            f"{sft.detector.name} {sft.n_sfts}" for sft in search_data.sfts
         )
-        self.info(
-            f"Loaded band: {first_detector_sfts.freq_low:.5f} to "
-            f"{first_detector_sfts.freq_low + data.n_band_bins / data.tsft:.5f} Hz"
-        )
-        self.info(f"Frequency bins loaded: {data.n_band_bins}")
+        freq_low = first_detector_sfts.freq_low
+        freq_high = freq_low + search_data.n_band_bins / search_data.tsft
+        self.info(f"Loaded band: {freq_low:.5f} to {freq_high:.5f} Hz")
+        self.info(f"Frequency bins loaded: {search_data.n_band_bins}")
         self.info(f"SFTs per detector: {sfts_per_detector}")
         self.info(
-            f"SFT length: {data.tsft:.0f} s, {first_detector_sfts.window.kind} window "
+            f"SFT length: {search_data.tsft:.0f} s, "
+            f"{first_detector_sfts.window.kind} window "
             f"beta {first_detector_sfts.window.beta}"
         )
-        self.info(f"Reference time: {data.t_ref:.0f}")
-        self.info(f"Noise sqrt(Sn): {data.sqrt_sn:.4e} /sqrt(Hz)")
+        self.info(f"Reference time: {search_data.t_ref:.0f}")
+        self.info(f"Noise sqrt(Sn): {search_data.sqrt_sn:.4e} /sqrt(Hz)")
 
     def search_loop_summary(self, search_loop_config: SearchLoopConfig) -> None:
         """Log how the search loop batches its work.
@@ -251,7 +251,7 @@ class RunLogger:
         self,
         setup: SearchSetup,
         job_setup: JobSetup,
-        data: SearchData,
+        search_data: SearchData,
         bank: TemplateBank,
         *,
         setup_path: str,
@@ -262,7 +262,7 @@ class RunLogger:
         Args:
             setup: The search setup.
             job_setup: The job's row of it.
-            data: The band as loaded.
+            search_data: The band as loaded.
             bank: The job's bank.
             setup_path: Where the setup was read from.
             n_doppler_references_per_subgrid: Number of Doppler reference frequencies
@@ -270,7 +270,7 @@ class RunLogger:
         """
         self.info(f"Job {job_setup.job_idx} of {len(setup.jobs)} from {setup_path}")
         self.info(f"Search band: {job_setup.f0_low:.5f} to {job_setup.f0_high:.5f} Hz")
-        self.data_summary(data)
+        self.data_summary(search_data)
         self.info(
             f"Frequency bins of the first subgrid's deepest template: "
             f"{bank.template_grids[0].bin_offsets.shape[0]}"
@@ -285,13 +285,18 @@ class RunLogger:
         self.info(f"Toplist: {setup.n_toplist}")
 
     def injection_summary(
-        self, setup: InjectionSetup, data: SearchData, *, setup_path: str, seed: int
+        self,
+        setup: InjectionSetup,
+        search_data: SearchData,
+        *,
+        setup_path: str,
+        seed: int,
     ) -> None:
         """Log what an injection run measures, before it starts.
 
         Args:
             setup: The injection setup.
-            data: The band as loaded.
+            search_data: The band as loaded.
             setup_path: Where the setup was read from.
             seed: Seed of the drawn sources.
         """
@@ -299,7 +304,7 @@ class RunLogger:
         curve_config = setup.recovery_curve
         h_label = f"h{100.0 * curve_config.efficiency:.0f}"
         self.info(f"Injection run from {setup_path}, seed {seed}")
-        self.data_summary(data)
+        self.data_summary(search_data)
         self.info(f"Sources: {trials_config.n_injections}")
         self.info(f"Mismatch: {setup.tiling['mismatch']:g}")
         self.info(

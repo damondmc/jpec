@@ -15,7 +15,7 @@ from jpec.waveform.plane import arc_bin_offsets
 def band_edges_for_f0(
     prior: Prior, f0_low: float, f0_high: float, *, tsft: float
 ) -> tuple[float, float]:
-    """The freq band to load for an f0 interval.
+    """The frequency band to load for an f0 interval.
 
     Args:
         prior: The region searched, whose deepest orbit sets the widest template.
@@ -51,7 +51,7 @@ class SearchData:
 
         Args:
             sfts: The SFTs per detector, scaled.
-            floor: Mean noise power at each point per detector.
+            floor: Mean noise power in each SFT and bin, per detector.
             t_ref: Epoch `phi_b` is quoted at, absolute GPS [s].
         """
         self.sfts = sfts
@@ -172,10 +172,10 @@ class SearchData:
     def sqrt_sn(self) -> float:
         """Noise amplitude spectral density over the band and the run [1/sqrt(Hz)].
 
-            P_i = <floor[i, k]>_k,  P = 1 / <1 / P_i>_i,
+            P_n = <floor[n, k]>_k,  P = 1 / <1 / P_n>_n,
             sqrt_sn = sqrt(P / tsft) * strain_unit
 
-        i runs over every SFT of every detector and k over the band; floor estimates
+        n runs over every SFT of every detector and k over the band; floor estimates
         2|X|^2 = Sn tsft, so P / tsft is Sn in units of strain_unit^2.
         """
         per_sft = jnp.concatenate(

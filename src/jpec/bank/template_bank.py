@@ -247,7 +247,7 @@ class TemplateBank(NamedTuple):
             f0_high: High edge [Hz].
             velocity: Detector velocity `v/c` at each SFT, every detector, which
                 sets the sky lattice.
-            window: The window the data was made with.
+            window: The window the SFTs were made with.
 
         Returns:
             The bank, its subgrids over the whole sky lattice.
@@ -316,7 +316,7 @@ class TemplateBank(NamedTuple):
                 n_steps=n_steps,
             )
             ap_block_period_idxs = np.flatnonzero(
-                orbital_subgrid.ap_block_idx == source_ap_block_idx
+                orbital_subgrid.ap_block_idxs == source_ap_block_idx
             )
             grid_omega2 = (
                 np.asarray(
@@ -335,7 +335,7 @@ class TemplateBank(NamedTuple):
                     modulation_depth_idxs
                 ],
                 period=orbital_subgrid.period[period_idxs],
-                ap_block_idx=orbital_subgrid.ap_block_idx[period_idxs],
+                ap_block_idxs=orbital_subgrid.ap_block_idxs[period_idxs],
                 in_box=orbital_subgrid.in_box[
                     np.ix_(period_idxs, modulation_depth_idxs)
                 ],

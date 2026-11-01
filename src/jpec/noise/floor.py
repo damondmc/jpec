@@ -12,7 +12,7 @@ def median_bias(width: int) -> float:
 
         bias = sum(1/i for i in range((width+1)//2, width+1))
 
-    Bias -> ln 2 = 0.693
+    which tends to ln 2 = 0.693 as the width grows.
 
     Args:
         width: Window length in bins, odd so the median is a single sample.

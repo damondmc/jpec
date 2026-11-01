@@ -36,7 +36,7 @@ def doppler_corrected_power_per_reference(
 
     Args:
         sft_time_series: Inverse transform of the band, per detector.
-        floor: Mean noise power at each point per detector.
+        floor: Mean noise power in each SFT and bin, per detector.
         velocity_per_detector: Detector velocity `v/c` at each SFT, per detector.
         doppler_references: Frequencies the Doppler shift is taken at [Hz].
         tsft: SFT length [s].
@@ -238,7 +238,7 @@ class HarmonicBank(NamedTuple):
 
 
 def orbital_statistics(
-    data: SearchData,
+    search_data: SearchData,
     harmonic_bank: HarmonicBank,
     *,
     sky_idx: int,
@@ -248,7 +248,7 @@ def orbital_statistics(
     """Every template at one sky point scored on one band, each grid's loudest kept.
 
     Args:
-        data: The band searched, the one the bank is laid out on.
+        search_data: The band searched, the one the bank is laid out on.
         harmonic_bank: The bank's template harmonics, laid out on the band.
         sky_idx: Index of the sky point in the bank.
         f0_batch_size: f0 points matched at once, which caps the S(phi_b) the match
@@ -304,11 +304,11 @@ def orbital_statistics(
             * n_window_modulation_depths,
         )
         corrected_sft_power = doppler_corrected_power_per_reference(
-            sft_time_series=data.sft_time_series,
-            floor=data.floor,
-            velocity_per_detector=data.velocity_per_detector,
+            sft_time_series=search_data.sft_time_series,
+            floor=search_data.floor,
+            velocity_per_detector=search_data.velocity_per_detector,
             doppler_references=layout.doppler_references,
-            tsft=data.tsft,
+            tsft=search_data.tsft,
             alpha=alpha,
             delta=delta,
         )
@@ -321,7 +321,9 @@ def orbital_statistics(
                 batch.period_start_idx + layout.period_batch_size,
             )
             batch_orbital_basis = jitted_orbital_basis(
-                data.times, omega=layout.omega[period_idxs], j_max=template_grid.j_max
+                search_data.times,
+                omega=layout.omega[period_idxs],
+                j_max=template_grid.j_max,
             )
             # one transform per Doppler reference, not per f0 point
             batch_data_harmonics = jitted_data_harmonics_per_reference(

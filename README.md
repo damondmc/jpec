@@ -18,7 +18,7 @@ $$
 S(f_0, a_p, P, \alpha, \delta \,;\, \phi_b)
 = \mathrm{Re} \sum_j c_j \, e^{\, i j \phi_b},
 \qquad
-c_j = \sum_k \tau^{\ast}_{jk}(\Delta k) \; F_{jk}(f_0, \alpha, \delta, P)
+c_j = \frac{1}{\lVert \tau \rVert} \sum_k \tau^{\ast}_{jk}(\Delta k) \; F_{jk}(f_0, \alpha, \delta, P)
 $$
 
 with
@@ -47,17 +47,17 @@ steps, each a stage of the pipeline.
 
 **1. Doppler correction.** The complex amplitudes of SFT $n$, at midpoint $t_n$, are
 shifted by $f_0 T_{\mathrm{SFT}}\, \vec v(t_n)\cdot\hat n$ bins, so the arc depends on time
-through the orbital phase $\theta = \Omega t - \phi_b$ alone. The power $P_k(t_n)$ at bin
+through the orbital phase $\theta = \Omega t - \phi_b$ alone. The power $p_k(t_n)$ at bin
 offset $k$ from $f_0$ is then normalized by a running-median floor.
 
 **2. The data's harmonics.** The power is decomposed in orbital phase over the $N$ SFTs,
 
 $$
-F_{jk} = \frac{1}{N} \sum_n P_k(t_n)\, e^{-i j \Omega t_n},
+F_{jk} = \big\langle p_k(t_n)\, e^{-i j \Omega t_n} \big\rangle_n,
 \qquad 1 \le j \le j_{\max} = \lceil 2\pi\,\Delta k \rceil,
 $$
 
-a direct sum over the SFTs at their own timestamps, so gaps and uneven sampling cost
+a direct average over the SFTs at their own timestamps, so gaps and uneven sampling cost
 nothing; $j = 0$, the mean power, is dropped. It depends on $(f_0, \alpha, \delta, P)$ and
 is shared by every $a_p$ and $\phi_b$.
 
@@ -75,7 +75,8 @@ and sky position.
 **4. The matched filter.** The match is
 
 $$
-c_j = \sum_k \tau^{\ast}_{jk} F_{jk},
+c_j = \frac{1}{\lVert \tau \rVert} \sum_k \tau^{\ast}_{jk} F_{jk},
+\qquad \lVert \tau \rVert^2 = \sum_{jk} \lvert \tau_{jk} \rvert^2,
 $$
 
 and the unknown orbital phase is a linear phase on the harmonics, so one inverse FFT over

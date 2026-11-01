@@ -15,10 +15,10 @@ from jpec.waveform.window import Window
 def freq_bin_curvature(window: Window, *, n_positions: int) -> float:
     """Mismatch per squared frequency bin of track error, `g_freq_bin`, for a window.
 
-        1 - sum_k W(k - x) W(k - x - d) / sum_k W(k - x)^2  ~  g_freq_bin d^2
+        1 - <sum_k W(k - x) W(k - x - d)>_x / <sum_k W(k - x)^2>_x  ~  g_freq_bin d^2
 
-    with `d` the track's error in frequency bins, averaged over the fractional
-    frequency-bin position `x` of the track.
+    with `d` the track's error in frequency bins and `x` the track's fractional
+    position in its bin.
 
     Args:
         window: The window the SFTs were made with.
@@ -57,10 +57,9 @@ def physical_metric(
 ) -> Float[Array, "6 6"]:
     """Mismatch metric on the physical parameters at one point, closed form.
 
-        g_ij = g_freq_bin < d_ik  d_jk >
+        g_mu_nu = g_freq_bin tsft^2 <d_mu f(t_n) d_nu f(t_n)>_n
 
-    with `k` the track in frequency bins at each SFT midpoint and the average over
-    the SFTs.
+    with `f(t_n)` the frequency track at the n-th SFT midpoint.
 
     Args:
         point: Point to evaluate at.
@@ -70,7 +69,7 @@ def physical_metric(
         g_freq_bin: freq_bin_curvature() of the window the SFTs were made with.
 
     Returns:
-        `g[i, j]` in the field order of Parameters.
+        `g[mu, nu]` in the field order of Parameters.
     """
     flat, unravel = ravel_pytree(
         Parameters(*(jnp.asarray(x, dtype=float) for x in point))
@@ -96,10 +95,10 @@ def project_out(
 ) -> Float[Array, "5 5"]:
     """Metric on the remaining parameters when one is maximized over.
 
-        g'_ij = g_ij - g_ix g_xx^-1 g_xj
+        g'_mu_nu = g_mu_nu - g_mu_x g_xx^-1 g_x_nu
 
     Args:
-        metric: `g_ij` in the field order of Parameters.
+        metric: `g_mu_nu` in the field order of Parameters.
         name: The field maximized over, `phi_b` by default.
 
     Returns:

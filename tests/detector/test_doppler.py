@@ -18,7 +18,7 @@ N_SFTS = 30
 
 
 def sim_segment(sinusoid_bin: float, n_samples: int = 2**14, beta: float = 0.001):
-    """One SFT on the time axis: a Tukey-windowed sinusoid at ``sinusoid_bin``.
+    """One SFT on the time axis: a Tukey-windowed sinusoid at `sinusoid_bin`.
 
     Returns:
         The time-sample index and the strain at each sample.
@@ -38,7 +38,7 @@ def sim_segment(sinusoid_bin: float, n_samples: int = 2**14, beta: float = 0.001
 
 @pytest.fixture(scope="module")
 def data():
-    """``N_SFTS`` SFTs on the time axis, each the same sinusoid, one per day."""
+    """`N_SFTS` SFTs on the time axis, each the same sinusoid, one per day."""
     _, strain = sim_segment(4000.37)
     sft_data = np.tile(np.fft.fft(strain), (N_SFTS, 1)).astype(np.complex64)
     return SFTData(
@@ -69,7 +69,7 @@ def test_sky_direction_is_a_unit_vector_in_the_equatorial_frame():
 
 
 def test_correction_is_the_projected_shift(data, velocity):
-    """shift = f0 * v.n/c * tsft, shift_spectrum on amplitudes, then 2|.|^2 / floor."""
+    """shift = f0 v.n_hat tsft, shift_spectrum on amplitudes, then 2|.|^2 / floor."""
     direction = np.array(
         [np.cos(DELTA) * np.cos(ALPHA), np.cos(DELTA) * np.sin(ALPHA), np.sin(DELTA)]
     )
@@ -102,7 +102,7 @@ def test_whole_bin_shift_is_an_exact_roll():
 
 
 def band_shift_error(margin_bins: int, shift_bins: float = 0.37) -> float:
-    """Error of shifting a band extending ``margin_bins`` either side of a sinusoid."""
+    """Error of shifting a band extending `margin_bins` either side of a sinusoid."""
     sinusoid_bin = 4000.37
     sample_idxs, strain = sim_segment(sinusoid_bin)
     n_samples = strain.size

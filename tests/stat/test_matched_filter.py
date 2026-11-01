@@ -48,7 +48,7 @@ def test_statistic_stands_above_the_rest(setup):
 
 
 def test_shifting_the_peak(case: Case, setup):
-    """The shift theorem, which is what makes ``phi_b`` free."""
+    """The shift theorem, which is what makes `phi_b` free."""
     parameters = case.parameters
     shift = 1.0
     moved = parameters._replace(phi_b=parameters.phi_b + shift)

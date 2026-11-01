@@ -9,7 +9,7 @@ from jpec.typing import Scalar
 def null_sigma(n_sfts: int, *, power_variance: float) -> Scalar:
     """Standard deviation of `S(phi_b)` under noise, on floor-normalized power.
 
-        Var(S) = Var(P) / (2 * n_sfts),  P = P_ik / floor_ik
+        Var(S) = Var(P) / (2 n_sfts),  P[n, k] = sft_power[n, k] / floor[n, k]
 
     Gaussian noise divided by its floor is scaled chi2_2 with unit mean, so
     `Var(P) = 1`; real data can be wider, and then takes its fitted value.
@@ -54,7 +54,8 @@ def false_alarm_probability(
 
         FAP = 1 - exp(-j_rms * exp(-threshold^2 / (2 sigma^2)))
 
-    Assuming a Gaussian noise model on floor-normalized power.
+    with `sigma` from null_sigma(), assuming a Gaussian noise model on
+    floor-normalized power.
 
     Args:
         threshold: Level on `S` the maximum over phase is compared against.
@@ -76,7 +77,7 @@ def detection_threshold(
     j_rms: Scalar,
     power_variance: float,
 ) -> Scalar:
-    """The threshold on `S(phi)` needed for the given false-alarm probability.
+    """The threshold on `S(phi_b)` needed for the given false-alarm probability.
 
     Taken on floor-normalized power.
 
@@ -87,7 +88,7 @@ def detection_threshold(
         power_variance: `Var(P)` of the floor-normalized power, as in null_sigma().
 
     Returns:
-        Threshold on the detection statistic `S(phi)`.
+        Threshold on the detection statistic `S(phi_b)`.
     """
     if not 0.0 < fap < 1.0:
         raise ValueError(f"fap must be in (0, 1), got {fap}")
@@ -110,11 +111,11 @@ def toplist_threshold(
     n_sfts: int,
     power_variance: float,
 ) -> Scalar:
-    """Threshold on `S(phi)` giving `n_candidates` templates on Gaussian noise.
+    """Threshold on `S(phi_b)` giving `n_candidates` templates on Gaussian noise.
 
         n_candidates = sum_d n_templates[d] * j_rms[d] * exp(-threshold^2 / (2 sigma^2))
 
-    Taken on floor-normalized power.
+    with `sigma` from null_sigma(), taken on floor-normalized power.
 
     Args:
         n_candidates: Templates noise alone puts above the threshold, on average.
@@ -125,7 +126,7 @@ def toplist_threshold(
         power_variance: `Var(P)` of the floor-normalized power, as in null_sigma().
 
     Returns:
-        Threshold on the detection statistic `S(phi)`.
+        Threshold on the detection statistic `S(phi_b)`.
     """
     n_crossings = jnp.sum(n_templates * j_rms)
     crossings = n_candidates / n_crossings

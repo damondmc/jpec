@@ -47,14 +47,14 @@ class OrbitalSubgrid(NamedTuple):
         f0: The f0 points [Hz].
         modulation_depth_bins: The modulation depths [bins], one grid for every period.
         period: Every trial period [s], ap block after ap block.
-        ap_block_idx: The ap block each period belongs to.
+        ap_block_idxs: The ap block each period belongs to.
         in_box: Whether the template's ap lies in its ap block's range.
     """
 
     f0: Float[np.ndarray, " n_f0"]
     modulation_depth_bins: Float[np.ndarray, " n_modulation_depth"]
     period: Float[np.ndarray, " n_period"]
-    ap_block_idx: Int[np.ndarray, " n_period"]
+    ap_block_idxs: Int[np.ndarray, " n_period"]
     in_box: Bool[np.ndarray, "n_period n_modulation_depth"]
 
     @property
@@ -117,7 +117,7 @@ def orbital_subgrid(
     tsft: float,
     offset: float,
 ) -> OrbitalSubgrid:
-    """One bcc subgrid in `(f0, modulation_depth, omega^2)` over one f0 band.
+    """One bcc subgrid in `(f0, modulation_depth_bins, omega^2)` over one f0 band.
 
     It runs one step past every edge.
 
@@ -190,7 +190,7 @@ def orbital_subgrid(
         f0=f0,
         modulation_depth_bins=modulation_depth_bins,
         period=np.concatenate(periods),
-        ap_block_idx=np.concatenate(ap_block_idxs),
+        ap_block_idxs=np.concatenate(ap_block_idxs),
         in_box=np.concatenate(in_box),
     )
 
@@ -309,9 +309,9 @@ def sky_lattice(
 ) -> tuple[Float[np.ndarray, " n_sky"], Float[np.ndarray, " n_sky"]]:
     """The sky positions of a lattice laid on the sky metric's resolved directions.
 
-    A template `u = n_true - n` off costs
+    A template `u = n_hat_true - n_hat` off costs
 
-        mu = g_freq_bin (f0 tsft)^2 u^T Cov(v) u
+        mu = g_f0f0 f0^2 u^T Cov(v) u
 
     Args:
         velocity: Detector velocity `v/c` at each SFT, every detector.

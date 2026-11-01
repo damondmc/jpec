@@ -13,7 +13,7 @@ def orbital_basis(
 ) -> Complex[Array, "... n_harmonic n_sft"]:
     """The harmonic basis on orbital phase.
 
-        basis[j, i] = exp(-i*j*omega*t_i),  j = 1..j_max
+        basis[j, n] = exp(-i j omega t_n),  j = 1..j_max
 
     The phase is formed here, so under jit it is never held as an array of its own.
 
@@ -24,7 +24,7 @@ def orbital_basis(
         j_max: Highest harmonic to keep.
 
     Returns:
-        `basis[..., j, i]`, j-th harmonic at the i-th SFT.
+        `basis[..., j, n]`, j-th harmonic at the n-th SFT.
     """
     theta = jnp.asarray(omega)[..., None] * times
     j = jnp.arange(1, j_max + 1)
@@ -33,22 +33,22 @@ def orbital_basis(
 
 def data_harmonics(
     sft_power: Float[Array, "n_sft n_freq"],
-    harmonic_basis: Complex[Array, "... n_harmonic n_sft"],
+    orbital_basis: Complex[Array, "... n_harmonic n_sft"],
 ) -> Complex[Array, "... n_harmonic n_freq"]:
     """The SFT power expressed in the orbital basis.
 
-        F[j, k] = (1/n_sft) * sum_i harmonic_basis[j, i] * sft_power[i, k]
+        F[j, k] = <orbital_basis[j, n] sft_power[n, k]>_n
 
     Args:
-        sft_power: Normalized power, SFT i by frequency bin k.
-        harmonic_basis: orbital_basis() at the SFTs' phases.
+        sft_power: Normalized power, SFT n by frequency bin k.
+        orbital_basis: orbital_basis() at the SFTs' midpoints.
 
     Returns:
         `F[j, k]` for each basis given.
     """
     # the power is real, so two real matmuls instead of one complex one
-    real = jnp.real(harmonic_basis) @ sft_power
-    imag = jnp.imag(harmonic_basis) @ sft_power
+    real = jnp.real(orbital_basis) @ sft_power
+    imag = jnp.imag(orbital_basis) @ sft_power
     return jax.lax.complex(real, imag) / sft_power.shape[0]
 
 
@@ -80,15 +80,15 @@ def statistic_over_phase(
 ) -> Float[Array, " n_phi"]:
     """The statistic at every orbital phase at once.
 
-       S(phi_b) = Re{ sum_j c[j] exp(+i j phi_b) } which is exactly the real inverse FFT
+        S(phi_b) = Re{ sum_j c[j] exp(+i j phi_b) }
 
-       with `phi_b = 2 pi m / n_phi`, since for `x[0] = 0` and `x[j] = 0` from
-       `j = n_phi/2` up
+    which is exactly the real inverse FFT with `phi_b = 2 pi m / n_phi`, since for
+    `x[0] = 0` and `x[j] = 0` from `j = n_phi/2` up
 
-           irfft(x)[m] = (2 / n_phi) Re{ sum_j x[j] exp(+2 pi i j m / n_phi) }
+        irfft(x)[m] = (2 / n_phi) Re{ sum_j x[j] exp(+2 pi i j m / n_phi) }
 
-       and multiplying by `n_phi/2` cancels its 2/N. Every phase therefore costs
-       one transform rather than one template each.
+    and multiplying by `n_phi/2` cancels its 2 / n_phi. Every phase therefore costs
+    one transform rather than one template each.
 
     Args:
         coefficients: `c[j]` starting with 1st harmonic.
@@ -113,7 +113,7 @@ def max_over_phase(
     Args:
         data_harmonics: `F[j, k]`, starting with 1st harmonic.
         template_harmonics: `tau[j, k]` on the same grid.
-        n_phi: Orbital phases to evaluate, at least twice the harmonics kept.
+        n_phi: Orbital phases to evaluate, more than twice the harmonics kept.
 
     Returns:
         The maximum of `S(phi_b)` and the index `m` of `phi_b = 2 pi m / n_phi` it

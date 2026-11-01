@@ -45,7 +45,8 @@ def simulated_signal_sft_data(
 ) -> Complex[Array, "n_sft n_freq"]:
     """The SFT data a simulated source leaves at unit strain, in closed form.
 
-        s[i, k] = (A_+ F_+[i] - i A_x F_x[i]) (tsft / 2) W(k - arc[i])
+        s[n, k] = (A_+ F_+[n] - i A_x F_x[n]) (tsft / 2)
+                  W(k - arc[n]) exp(-i pi (k - arc[n]))
 
     Args:
         sft: The SFTs whose bins, times, detector and window the signal is laid on.
@@ -85,7 +86,7 @@ def simulated_signal_sft_data(
 
 def sft_with_simulated_signal(
     sft: SFTData,
-    unit_signal: Complex[np.ndarray, "n_sft n_freq"],
+    unit_sft_data: Complex[np.ndarray, "n_sft n_freq"],
     *,
     h0: float,
 ) -> SFTData:
@@ -93,14 +94,14 @@ def sft_with_simulated_signal(
 
     Args:
         sft: The SFTs, at their own `strain_unit`.
-        unit_signal: simulated_signal_sft_data() on the same bins and times, in
+        unit_sft_data: simulated_signal_sft_data() on the same bins and times, in
             strain x s.
         h0: Strain amplitude.
 
     Returns:
         The SFTs holding the signal, at the same `strain_unit`.
     """
-    added = h0 * unit_signal / sft.strain_unit
+    added = h0 * unit_sft_data / sft.strain_unit
     sft_data = (sft.sft_data + added).astype(sft.sft_data.dtype)
     return replace(sft, sft_data=sft_data)
 
@@ -128,8 +129,8 @@ class SimulatedSource(NamedTuple):
             The SFTs holding the source.
         """
         return [
-            sft_with_simulated_signal(sft, unit_signal, h0=h0)
-            for sft, unit_signal in zip(sfts, self.unit_sft_data)
+            sft_with_simulated_signal(sft, unit_sft_data, h0=h0)
+            for sft, unit_sft_data in zip(sfts, self.unit_sft_data)
         ]
 
 

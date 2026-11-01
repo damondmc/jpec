@@ -49,7 +49,7 @@ def background():
     rng = np.random.default_rng(3)
     peaks, values = np.empty(TRIALS), []
     for i in range(TRIALS):
-        # floor-normalized power under noise: exponential with unit mean and variance
+        # floor-normalized power under noise: scaled chi2_2 with unit mean and variance
         sft_power = jnp.asarray(rng.exponential(1.0, size=(N_SFTS, offsets.size)))
         noise_data_harmonics = data_harmonics(sft_power, sft_orbital_basis)
         statistic = statistic_over_phase(

@@ -14,7 +14,7 @@ from jpec.bank.metric import (
     project_out,
     sky_metric,
 )
-from jpec.constant import CURVATURE_POSITIONS, DAY
+from jpec.constant import DAY, N_CURVATURE_POSITIONS
 from jpec.detector.doppler import sky_direction
 from jpec.detector.site import Detector
 from jpec.params import Parameters
@@ -40,7 +40,7 @@ def test_sky_lattice_covers_the_sphere_within_the_mismatch():
             times=times,
             velocity=jnp.asarray(velocity),
             tsft=TSFT,
-            g_freq_bin=freq_bin_curvature(Window(), n_positions=CURVATURE_POSITIONS),
+            g_freq_bin=freq_bin_curvature(Window(), n_positions=N_CURVATURE_POSITIONS),
         )
     )
     g_f0f0 = metric[0, 0]
@@ -72,13 +72,12 @@ def test_sky_lattice_covers_the_sphere_within_the_mismatch():
 
 
 def test_orbital_lattice_covers_band_edges_blocks_and_faces_within_the_budget():
-    """Any point of two neighbouring f0 bands has an in-box template within the
-    three orbital axes' budget.
+    """Any point of two neighbouring f0 bands has an in-box template in budget.
 
-    In cubic steps a template ``u`` away costs ``4 mu_axis |u|^2``, so the budget
-    ``3 mu_axis`` is ``|u|^2 <= 3/4``. The omega^2 step is the lower band's, the
-    larger of the two, so a template within the budget in its own band's step is
-    within it in this one.
+    The budget is that of the three orbital axes. In cubic steps a template `u`
+    away costs `4 mu_axis |u|^2`, so the budget `3 mu_axis` is `|u|^2 <= 3/4`. The
+    omega^2 step is the lower band's, the larger of the two, so a template within
+    the budget in its own band's step is within it in this one.
     """
     period_low, period_high = 7.0 * DAY, 15.0 * DAY
     omega_low, omega_high = 2.0 * np.pi / period_high, 2.0 * np.pi / period_low
@@ -142,7 +141,7 @@ def test_orbital_lattice_covers_band_edges_blocks_and_faces_within_the_budget():
     ap = rng.uniform(5.0, 15.0, n)
     omega = 2.0 * np.pi / rng.uniform(period_low, period_high, n)
     signals = np.column_stack([f0, f0 * ap * omega * TSFT, omega**2])
-    ap_block_idx = np.digitize(ap, ap_edges[1:-1])
+    ap_block_idxs = np.digitize(ap, ap_edges[1:-1])
 
     lower_centre = 0.5 * sum(bands[0])
     for block_idx, ap_block in enumerate(ap_blocks):
@@ -154,6 +153,6 @@ def test_orbital_lattice_covers_band_edges_blocks_and_faces_within_the_budget():
             ]
         )
         distance, _ = KDTree(lattice * scale).query(
-            signals[ap_block_idx == block_idx] * scale
+            signals[ap_block_idxs == block_idx] * scale
         )
         assert np.max(distance**2) <= 0.75
