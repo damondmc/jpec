@@ -28,14 +28,14 @@ def median_bias(width: int) -> float:
 def running_median(
     values: Float[Array, " n_band"], *, width: int
 ) -> Float[Array, " n_band"]:
-    """Median of the ``width`` values around each value, the sequence mirrored past its ends.
+    """Median of the `width` values around each, the sequence mirrored past its ends.
 
     Args:
         values: The frequency bins of one SFT.
         width: Window length, odd.
 
     Returns:
-        The running median, same length as ``values``.
+        The running median, same length as `values`.
     """
     pad = width // 2
     padded = jnp.pad(values, (pad, pad), mode="symmetric")
@@ -53,20 +53,20 @@ def noise_floor(
 ) -> Float[Array, "n_sft n_band"]:
     """Mean noise power at each point of the plane, estimated by a running median.
 
-    The median of the ``width`` frequency bins around each, divided by
+    The median of the `width` frequency bins around each, divided by
     `median_bias` so it is unbiased for the mean. Never along the time axis:
     a glitch that lifts one SFT is absorbed, a line that sits in one frequency
     bin is not. Past the band's ends the frequency bins are mirrored, so the
-    window near an edge still holds ``width`` distinct samples.
+    window near an edge still holds `width` distinct samples.
 
     Args:
         sft_power: Observed power plane.
         width: Running-median window in bins, odd.
         batch_size: SFTs whose windows are sorted at once; memory is
-            ``batch_size * n_band_bins * width``.
+            `batch_size * n_band_bins * width`.
 
     Returns:
-        Estimated mean noise power, same shape as ``sft_power``.
+        Estimated mean noise power, same shape as `sft_power`.
     """
     if sft_power.shape[1] < width:
         raise ValueError(

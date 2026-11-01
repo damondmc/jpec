@@ -1,4 +1,4 @@
-"""The search loop at one sky point: every template of a bank there scored against one band."""
+"""The search loop at one sky point: every template there scored against one band."""
 
 from collections.abc import Iterator
 from functools import partial
@@ -32,12 +32,12 @@ def doppler_corrected_power_per_reference(
     alpha: float,
     delta: float,
 ) -> Float[Array, "n_doppler_reference n_sft n_band"]:
-    """The band corrected toward one sky position at every Doppler reference, one at a time.
+    """The band corrected toward one sky position at every Doppler reference in turn.
 
     Args:
         sft_time_series: Inverse transform of the band, per detector.
         floor: Mean noise power at each point per detector.
-        velocity_per_detector: Detector velocity ``v/c`` at each SFT, per detector.
+        velocity_per_detector: Detector velocity `v/c` at each SFT, per detector.
         doppler_references: Frequencies the Doppler shift is taken at [Hz].
         tsft: SFT length [s].
         alpha: Right ascension [rad].
@@ -92,21 +92,23 @@ def matched_filter_grid(
     Float[Array, "n_f0 n_period n_matched_modulation_depth"],
     Int[Array, "n_f0 n_period n_matched_modulation_depth"],
 ]:
-    """The matched filter on every (f0, period, modulation depth), maximized over the orbital phase.
+    """Matched filter on every (f0, period, modulation depth), maximized over phase.
 
     Args:
-        data_harmonics: ``F[j, k]`` at each period over the transformed bins, per Doppler reference.
-        template_harmonics: ``tau[j, k]`` at every modulation depth, per sub-bin offset.
+        data_harmonics: `F[j, k]` at each period over the transformed bins, per
+            Doppler reference.
+        template_harmonics: `tau[j, k]` at every modulation depth, per sub-bin offset.
         doppler_reference_idxs: Which reference's data harmonics each f0 point reads.
         window_start_idxs: First transformed bin of each f0 point's template window.
-        sub_bin_offset_idxs: Which of ``template_harmonics`` each f0 point takes.
+        sub_bin_offset_idxs: Which of `template_harmonics` each f0 point takes.
         modulation_depth_start_idx: First modulation depth matched.
-        n_matched_modulation_depths: Modulation depths matched, from ``modulation_depth_start_idx`` on.
+        n_matched_modulation_depths: Modulation depths matched, from
+            `modulation_depth_start_idx` on.
         n_phi: Orbital phases the statistic is evaluated at.
         f0_batch_size: f0 points matched at once, which caps the memory held.
 
     Returns:
-        The maximum of ``S`` over the orbital phase and the phase index it sits at.
+        The maximum of `S` over the orbital phase and the phase index it sits at.
     """
     n_periods, n_harmonics = data_harmonics.shape[1], data_harmonics.shape[2]
     n_window_bins = template_harmonics.shape[-1]
@@ -116,7 +118,8 @@ def matched_filter_grid(
         n_matched_modulation_depths,
         axis=1,
     )
-    # data first, then template: the inner vmap runs over the templates, the outer over the periods
+    # data first, then template: the inner vmap runs over the templates, the outer
+    # over the periods
     over_templates = jax.vmap(partial(max_over_phase, n_phi=n_phi), in_axes=(None, 0))
     over_periods = jax.vmap(over_templates, in_axes=(0, None))
 
@@ -156,16 +159,19 @@ def loudest_in_box(
     """The loudest in-box templates of a grid, so only they leave the device.
 
     Args:
-        max_statistic: Maximum of ``S`` over the orbital phase at every template of the grid.
+        max_statistic: Maximum of `S` over the orbital phase at every template of
+            the grid.
         phase_idxs: Index of the orbital phase each maximum sits at.
-        in_box: Whether each (period, modulation depth) lies in the box, the same at every f0 point.
+        in_box: Whether each (period, modulation depth) lies in the box, the same at
+            every f0 point.
         n_loudest: Templates kept, at most the grid's size.
 
     Returns:
-        Their statistic, loudest first and ``-inf`` past the in-box ones, their flat index into
-        the grid, and their phase index.
+        Their statistic, loudest first and `-inf` past the in-box ones, their flat
+            index into the grid, and their phase index.
     """
-    # top_k ranks NaN above every number, so a NaN statistic is dropped with the out-of-box ones
+    # top_k ranks NaN above every number, so a NaN statistic is dropped with the
+    # out-of-box ones
     is_kept = in_box[None] & ~jnp.isnan(max_statistic)
     in_box_max_statistic = jnp.where(is_kept, max_statistic, -jnp.inf).ravel()
     loudest_max_statistic, flat_idxs = jax.lax.top_k(in_box_max_statistic, n_loudest)
@@ -173,12 +179,15 @@ def loudest_in_box(
 
 
 class HarmonicBank(NamedTuple):
-    """A template bank as the loop matches it: each subgrid's template harmonics and its layout on one band, built once for every sky point and every data set on that band.
+    """A bank as the loop matches it: each subgrid's harmonics and band layout.
 
-    Args:
+    Built once for every sky point and every data set on that band.
+
+    Attributes:
         bank: The bank.
         layouts: Its subgrids in order, from subgrid_layout() on the band.
-        template_harmonics: Each subgrid's ``tau[j, k]`` at its layout's sub-bin offsets.
+        template_harmonics: Each subgrid's `tau[j, k]` at its layout's sub-bin
+            offsets.
     """
 
     bank: TemplateBank
@@ -206,7 +215,8 @@ class HarmonicBank(NamedTuple):
             n_band_bins: Bins the band holds.
             n_sub_bin_offsets: Sub-bin template offsets across one bin.
             period_batch_size: Trial periods per transform call.
-            modulation_depth_batch_size: Modulation depths whose templates are built at once.
+            modulation_depth_batch_size: Modulation depths whose templates are built at
+                once.
 
         Returns:
             The bank and its subgrids laid out on the band.
@@ -235,18 +245,20 @@ def orbital_statistics(
     f0_batch_size: int,
     n_loudest: int,
 ) -> Iterator[LoudestTemplates]:
-    """Every template of a bank at one of its sky points scored against one band, the loudest of each grid kept.
+    """Every template at one sky point scored on one band, each grid's loudest kept.
 
     Args:
         data: The band searched, the one the bank is laid out on.
         harmonic_bank: The bank's template harmonics, laid out on the band.
         sky_idx: Index of the sky point in the bank.
-        f0_batch_size: f0 points matched at once, which caps the S(phi_b) the match holds.
+        f0_batch_size: f0 points matched at once, which caps the S(phi_b) the match
+            holds.
         n_loudest: Templates kept of each grid, which caps what is copied to the host.
 
     Yields:
-        One LoudestTemplates per (subgrid, period batch), subgrid outermost; each one batch
-        after it was dispatched, so the device runs the next while the host reads it.
+        One LoudestTemplates per (subgrid, period batch), subgrid outermost; each one
+            batch after it was dispatched, so the device runs the next while the host
+            reads it.
     """
     bank = harmonic_bank.bank
     alpha = float(bank.alpha[sky_idx])
@@ -302,7 +314,8 @@ def orbital_statistics(
         )
         corrected_sft_power = corrected_sft_power[..., layout.transformed_bin_idxs]
         for batch in layout.period_batches:
-            # a full run of periods, whatever the batch holds, so every call has one shape
+            # a full run of periods, whatever the batch holds, so every call has one
+            # shape
             period_idxs = slice(
                 batch.period_start_idx,
                 batch.period_start_idx + layout.period_batch_size,
@@ -326,7 +339,8 @@ def orbital_statistics(
                 n_phi=template_grid.n_phi,
                 f0_batch_size=f0_batch_size,
             )
-            # the batch's own periods in its window; the run past period_stop_idx is out of its box
+            # the batch's own periods in its window; the run past period_stop_idx is
+            # out of its box
             n_batch_periods = batch.period_stop_idx - batch.period_start_idx
             batch_in_box = np.zeros(
                 (layout.period_batch_size, n_window_modulation_depths), dtype=bool

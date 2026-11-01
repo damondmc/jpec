@@ -23,14 +23,14 @@ STRAIN_UNIT = 6e-23
 class SFTData:
     """The SFTs from one detector.
 
-    Args:
+    Attributes:
         detector: The ground-based interferometer that data was collected from.
-        sft_data: Complex Fourier amplitudes of the SFTs, in units of ``strain_unit``.
+        sft_data: Complex Fourier amplitudes of the SFTs, in units of `strain_unit`.
         timestamps: SFT start times, absolute GPS [s].
         freq_low: Start frequency of the first frequency bin [Hz].
         tsft: SFT length [s].
         window: The window the SFTs were made with.
-        strain_unit: Strain x s per unit of ``sft_data``; 1 for the SFTs as recorded.
+        strain_unit: Strain x s per unit of `sft_data`; 1 for the SFTs as recorded.
     """
 
     detector: Detector
@@ -43,7 +43,7 @@ class SFTData:
 
     @property
     def sft_power(self) -> Float[np.ndarray, "n_sft n_freq"]:
-        """``2*|SFT|**2``, the observed plane.
+        """`2*|SFT|**2`, the observed plane.
 
         Take this only after any Doppler correction: squaring is irreversible.
         """
@@ -66,17 +66,17 @@ class SFTData:
 
     @property
     def velocity(self) -> Float[np.ndarray, "n_sft 3"]:
-        """Detector velocity ``v/c`` at each SFT midpoint, cached on the timestamps."""
+        """Detector velocity `v/c` at each SFT midpoint, cached on the timestamps."""
         return self.detector.velocity(self.timestamps_midpoints)
 
     def rescaled(self, strain_unit: float) -> "SFTData":
-        """These SFTs with their amplitudes divided by ``strain_unit``.
+        """These SFTs with their amplitudes divided by `strain_unit`.
 
         Args:
             strain_unit: Strain x s per unit of the amplitudes the result holds.
 
         Returns:
-            The SFTs, ``strain_unit`` recorded so the strain can be recovered.
+            The SFTs, `strain_unit` recorded so the strain can be recovered.
         """
         return replace(
             self,
@@ -91,7 +91,7 @@ class SFTData:
             bin_idxs: Columns kept.
 
         Returns:
-            The SFTs on those columns, their ``freq_low`` moved to the first of them.
+            The SFTs on those columns, their `freq_low` moved to the first of them.
         """
         freq_low = self.freq_low + bin_idxs.start * self.delta_f
         return replace(self, sft_data=self.sft_data[:, bin_idxs], freq_low=freq_low)
@@ -104,7 +104,7 @@ def narrow_bands(pattern: str) -> dict[tuple[float, float], list[str]]:
         pattern: Glob of SFT files, narrow-band or broadband.
 
     Returns:
-        ``(first, last)`` bin frequency [Hz] of each band to the files holding it.
+        `(first, last)` bin frequency [Hz] of each band to the files holding it.
     """
     bands: dict[tuple[float, float], list[str]] = {}
     for path in sorted(glob.glob(pattern)):
@@ -128,11 +128,11 @@ def read_sft_band(
         unrecorded_window: The window of the SFT used when not recorded in the file.
 
     Returns:
-        One SFTData per detector, keyed by prefix, at ``strain_unit`` 1.
+        One SFTData per detector, keyed by prefix, at `strain_unit` 1.
     """
-    catalog = lalpulsar.SFTdataFind(";".join(paths), None)  # pyright: ignore[reportAttributeAccessIssue]
-    names = lalpulsar.ListIFOsInCatalog(catalog)  # pyright: ignore[reportAttributeAccessIssue]
-    loaded = lalpulsar.LoadMultiSFTs(catalog, fMin=freq_low, fMax=freq_high)  # pyright: ignore[reportAttributeAccessIssue]
+    catalog = lalpulsar.SFTdataFind(";".join(paths), None)
+    names = lalpulsar.ListIFOsInCatalog(catalog)
+    loaded = lalpulsar.LoadMultiSFTs(catalog, fMin=freq_low, fMax=freq_high)
 
     per_detector = {}
     for detector_idx, detector_name in enumerate(names.data):
@@ -152,7 +152,8 @@ def read_sft_band(
         bins = {(float(sft.f0), float(sft.deltaF)) for sft in sfts.data}
         if len(bins) != 1 or float(sfts.data[0].deltaF) <= 0.0:
             raise ValueError(
-                f"{detector_name} SFTs do not share one ascending set of bins: {sorted(bins)}"
+                f"{detector_name} SFTs do not share one ascending set of bins: "
+                f"{sorted(bins)}"
             )
         windows = {
             (entry.window_type, float(entry.window_param))
@@ -186,7 +187,7 @@ def read_sft_band(
 
 
 def sft_file_bin_range(path: str) -> tuple[float, float]:
-    """The frequency bins one SFT file holds, from its name, or from its header if need be.
+    """The frequency bins one SFT file holds, from its name or else its header.
 
     Args:
         path: The SFT file.
@@ -197,9 +198,11 @@ def sft_file_bin_range(path: str) -> tuple[float, float]:
     spec = lalpulsar.SFTFilenameSpec()
     try:
         lalpulsar.ParseSFTFilenameIntoSpec(spec, path)
-        named = bool(spec.nbBinWidthFreq)  # a broadband name carries no band
+        # a broadband name carries no band
+        named = bool(spec.nbBinWidthFreq)
     except RuntimeError:
-        named = False  # not a standard SFT name, as files converted from another format are not
+        # not a standard SFT name, as files converted from another format are not
+        named = False
     if not named:
         first = lalpulsar.SFTdataFind(path, None).data[0]
         low = float(first.header.f0)
@@ -222,7 +225,7 @@ def load_sft_data(
     detectors: list[str],
     n_sfts: int,
 ) -> list[SFTData]:
-    """A band read from exactly these files, checked against what they should hold and rescaled.
+    """A band read from exactly these files, checked against its metadata and rescaled.
 
     Args:
         paths: The files holding the band, at least one per detector.
@@ -234,7 +237,7 @@ def load_sft_data(
         n_sfts: SFTs over every detector.
 
     Returns:
-        One SFTData per detector on the same frequency bins, at ``STRAIN_UNIT``.
+        One SFTData per detector on the same frequency bins, at `STRAIN_UNIT`.
     """
     recorded_sfts = list(
         read_sft_band(paths, freq_low, freq_high, unrecorded_window=window).values()
@@ -262,7 +265,7 @@ def load_sft_data(
 
 
 def write_sfts(sfts: SFTData, path: str, *, comment: str) -> None:
-    """Write one detector's SFTs to an SFT file, in strain x s as recorded SFTs hold them.
+    """Write one detector's SFTs to a file, in strain x s as recorded SFTs hold them.
 
     Args:
         sfts: The SFTs.

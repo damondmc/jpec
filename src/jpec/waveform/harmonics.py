@@ -1,4 +1,4 @@
-"""The template harmonics tau[j, k], and how many harmonics and orbital phases a template needs."""
+"""Template harmonics tau[j, k], and how many harmonics and phases a template needs."""
 
 import math
 
@@ -23,9 +23,9 @@ def harmonic_count(modulation_depth_bins: float) -> int:
 
 
 def phase_sample_count(j_max: int, *, oversample: int) -> int:
-    """How many orbital phases ``theta`` to sample to resolve ``j_max`` harmonics.
+    """How many orbital phases `theta` to sample to resolve `j_max` harmonics.
 
-    Nyquist needs more than ``2*j_max``, but the cutoff is soft, so bare Nyquist
+    Nyquist needs more than `2*j_max`, but the cutoff is soft, so bare Nyquist
     aliases. Rounding up to a power of two is what the FFT wants.
 
     Args:
@@ -46,7 +46,7 @@ def template_harmonics(
     j_max: int,
     window: Window,
 ) -> Complex[Array, "n_harmonic n_freq"]:
-    """``tau[j, k]``, the template the search matches against.
+    """`tau[j, k]`, the template the search matches against.
 
     The phase grid and harmonic count are the caller's, so the templates of a
     bank stack into one array and the modulation depth may be traced.
@@ -54,12 +54,13 @@ def template_harmonics(
     Args:
         bin_offsets: Bin centres, as offsets from f0 [bins].
         modulation_depth_bins: Half-width of the arc [bins].
-        n_theta: Orbital phases sampled, uniform over ``[0, 2*pi)``; more than ``2*j_max``.
+        n_theta: Orbital phases sampled, uniform over `[0, 2*pi)`; more than
+            `2*j_max`.
         j_max: Highest harmonic kept.
         window: The window the SFTs were made with.
 
     Returns:
-        ``tau[j, k]`` from harmonic 1 to ``j_max``.
+        `tau[j, k]` from harmonic 1 to `j_max`.
     """
     theta = jnp.arange(n_theta) * (2.0 * jnp.pi / n_theta)
     plane = template_plane(

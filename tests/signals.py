@@ -97,14 +97,14 @@ def search_template_harmonics(modulation_depth_bins, window, *, bin_offsets=None
 
 
 def harmonic_transform(plane):
-    """The reference harmonics of a plane sampled uniformly in phase: its transform along that axis, mean-normalized."""
+    """Reference harmonics of a plane on uniform phases: its mean-normalized rfft."""
     return jnp.fft.rfft(plane, axis=0) / plane.shape[0]
 
 
 def search_data_harmonics(
     sft, point, *, floor, velocity, times, half_width_bins, j_max
 ):
-    """The data's ``F[j, k]`` at one point through the search loop's own steps, and the bin offsets from f0 it sits at."""
+    """Data ``F[j, k]`` at a point via the search loop, and its bin offsets from f0."""
     f0 = float(point.f0)
     sft_power = doppler_corrected_power(
         [jnp.fft.ifft(jnp.asarray(sft.sft_data), axis=-1)],

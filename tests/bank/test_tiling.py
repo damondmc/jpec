@@ -43,7 +43,7 @@ def tiling() -> LatticeTiling:
 
 
 def test_steps_are_the_top_of_the_box(tiling: LatticeTiling):
-    """The steps are the top of the box's, each ap block's omega^2 step scaled as 1 / ap."""
+    """Steps are the top of the box's, each ap block's omega^2 step scaled as 1 / ap."""
     top = tiling.ap_blocks[-1]
     assert len(tiling.ap_blocks) == N_AP_BLOCKS
     assert top.ap_high == BOX.ap[1]
@@ -74,7 +74,7 @@ def test_a_foreign_record_is_rejected(tiling: LatticeTiling):
 
 
 def test_templates_stay_inside_the_seam_margin(tiling: LatticeTiling):
-    """In-box templates run at most one subgrid modulation-depth step past the box in ap, by design."""
+    """In-box templates overrun ap by at most one subgrid modulation-depth step."""
     ap_low, ap_high = tiling.prior.ap
     f0_centre = 0.5 * (BAND[0] + BAND[1])
     worst = 0.0

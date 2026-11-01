@@ -1,4 +1,4 @@
-"""What the pipelines read in and write: the search and injection YAML, the SFT metadata and the setups."""
+"""Pipeline inputs and outputs: search and injection YAML, SFT metadata and setups."""
 
 import json
 import math
@@ -23,7 +23,7 @@ ConfigT = TypeVar("ConfigT", bound=BaseModel)
 
 
 class ParameterSpaceConfig(BaseModel):
-    """The box in parameter space, each axis a ``[low, high]`` pair."""
+    """The box in parameter space, each axis a `[low, high]` pair."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -94,7 +94,10 @@ class SearchLoopConfig(BaseModel):
 
 
 class ComputeConfig(BaseModel):
-    """What one job may hold and take, which cuts the box into jobs; the rates come from a jpec time-search run."""
+    """What one job may hold and take, which cuts the box into jobs.
+
+    The rates come from a jpec time-search run.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -103,7 +106,7 @@ class ComputeConfig(BaseModel):
 
 
 class SearchJobConfig(BaseModel):
-    """A search: what to search, how to cut it up, what to keep, and where the data will be read from."""
+    """A search: what to search, how to cut it up, what to keep, and the SFT glob."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -117,7 +120,7 @@ class SearchJobConfig(BaseModel):
 
 
 class InjectionTrialConfig(BaseModel):
-    """The trials of an injection run: how many sources, searched how far around each."""
+    """Trials of an injection run: how many sources, searched how far around each."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -146,7 +149,10 @@ class InjectionTrialConfig(BaseModel):
 
 
 class RecoveryCurveConfig(BaseModel):
-    """The sigmoid of the recovered fraction against amplitude: where it is sampled, and when the amplitude fitted at the efficiency is good enough."""
+    """The sigmoid of the recovered fraction against amplitude.
+
+    Where it is sampled, and when the amplitude fitted at the efficiency is good enough.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -158,12 +164,16 @@ class RecoveryCurveConfig(BaseModel):
     efficiency: float = Field(default=0.95, gt=0.0, lt=1.0)
     # standard error of the fitted amplitude, relative to it, that ends the refinement
     tolerance: float = Field(default=0.05, gt=0.0)
-    # h0 points each threshold may add, one at a time, before its fit meets the tolerance
+    # h0 points each threshold may add, one at a time, before its fit meets the
+    # tolerance
     n_refinements: int = Field(default=4, ge=0)
 
 
 class InjectionConfig(BaseModel):
-    """An injection run: the box the sources are drawn from and searched over, the banks, the trials, the recovery curve, and what counts as found."""
+    """An injection run: box, banks, trials, recovery curve, and what counts as found.
+
+    The box is the one the sources are drawn from and searched over.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -179,7 +189,7 @@ class InjectionConfig(BaseModel):
 class SFTBand(BaseModel):
     """One frequency band of the SFT set and the files holding it.
 
-    Args:
+    Attributes:
         freq_low: Low edge of the band [Hz].
         freq_high: High edge [Hz].
         files: The files, one or more per detector.
@@ -195,7 +205,7 @@ class SFTBand(BaseModel):
 class SFTMetadata(BaseModel):
     """What jpec check-sft reads off the SFT files and the setups need of them.
 
-    Args:
+    Attributes:
         sft_glob: Glob the files were found by, which the search loads amplitudes from.
         tsft: SFT length [s].
         window: The window they were made with.
@@ -234,13 +244,15 @@ class SFTMetadata(BaseModel):
     def files_covering(
         self, freq_low: float, freq_high: float, *, sft_glob: str
     ) -> list[str]:
-        """The files of the lowest narrow band covering freq_low to freq_high, as sft_glob finds them.
+        """The files of the lowest narrow band covering freq_low to freq_high.
+
+        They are given as sft_glob finds them.
 
         Args:
             freq_low: Low edge of the band to read [Hz].
             freq_high: High edge [Hz].
-            sft_glob: Glob the files are read through, which keeps each file's path below the
-                checked glob's wildcards.
+            sft_glob: Glob the files are read through, which keeps each file's path
+                below the checked glob's wildcards.
 
         Returns:
             The files, at least one per detector.
@@ -265,15 +277,15 @@ class SFTMetadata(BaseModel):
 
 
 class DataSetup(BaseModel):
-    """The SFTs a run reads: where they are found, their detectors, count, length and window, and the epoch.
+    """The SFTs a run reads: glob, detectors, count, length, window, and the epoch.
 
-    Args:
+    Attributes:
         sft_glob: Glob of the SFT files, as the run will find them.
         detectors: The detectors, in the order the timestamps are concatenated.
         n_sfts: SFTs over every detector.
         tsft: SFT length [s].
         window: The window they were made with.
-        t_ref: Epoch ``phi_b`` is quoted at, absolute GPS [s].
+        t_ref: Epoch `phi_b` is quoted at, absolute GPS [s].
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -287,9 +299,9 @@ class DataSetup(BaseModel):
 
 
 class JobSetup(BaseModel):
-    """One job of a search: its f0 interval, the band and files it loads, and what it holds and takes.
+    """One search job: f0 interval, band and files loaded, and what it holds and takes.
 
-    Args:
+    Attributes:
         job_idx: Index of the job in the setup.
         f0_low: Low edge of the f0 interval [Hz].
         f0_high: High edge [Hz].
@@ -299,7 +311,8 @@ class JobSetup(BaseModel):
         n_sky_points: Sky points of the job's bank.
         n_templates: Templates of the job's bank.
         memory_gb: Peak giga-bytes the job holds.
-        hours: Hours the job takes at the timing's rates; None when the setup was made without one.
+        hours: Hours the job takes at the timing's rates; None when the setup was made
+            without one.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -319,7 +332,7 @@ class JobSetup(BaseModel):
 class SearchSetup(BaseModel):
     """A search cut into jobs, as jpec search-setup writes it.
 
-    Args:
+    Attributes:
         jpec: The jpec version the setup was made with.
         data: The SFTs searched.
         tiling: LatticeTiling.to_dict() of the lattice.
@@ -343,7 +356,7 @@ class SearchSetup(BaseModel):
 class InjectionSetup(BaseModel):
     """An injection run, as jpec injection-setup writes it.
 
-    Args:
+    Attributes:
         jpec: The jpec version the setup was made with.
         data: The SFTs injected into.
         freq_low: Low edge of the band loaded [Hz].
@@ -352,7 +365,8 @@ class InjectionSetup(BaseModel):
         parameter_space: The box the sources are drawn from and searched over.
         tiling: LatticeTiling.to_dict() of the lattice.
         trials: How many sources, searched how far around each.
-        recovery_curve: Where the recovered fraction is sampled, and when its fit is good enough.
+        recovery_curve: Where the recovered fraction is sampled, and when its fit is
+            good enough.
         search_loop: How the search loop batches its work.
         thresholds: Detection statistic thresholds, one depth each.
     """

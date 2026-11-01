@@ -43,9 +43,9 @@ def written(tmp_path_factory):
                 rng.standard_normal(n_band_bins) + 1j * rng.standard_normal(n_band_bins)
             ).astype(np.complex64)
         span = int(timestamps()[-1] + TSFT - TSTART)
-        path = (
-            outdir
-            / f"{detector_name[0]}-{SEGMENTS}_{detector_name}_{int(TSFT)}SFT_probe-{TSTART}-{span}.sft"
+        path = outdir / (
+            f"{detector_name[0]}-{SEGMENTS}_{detector_name}_{int(TSFT)}SFT_probe-"
+            f"{TSTART}-{span}.sft"
         )
         lalpulsar.WriteSFTVector2NamedFile(
             sfts, str(path), WINDOW, WINDOW_PARAM, "probe"

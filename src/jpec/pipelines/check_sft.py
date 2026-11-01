@@ -92,7 +92,8 @@ def checked_sft_metadata(
                     sft.timestamps, first_band_sft.timestamps
                 ).size
                 disagree.append(
-                    f"{detector_name} at {freq_low:.1f} Hz has {sft.timestamps.size} timestamps "
+                    f"{detector_name} at {freq_low:.1f} Hz has "
+                    f"{sft.timestamps.size} timestamps "
                     f"against {first_band_sft.timestamps.size}, {n_shared} shared"
                 )
     if disagree:
@@ -108,7 +109,8 @@ def checked_sft_metadata(
         # overlapping SFTs cover their spacing, not their length
         covered = float(np.minimum(np.diff(sft.timestamps), sft.tsft).sum() + sft.tsft)
         run_logger.info(
-            f"  {detector_name}: {sft.timestamps.size} SFTs over {span / 86400.0:.1f} days, "
+            f"  {detector_name}: {sft.timestamps.size} SFTs over "
+            f"{span / 86400.0:.1f} days, "
             f"duty cycle {covered / span:.1%}"
         )
     return SFTMetadata(
@@ -160,8 +162,8 @@ def add_arguments(p: argparse.ArgumentParser) -> None:
         nargs=2,
         default=None,
         metavar=("KIND", "BETA"),
-        help="the window the SFTs were made with, e.g. tukey 0.5; taken only when their "
-        "headers record none, as SFTs converted from another format do not",
+        help="the window the SFTs were made with, e.g. tukey 0.5; taken only when "
+        "their headers record none, as SFTs converted from another format do not",
     )
     p.add_argument(
         "--output",

@@ -1,4 +1,4 @@
-r"""Time each stage of the search loop on one sky point of a setup's first job, for the rates jobs are priced at.
+r"""Time each search loop stage on one sky point, for the rates jobs are priced at.
 
 Usage:
 
@@ -49,7 +49,7 @@ def mean_seconds(function: Callable[[], Any], *, repeats: int) -> float:
 
 
 def run(args: argparse.Namespace) -> None:
-    """Time the stages on the first subgrid, and save the rates and what one sky point costs.
+    """Time the stages on the first subgrid; save the rates and one sky point's cost.
 
     Args:
         args: The parsed flags.
@@ -205,10 +205,12 @@ def run(args: argparse.Namespace) -> None:
     }
 
     run_logger.info(
-        f"{n_f0_points} f0 points, {n_period_batches} period batches of {period_batch_size}, "
+        f"{n_f0_points} f0 points, {n_period_batches} period batches of "
+        f"{period_batch_size}, "
         f"{n_window_modulation_depths} window modulation depths, j_max {j_max}, "
-        f"{n_window_bins} window bins, {data.n_band_bins} band bins, {n_transformed_bins} "
-        f"transformed, {data.n_sfts} SFTs, {n_doppler_references} Doppler references, "
+        f"{n_window_bins} window bins, {data.n_band_bins} band bins, "
+        f"{n_transformed_bins} transformed, {data.n_sfts} SFTs, "
+        f"{n_doppler_references} Doppler references, "
         f"{n_subgrids} subgrids"
     )
     run_logger.info(
@@ -217,7 +219,8 @@ def run(args: argparse.Namespace) -> None:
     )
     for name, (call, calls) in stages.items():
         run_logger.info(
-            f"{name:<24}{call * 1e3:>13.2f}{calls:>21}{seconds_per_sky_point[name]:>17.2f}"
+            f"{name:<24}{call * 1e3:>13.2f}{calls:>21}"
+            f"{seconds_per_sky_point[name]:>17.2f}"
             f"{seconds_per_sky_point[name] / sky_point_seconds:>8.1%}"
         )
     run_logger.info(f"{'one sky point':<24}{'':>13}{'':>21}{sky_point_seconds:>17.2f}")

@@ -1,4 +1,4 @@
-"""The lattices: the cubic step, the bcc orbital subgrids per ap block, and the hexagonal sky lattice."""
+"""The cubic step, bcc orbital subgrids per ap block, and the hexagonal sky lattice."""
 
 from typing import NamedTuple
 
@@ -10,7 +10,8 @@ from scipy.integrate import cumulative_trapezoid
 from jpec.bank.metric import sky_metric
 from jpec.params import ap_from_modulation_depth_bins, omega_from_period
 
-# the body-centred cubic (A3*) lattice: two cubic subgrids offset by half a step on every axis
+# the body-centred cubic (A3*) lattice: two cubic subgrids offset by half a step on
+# every axis
 # side of a bcc subgrid in cubic steps, for the cubic grid's covering radius
 BCC_SUBGRID_STEP = float(np.sqrt(2.4))
 # where each subgrid sits within its step, on all three axes
@@ -19,18 +20,19 @@ BCC_SUBGRID_OFFSETS = (0.25, 0.75)
 HEXAGONAL_STEPS = (float(np.sqrt(1.5)), float(np.sqrt(4.5)))
 # staggered rows, which is what makes the sky lattice hexagonal
 HEXAGONAL_ROW_SHIFTS = (0.0, 0.5)
-# rim ring spacing in cubic steps along the rim: s1/2 where it runs along x1, s2/2 along x2
+# rim ring spacing in cubic steps along the rim: s1/2 where it runs along x1, s2/2
+# along x2
 RIM_STEP = 0.5
 # angles the rim's length in cubic steps is integrated over
 RIM_SAMPLES = 200000
 
 
 def cubic_step(curvature: Float[Array, "..."], mismatch: float) -> Float[Array, "..."]:
-    """The step of a cubic lattice along an axis of curvature ``g``: ``2 sqrt(mu / g)``.
+    """The step of a cubic lattice along an axis of curvature `g`: `2 sqrt(mu / g)`.
 
     Args:
-        curvature: ``g_ii`` of the axis, or of several.
-        mismatch: Mismatch ``mu`` of one axis.
+        curvature: `g_ii` of the axis, or of several.
+        mismatch: Mismatch `mu` of one axis.
 
     Returns:
         The step, in the axis's own units.
@@ -41,7 +43,7 @@ def cubic_step(curvature: Float[Array, "..."], mismatch: float) -> Float[Array, 
 class OrbitalSubgrid(NamedTuple):
     """One subgrid of the orbital lattice over an f0 band.
 
-    Args:
+    Attributes:
         f0: The f0 points [Hz].
         modulation_depth_bins: The modulation depths [bins], one grid for every period.
         period: Every trial period [s], ap block after ap block.
@@ -62,14 +64,15 @@ class OrbitalSubgrid(NamedTuple):
 
 
 class ApBlock(NamedTuple):
-    """The cubic steps the metric gives at one point, and the ap range they are used over.
+    """Cubic steps the metric gives at one point, and the ap range they are used over.
 
-    Args:
+    Attributes:
         ap_low: Low edge of the ap block [light-seconds].
         ap_high: High edge [light-seconds], the ap its omega^2 step is set for.
         modulation_depth_step: Cubic modulation-depth step [bins].
         omega2_step: Cubic omega^2 step [rad^2/s^2].
-        g_f0f0: The f0 entry of the projected ``(f0, ap, P)`` metric, which the f0 grid and the sky lattice use.
+        g_f0f0: The f0 entry of the projected `(f0, ap, P)` metric, which the f0
+            grid and the sky lattice use.
     """
 
     ap_low: float
@@ -82,7 +85,9 @@ class ApBlock(NamedTuple):
 def axis_points_covering(
     low: float, high: float, step: float, *, offset: float
 ) -> Float[np.ndarray, " n_point"]:
-    """Points ``low + step (index + offset)`` of one lattice axis, from one step below ``low`` to one above ``high``.
+    """Points of one lattice axis, from one step below `low` to one above `high`.
+
+    The points are `low + step (index + offset)`.
 
     Args:
         low: Where the axis is anchored and the range starts, in its own units.
@@ -112,7 +117,9 @@ def orbital_subgrid(
     tsft: float,
     offset: float,
 ) -> OrbitalSubgrid:
-    """One subgrid of the body-centred cubic lattice in ``(f0, modulation_depth, omega^2)`` over one f0 band, one step past every edge.
+    """One bcc subgrid in `(f0, modulation_depth, omega^2)` over one f0 band.
+
+    It runs one step past every edge.
 
     Args:
         f0_low: Low edge of the f0 band [Hz].
@@ -123,10 +130,11 @@ def orbital_subgrid(
         period_high: High edge [s].
         f0_step: Cubic f0 step [Hz].
         modulation_depth_step: Cubic modulation-depth step [bins].
-        ap_blocks: Every ap block, its cubic omega^2 step taken at ``f0_reference``.
-        f0_reference: Frequency the omega^2 steps were taken at [Hz]; they scale as ``1 / f0``.
+        ap_blocks: Every ap block, its cubic omega^2 step taken at `f0_reference`.
+        f0_reference: Frequency the omega^2 steps were taken at [Hz]; they scale as
+            `1 / f0`.
         tsft: SFT length [s].
-        offset: Where the subgrid sits within its step, one of ``BCC_SUBGRID_OFFSETS``.
+        offset: Where the subgrid sits within its step, one of `BCC_SUBGRID_OFFSETS`.
 
     Returns:
         The subgrid.
@@ -190,7 +198,7 @@ def orbital_subgrid(
 def hexagonal_disc_points(
     h1: float, h2: float
 ) -> tuple[Float[np.ndarray, " n_point"], Float[np.ndarray, " n_point"]]:
-    """The hexagonal lattice in ``(x1, x2)`` inside the unit disc.
+    """The hexagonal lattice in `(x1, x2)` inside the unit disc.
 
     Args:
         h1: Hexagonal step along x1.
@@ -203,7 +211,7 @@ def hexagonal_disc_points(
     def direction_cosine_points(
         step: float, shift: float
     ) -> Float[np.ndarray, " n_point"]:
-        """Points ``(k + shift) step`` over ``[-1, 1]``; one at 0 if a step spans it."""
+        """Points `(k + shift) step` over `[-1, 1]`; one at 0 if a step spans it."""
         if step >= 2.0:
             return np.zeros(1)
         k_max = int(np.ceil(1.0 / step))
@@ -230,7 +238,7 @@ def sphere_points(
     s1: float,
     s2: float,
 ) -> Float[np.ndarray, "n_lattice_point 3"]:
-    """Disc points lifted to both hemispheres, with a ring on the rim ``x3 = 0``.
+    """Disc points lifted to both hemispheres, with a ring on the rim `x3 = 0`.
 
     Args:
         x1: x1 of each disc point.
@@ -239,10 +247,11 @@ def sphere_points(
         s2: Cubic step along x2.
 
     Returns:
-        ``(x1, x2, x3)`` of each point.
+        `(x1, x2, x3)` of each point.
     """
     x3 = np.sqrt(1.0 - x1**2 - x2**2)
-    # the rim at angle theta runs along (-sin, cos), whose cubic step is 1 / sqrt(sin^2 / s1^2 + cos^2 / s2^2)
+    # the rim at angle theta runs along (-sin, cos), whose cubic step is
+    # 1 / sqrt(sin^2 / s1^2 + cos^2 / s2^2)
     theta = np.linspace(0.0, 2.0 * np.pi, RIM_SAMPLES + 1)
     steps_per_radian = np.sqrt(np.sin(theta) ** 2 / s1**2 + np.cos(theta) ** 2 / s2**2)
     # cubic steps along the rim from theta = 0
@@ -268,12 +277,12 @@ def in_sky_box(
     box: tuple[float, float, float, float],
     margin: float,
 ) -> Bool[np.ndarray, " n_sky"]:
-    """Whether each sky position lies within ``margin`` of a box in ``(alpha, delta)``.
+    """Whether each sky position lies within `margin` of a box in `(alpha, delta)`.
 
     Args:
         alpha: Right ascension of each position [rad].
         delta: Declination of each position [rad].
-        box: ``(alpha_low, alpha_high, delta_low, delta_high)`` [rad].
+        box: `(alpha_low, alpha_high, delta_low, delta_high)` [rad].
         margin: Distance on the sky past the box's edges still kept [rad].
 
     Returns:
@@ -300,24 +309,26 @@ def sky_lattice(
 ) -> tuple[Float[np.ndarray, " n_sky"], Float[np.ndarray, " n_sky"]]:
     """The sky positions of a lattice laid on the sky metric's resolved directions.
 
-    A template ``u = n_true - n`` off costs
+    A template `u = n_true - n` off costs
 
         mu = g_freq_bin (f0 tsft)^2 u^T Cov(v) u
 
     Args:
-        velocity: Detector velocity ``v/c`` at each SFT, every detector.
+        velocity: Detector velocity `v/c` at each SFT, every detector.
         f0: Frequency the lattice is for [Hz].
         g_f0f0: The f0 metric [1/Hz^2].
         mismatch: Mismatch budget of one axis.
-        box: ``(alpha_low, alpha_high, delta_low, delta_high)`` of the sky kept [rad]; the
-            points within one lattice step of it are kept too, so its edges are covered.
+        box: `(alpha_low, alpha_high, delta_low, delta_high)` of the sky kept
+            [rad]; the points within one lattice step of it are kept too, so its
+            edges are covered.
 
     Returns:
         Right ascension and declination of each position [rad].
     """
     curvature, sky_eigenvectors = sky_metric(velocity, f0=f0, g_f0f0=g_f0f0)
     s1, s2, _ = np.asarray(cubic_step(jnp.asarray(curvature), mismatch))
-    # hexagonal in (x1, x2): its covering radius is the square cell's corner, 2 mu, with 1.30x fewer points
+    # hexagonal in (x1, x2): its covering radius is the square cell's corner, 2 mu,
+    # with 1.30x fewer points
     h1, h2 = HEXAGONAL_STEPS[0] * s1, HEXAGONAL_STEPS[1] * s2
 
     x1, x2 = hexagonal_disc_points(h1, h2)

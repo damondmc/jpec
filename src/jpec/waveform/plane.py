@@ -37,7 +37,7 @@ def plane_from_arc(
         window: The window the SFTs were made with.
 
     Returns:
-        Power in each frequency bin at each SFT, in ``arc.dtype``.
+        Power in each frequency bin at each SFT, in `arc.dtype`.
     """
     return window.power(bin_offsets.astype(arc.dtype)[None, :] - arc[:, None])
 
@@ -48,7 +48,7 @@ def amplitude_from_arc(
     *,
     window: Window,
 ) -> Complex[Array, "n_sft n_freq"]:
-    """Complex amplitude in each frequency bin at each SFT for a unit sinusoid sitting at the arc.
+    """Complex amplitude in each bin at each SFT for a unit sinusoid at the arc.
 
     Args:
         arc: Signal offset from f0 at each SFT [bins].

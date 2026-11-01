@@ -32,7 +32,7 @@ WITHOUT_PHI_B_IDXS = [i for i in range(6) if i != PHI_B_IDX]
 
 
 class ObservedSignal:
-    """A noise-free signal observed over one span, and the statistic any template scores on it."""
+    """A noise-free signal over one span, and the statistic a template scores on it."""
 
     def __init__(self, case: Case, span: float):
         parameters = case.parameters
@@ -109,7 +109,7 @@ class ObservedSignal:
         )
 
     def relative_without_phi_b(self, g: np.ndarray) -> np.ndarray:
-        """The 5x5 metric as mismatch per (d lambda / lambda)^2, angles in rad, phi_b maximized over."""
+        """The 5x5 metric per (d lambda / lambda)^2, angles in rad, phi_b maximized."""
         scale = self.scale[WITHOUT_PHI_B_IDXS]
         return np.asarray(project_out(jnp.asarray(g))) * np.outer(scale, scale)
 
@@ -153,11 +153,12 @@ def test_projection_is_epoch_invariant(case: Case):
 
 @pytest.mark.parametrize("axis", ["f0", "ap", "period", "alpha", "delta"])
 def test_quadratic_form_predicts_the_mismatch(closed_orbits: ObservedSignal, axis: str):
-    """Displaced along each axis by sqrt(mu / g'_aa), the mismatch the search path measures is mu.
+    """Displaced along each axis by sqrt(mu / g'_aa), the mismatch the search path
+    measures is mu.
 
-    The closed form is the track's error in bins, not the statistic's Hessian; measured at
-    0.75 to 1.21 of mu over the cases and axes on four closed orbits, delta the lowest and the
-    shallowest case's period the highest.
+    The closed form is the track's error in bins, not the statistic's Hessian;
+    measured at 0.75 to 1.21 of mu over the cases and axes on four closed orbits,
+    delta the lowest and the shallowest case's period the highest.
     """
     axis_idx = Parameters._fields.index(axis)
     relative_metric = closed_orbits.relative_without_phi_b(

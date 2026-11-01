@@ -1,4 +1,4 @@
-"""Where a template bank's subgrids read from one loaded band, and how their work is batched."""
+"""Where a bank's subgrids read from one loaded band, and how their work is batched."""
 
 from typing import NamedTuple
 
@@ -10,14 +10,15 @@ from jpec.bank.template_bank import OrbitalTemplateGrid, TemplateBank
 from jpec.constant import V_MAX
 from jpec.params import omega_from_period
 
-# the Doppler residual allowed, as a fraction of the residual the sub-bin template harmonics leave
+# the Doppler residual allowed, as a fraction of the residual the sub-bin template
+# harmonics leave
 DOPPLER_TOLERANCE_FRACTION = 1.0 / 3.0
 
 
 class PeriodBatch(NamedTuple):
-    """A run of trial periods and the modulation-depth window holding every in-box template of theirs.
+    """Trial periods and the modulation-depth window holding their in-box templates.
 
-    Args:
+    Attributes:
         period_start_idx: First trial period of the run.
         period_stop_idx: One past its last.
         modulation_depth_start_idx: First modulation depth of the window.
@@ -29,22 +30,26 @@ class PeriodBatch(NamedTuple):
 
 
 class SubgridLayout(NamedTuple):
-    """A subgrid's layout on one loaded band: where its f0 points read from, which reference and offset each takes, and its period batches.
+    """A subgrid's layout on one band: f0 windows, references, offsets and batches.
 
-    Args:
+    Attributes:
         template_grid: The subgrid's orbital template grid.
-        transformed_bin_idxs: The band bins some template window reads, the only ones transformed.
-        window_start_idxs: First bin of each f0 point's template window, counted from ``transformed_bin_idxs.start``.
-        doppler_references: Frequency each corrected band is Doppler-corrected at [Hz].
+        transformed_bin_idxs: The band bins some template window reads, the only ones
+            transformed.
+        window_start_idxs: First bin of each f0 point's template window, counted from
+            `transformed_bin_idxs.start`.
+        doppler_references: Frequency each corrected band is Doppler-corrected at
+            [Hz].
         doppler_reference_idxs: Which corrected band each f0 point reads.
-        sub_bin_offsets: The sub-bin offsets some f0 point takes, the ones template harmonics are built at [bins].
-        sub_bin_offset_idxs: Which of ``sub_bin_offsets`` each f0 point takes.
-        omega: Angular orbital frequency of each trial period [rad/s], the last repeated
-            ``period_batch_size - 1`` times so every batch reads a full run.
+        sub_bin_offsets: The sub-bin offsets some f0 point takes, the ones template
+            harmonics are built at [bins].
+        sub_bin_offset_idxs: Which of `sub_bin_offsets` each f0 point takes.
+        omega: Angular orbital frequency of each trial period [rad/s], the last
+            repeated `period_batch_size - 1` times so every batch reads a full run.
         period_batches: The period batches that hold an in-box template.
-        period_batch_size: Trial periods every batch is transformed and matched over, so
-            each call has one shape; a batch shorter than that runs on into the periods after
-            it, which are out of its box.
+        period_batch_size: Trial periods every batch is transformed and matched over,
+            so each call has one shape; a batch shorter than that runs on into the
+            periods after it, which are out of its box.
         n_window_modulation_depths: Modulation depths every batch is matched against.
     """
 
@@ -66,7 +71,9 @@ def split_periods(
     ap_block_idx: Int[np.ndarray, " n_period"],
     batch_size: int,
 ) -> tuple[list[PeriodBatch], int]:
-    """Consecutive periods of one ap block, ``batch_size`` at a time, each with its modulation-depth window; the windows share one width.
+    """Periods of one ap block, `batch_size` at a time, each with its depth window.
+
+    The windows share one width.
 
     Args:
         in_box: Whether each (period, modulation depth) lies in its ap block.
@@ -75,10 +82,11 @@ def split_periods(
 
     Returns:
         The batches that hold an in-box template, and the modulation depths every one
-        of them is matched against.
+            of them is matched against.
     """
     n_periods, n_modulation_depths = in_box.shape
-    # a batch across two ap blocks would need both their windows, and widen every batch's
+    # a batch across two ap blocks would need both their windows, and widen
+    # every batch's
     # the period index each ap block starts at, where ap_block_idx changes
     blk_start_idxs = np.flatnonzero(np.diff(ap_block_idx, prepend=ap_block_idx[0] - 1))
     # one past each ap block's last period: the next block's first, then n_periods
@@ -104,7 +112,8 @@ def split_periods(
             n_window_modulation_depths = max(
                 n_window_modulation_depths, stop_idx - start_idx
             )
-    # every window takes the widest width, so one that would run past the last depth starts lower
+    # every window takes the widest width, so one that would run past the last depth
+    # starts lower
     max_start_idx = n_modulation_depths - n_window_modulation_depths
     return [
         batch._replace(
@@ -130,17 +139,19 @@ def doppler_reference_f0_width(*, tsft: float, n_sub_bin_offsets: int) -> float:
     Returns:
         The span [Hz], centred on the reference.
     """
-    # the nearest of n_sub_bin_offsets templates, 1 / n_sub_bin_offsets apart, is off by up to half that
+    # the nearest of n_sub_bin_offsets templates, 1 / n_sub_bin_offsets apart, is off
+    # by up to half that
     sub_bin_residual = 1.0 / (2.0 * n_sub_bin_offsets)
     tolerance = DOPPLER_TOLERANCE_FRACTION * sub_bin_residual
-    # the reference sits at the centre of its span, so an f0 point is at most half the span from it
+    # the reference sits at the centre of its span, so an f0 point is at most half the
+    # span from it
     return 2.0 * tolerance / (V_MAX * tsft)
 
 
 def doppler_reference_count(
     f0_width: float, *, tsft: float, n_sub_bin_offsets: int
 ) -> int:
-    """Doppler references enough for a subgrid's f0 points to hold the residual shift to the tolerance.
+    """Doppler references enough to hold a subgrid's residual shift to the tolerance.
 
     Args:
         f0_width: Span of the subgrid's f0 points [Hz].
@@ -164,7 +175,7 @@ def subgrid_layout(
     n_sub_bin_offsets: int,
     period_batch_size: int,
 ) -> SubgridLayout:
-    """A subgrid's layout on one loaded band, which is everything the search loop needs of it but the data and the template harmonics.
+    """A subgrid's layout on one band: all the loop needs but data and harmonics.
 
     Args:
         template_grid: The subgrid's orbital template grid.
@@ -174,7 +185,8 @@ def subgrid_layout(
         period_batch_size: Trial periods per transform call.
 
     Returns:
-        The subgrid with its f0 points placed on the band, their references and offsets chosen, and its periods batched.
+        The subgrid with its f0 points placed on the band, their references and
+            offsets chosen, and its periods batched.
     """
     tsft = template_grid.tsft
     f0 = template_grid.orbital_subgrid.f0
@@ -193,15 +205,17 @@ def subgrid_layout(
             f"the subgrid's f0 points from {f0[0]:.5f} to {f0[-1]:.5f} Hz do not all "
             f"fit the {n_band_bins}-bin band loaded from {freq_low:.5f} Hz"
         )
-    # the margin beyond the windows is only for the Doppler shift, so the transform skips it
+    # the margin beyond the windows is only for the Doppler shift, so the transform
+    # skips it
     #
-    #   band:          [------------------------------------------------]  n_band_bins bins
+    #   band:          [------------------------------------------------]  n_band_bins
     #   lowest f0:          [--- n_window_bins ---]
     #   highest f0:                       [--- n_window_bins ---]
     #   transformed:        [====================================]
     #                       ^ transformed_start_idx              ^ transformed_stop_idx
     #
-    # window_start_idxs is then counted from transformed_start_idx, the first bin of the transformed slice
+    # window_start_idxs is then counted from transformed_start_idx, the first bin of
+    # the transformed slice
     transformed_start_idx = int(window_start_idxs.min())
     transformed_stop_idx = int(window_start_idxs.max()) + n_window_bins
     transformed_bin_idxs = slice(transformed_start_idx, transformed_stop_idx)
@@ -209,7 +223,8 @@ def subgrid_layout(
         window_start_idxs - transformed_start_idx
     )  # only keep data in transformed_start/stop_idx
 
-    # Doppler references at the centres of equal pieces of the f0 range; each f0 point takes the nearest
+    # Doppler references at the centres of equal pieces of the f0 range; each f0 point
+    # takes the nearest
     n_doppler_references = doppler_reference_count(
         float(f0[-1] - f0[0]), tsft=tsft, n_sub_bin_offsets=n_sub_bin_offsets
     )
@@ -219,7 +234,8 @@ def subgrid_layout(
         np.abs(doppler_references[None, :] - f0[:, None]), axis=1
     )
 
-    # sub-bin offsets on one fixed grid across a bin; each f0 point takes the nearest to its remainder
+    # sub-bin offsets on one fixed grid across a bin; each f0 point takes the nearest
+    # to its remainder
     sub_bin_offsets = (np.arange(n_sub_bin_offsets) + 0.5) / n_sub_bin_offsets - 0.5
     sub_bin_offset_idxs = np.argmin(
         np.abs(sub_bin_offsets[None, :] - sub_bin_remainder[:, None]), axis=1
@@ -236,7 +252,8 @@ def subgrid_layout(
         template_grid.orbital_subgrid.ap_block_idx,
         batch_size=period_batch_size,
     )
-    # the last batch starts at most at the last period, so it reads period_batch_size - 1 past it
+    # the last batch starts at most at the last period, so it reads
+    # period_batch_size - 1 past it
     padded_period = np.pad(period, (0, period_batch_size - 1), mode="edge")
     return SubgridLayout(
         template_grid=template_grid,

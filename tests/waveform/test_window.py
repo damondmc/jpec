@@ -35,7 +35,7 @@ def test_hann_window_is_the_textbook_hann():
 @pytest.mark.parametrize("length", [1024, 4096])
 def test_window_is_lals_window(length, beta):
     """Elementwise against the implementation that made the SFTs we read."""
-    import lal  # pyright: ignore[reportMissingTypeStubs]
+    import lal
 
     ours = np.asarray(tukey_window(length, beta))
     window = lal.CreateTukeyREAL8Window(length, beta)  # pyright: ignore[reportAttributeAccessIssue]

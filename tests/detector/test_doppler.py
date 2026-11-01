@@ -69,7 +69,7 @@ def test_sky_direction_is_a_unit_vector_in_the_equatorial_frame():
 
 
 def test_correction_is_the_projected_shift(data, velocity):
-    """shift = f0 * (v.n/c) * tsft per segment, shift_spectrum on the amplitudes, then 2|.|^2 / floor."""
+    """shift = f0 * v.n/c * tsft, shift_spectrum on amplitudes, then 2|.|^2 / floor."""
     direction = np.array(
         [np.cos(DELTA) * np.cos(ALPHA), np.cos(DELTA) * np.sin(ALPHA), np.sin(DELTA)]
     )
@@ -102,7 +102,7 @@ def test_whole_bin_shift_is_an_exact_roll():
 
 
 def band_shift_error(margin_bins: int, shift_bins: float = 0.37) -> float:
-    """Error of shifting a band that extends ``margin_bins`` either side of a sinusoid."""
+    """Error of shifting a band extending ``margin_bins`` either side of a sinusoid."""
     sinusoid_bin = 4000.37
     sample_idxs, strain = sim_segment(sinusoid_bin)
     n_samples = strain.size

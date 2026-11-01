@@ -60,5 +60,14 @@ def draw_injections(
                 cos_iota=float(cos_iota_drawn), psi=float(psi_drawn)
             ),
         )
-        for f0, ap, period, phi_b, alpha, sin_delta_drawn, cos_iota_drawn, psi_drawn in draws
+        for (
+            f0,
+            ap,
+            period,
+            phi_b,
+            alpha,
+            sin_delta_drawn,
+            cos_iota_drawn,
+            psi_drawn,
+        ) in draws
     ]

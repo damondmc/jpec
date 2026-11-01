@@ -11,10 +11,10 @@ from jpec.typing import Scalar
 class Parameters(NamedTuple):
     """One point of the search space.
 
-    A pytree, so it passes through ``jax`` transformations, and a tuple, so
-    ``jnp.asarray(parameters)`` is the vector in field order.
+    A pytree, so it passes through `jax` transformations, and a tuple, so
+    `jnp.asarray(parameters)` is the vector in field order.
 
-    Args:
+    Attributes:
         f0: Signal frequency at the Solar System Barycenter [Hz].
         ap: Projected semi-major axis [light-seconds].
         period: Orbital period [s].
@@ -32,7 +32,7 @@ class Parameters(NamedTuple):
 
     @property
     def omega(self) -> Float[Array, ""]:
-        """Orbital angular frequency ``2*pi/P`` [rad/s]."""
+        """Orbital angular frequency `2*pi/P` [rad/s]."""
         return omega_from_period(jnp.asarray(self.period))
 
     @property
@@ -53,13 +53,13 @@ class Parameters(NamedTuple):
 
 
 def omega_from_period(period: Float[Array, "..."]) -> Float[Array, "..."]:
-    """Orbital angular frequency ``2*pi/P`` [rad/s].
+    """Orbital angular frequency `2*pi/P` [rad/s].
 
     Args:
         period: Orbital period [s].
 
     Returns:
-        ``omega``, elementwise.
+        `omega`, elementwise.
     """
     return 2.0 * jnp.pi / period
 
@@ -80,15 +80,15 @@ def ap_from_modulation_depth_bins(
         tsft: SFT length [s].
 
     Returns:
-        ``ap``, elementwise over whatever shapes broadcast.
+        `ap`, elementwise over whatever shapes broadcast.
     """
     return modulation_depth_bins / (f0 * omega * tsft)
 
 
 class Prior(NamedTuple):
-    """The region searched: a closed ``(low, high)`` interval per parameter.
+    """The region searched: a closed `(low, high)` interval per parameter.
 
-    Args:
+    Attributes:
         f0: Signal frequency [Hz].
         ap: Projected semi-major axis [light-seconds].
         period: Orbital period [s].

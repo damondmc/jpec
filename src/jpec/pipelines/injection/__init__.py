@@ -1,1 +1,1 @@
-"""Scripts that set up an injection run, make Gaussian noise SFTs, and measure the sensitivity depth."""
+"""Set up an injection run, make Gaussian noise SFTs, measure the sensitivity depth."""

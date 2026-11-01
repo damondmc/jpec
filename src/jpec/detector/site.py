@@ -1,4 +1,4 @@
-"""The detectors: their velocity from the ephemeris, the reference epoch, and the SFT times."""
+"""Detectors: velocity from the ephemeris, the reference epoch, and the SFT times."""
 
 import warnings
 from collections.abc import Mapping
@@ -17,20 +17,20 @@ lalpulsar: Any = _lalpulsar
 
 @cache
 def _ephemeris() -> Any:
-    """The DE405 Earth and Sun tables spanning 2000 to 2040, a ``lalpulsar.EphemerisData`` loaded once and shared."""
+    """The DE405 Earth and Sun tables spanning 2000 to 2040, loaded once and shared."""
     return lalpulsar.InitBarycenter("earth00-40-DE405.dat.gz", "sun00-40-DE405.dat.gz")
 
 
 @cache
 def _velocity(detector_name: str, timestamps: bytes) -> Float[np.ndarray, "n_time 3"]:
-    """Detector velocity at each timestamp, keyed on their bytes so a run is walked once.
+    """Detector velocity per timestamp, keyed on their bytes so a run is walked once.
 
     Args:
         detector_name: Detector name.
         timestamps: Absolute GPS times [s], as the bytes of a float64 array.
 
     Returns:
-        Cartesian ``v/c`` per time, read-only.
+        Cartesian `v/c` per time, read-only.
     """
     gps_times = np.frombuffer(timestamps, dtype=np.float64)
     vector = lalpulsar.CreateTimestampVector(gps_times.size)
@@ -45,14 +45,14 @@ def _velocity(detector_name: str, timestamps: bytes) -> Float[np.ndarray, "n_tim
 
 
 class Detector:
-    """One interferometer: where it sits and how it moves.
-
-    Args:
-        name: Detector name, ``"H1"`` or ``"L1"``.
-    """
+    """One interferometer: where it sits and how it moves."""
 
     def __init__(self, name: str) -> None:
-        """Take the detector's name, warning when it is not H1 or L1."""
+        """Take the detector's name, warning when it is not H1 or L1.
+
+        Args:
+            name: Detector name, `"H1"` or `"L1"`.
+        """
         if name not in ("H1", "L1"):
             warnings.warn(
                 f'{name!r} is not supported; only "H1", "L1" are', stacklevel=2
@@ -64,7 +64,7 @@ class Detector:
     def velocity(
         self, gps_times: Float[np.ndarray, " n_time"]
     ) -> Float[np.ndarray, "n_time 3"]:
-        """Velocity of the site in the solar-system barycenter frame, ``v/c``.
+        """Velocity of the site in the solar-system barycenter frame, `v/c`.
 
         Cached on the timestamps, so a run walked twice costs one pass through LAL.
 
@@ -72,7 +72,7 @@ class Detector:
             gps_times: Absolute GPS times [s].
 
         Returns:
-            Cartesian ``v/c`` per time, ~1e-4, read-only.
+            Cartesian `v/c` per time, ~1e-4, read-only.
         """
         return _velocity(
             self.name, np.ascontiguousarray(gps_times, dtype=np.float64).tobytes()
@@ -95,7 +95,7 @@ class Detector:
             psi: Polarization angle [rad].
 
         Returns:
-            ``F_plus`` and ``F_cross``, each in ``[-1, 1]``.
+            `F_plus` and `F_cross`, each in `[-1, 1]`.
         """
         f_plus, f_cross = np.empty(gps_times.size), np.empty(gps_times.size)
         for time_idx, time in enumerate(gps_times):
@@ -107,14 +107,14 @@ class Detector:
 
 
 def reference_epoch(timestamps: Mapping[str, ArrayLike], *, tsft: float) -> float:
-    """The middle of the SFTs' span, the epoch ``phi_b`` is quoted at.
+    """The middle of the SFTs' span, the epoch `phi_b` is quoted at.
 
     Args:
         timestamps: SFT start times per detector, absolute GPS [s].
         tsft: SFT length [s].
 
     Returns:
-        ``t_ref``, absolute GPS [s].
+        `t_ref`, absolute GPS [s].
     """
     starts = np.concatenate(
         [np.asarray(each, dtype=float) for each in timestamps.values()]
@@ -133,7 +133,7 @@ def times_and_velocity(
         t_ref: Epoch the midpoints are measured from, absolute GPS [s].
 
     Returns:
-        The midpoints from ``t_ref`` [s] and ``v/c`` at each, the detectors
+        The midpoints from `t_ref` [s] and `v/c` at each, the detectors
         concatenated in the dict's order.
     """
     gps_midpoints = {

@@ -1,4 +1,4 @@
-"""Gaussian noise SFTs: independent per bin, or cut from one continuous series as recorded ones are."""
+"""Gaussian noise SFTs: independent per bin, or cut from one continuous series."""
 
 import jax
 import jax.numpy as jnp
@@ -25,7 +25,7 @@ def gaussian_noise_series_sft(
     window: Window,
     rate: float,
 ) -> SFTData:
-    """SFTs cut from one continuous series of Gaussian strain, so overlapping SFTs share their samples as recorded ones do.
+    """SFTs cut from one continuous Gaussian series, so overlapping SFTs share samples.
 
         E|x|^2 = sqrt_sn^2 * tsft / 2,  as in gaussian_noise_sft()
 
@@ -36,25 +36,28 @@ def gaussian_noise_series_sft(
         freq_low: Start frequency of the first frequency bin [Hz].
         n_band_bins: Frequency bins per SFT.
         tsft: SFT length [s].
-        sqrt_sn: Amplitude spectral density of the strain, flat over the band [1/sqrt(Hz)].
+        sqrt_sn: Amplitude spectral density of the strain, flat over the band
+            [1/sqrt(Hz)].
         window: The window each SFT is made with.
-        rate: Sampling rate of the complex baseband series [Hz], above the band's width.
+        rate: Sampling rate of the complex baseband series [Hz], above the band's
+            width.
 
     Returns:
-        SFTs on the timestamps in ascending order, at ``STRAIN_UNIT``.
+        SFTs on the timestamps in ascending order, at `STRAIN_UNIT`.
     """
     starts = np.sort(np.asarray(timestamps, dtype=np.float64))
-    # the band as a complex baseband about its middle bin, sampled at rate: the SFT bin m
-    # from the middle is bin m of the DFT of the windowed baseband segment
+    # the band as a complex baseband about its middle bin, sampled at rate: the SFT
+    # bin m from the middle is bin m of the DFT of the windowed baseband segment
     n_samples_per_sft = int(round(tsft * rate))
     middle_bin_offsets = np.arange(n_band_bins) - n_band_bins // 2
     window_samples = np.asarray(window.samples(n_samples_per_sft))
-    # E|X|^2 = Sn tsft / 2 for the unit-variance series after the window and the 1 / rate of
-    # the DFT; in float64 on the host, since Sn ~ 1e-46 underflows float32
+    # E|X|^2 = Sn tsft / 2 for the unit-variance series after the window and the
+    # 1 / rate of the DFT; in float64 on the host, since Sn ~ 1e-46 underflows float32
     noise_amplitude = float(
         sqrt_sn * np.sqrt(0.5 * tsft) * rate / np.sqrt(np.sum(window_samples**2))
     )
-    # in units of STRAIN_UNIT, as load_sft_data() returns SFTs, so the power is ~1 in float32
+    # in units of STRAIN_UNIT, as load_sft_data() returns SFTs, so the power is ~1 in
+    # float32
     noise_amplitude /= STRAIN_UNIT
     window_samples = jnp.asarray(window_samples)
 
@@ -105,7 +108,8 @@ def gaussian_noise_sft(
         freq_low: Start frequency of the first frequency bin [Hz].
         n_band_bins: Frequency bins per SFT.
         tsft: SFT length [s].
-        sqrt_sn: Amplitude spectral density of the strain, flat over the band [1/sqrt(Hz)].
+        sqrt_sn: Amplitude spectral density of the strain, flat over the band
+            [1/sqrt(Hz)].
         window: The window the SFTs are taken to have been made with.
 
     Returns:

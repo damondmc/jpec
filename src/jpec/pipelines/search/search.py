@@ -172,7 +172,8 @@ def add_arguments(p: argparse.ArgumentParser) -> None:
         nargs=2,
         default=None,
         metavar=("LOW", "HIGH"),
-        help="every job whose f0 interval overlaps [LOW, HIGH) [Hz]; takes precedence over --jobs",
+        help="every job whose f0 interval overlaps [LOW, HIGH) [Hz]; takes precedence "
+        "over --jobs",
     )
     p.add_argument(
         "--progress-minutes",

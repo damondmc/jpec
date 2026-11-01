@@ -53,11 +53,12 @@ def template_and_sky_point_counts(
 ) -> tuple[int, int]:
     """Templates an f0 interval holds over the whole sky, and the sky points it has.
 
-    The sky points are those TemplateBank.over_f0_interval builds, at the interval's midpoint.
+    The sky points are those TemplateBank.over_f0_interval builds, at the interval's
+    midpoint.
 
     Args:
         tiling: The tiling the templates are built on.
-        velocity: Detector velocity ``v/c`` at each SFT, every detector.
+        velocity: Detector velocity `v/c` at each SFT, every detector.
         f0_low: Low edge of the interval [Hz].
         f0_high: High edge [Hz].
 
@@ -131,13 +132,13 @@ def search_memory_gb(
     """
     # the SFT time series and the floor
     loaded_bytes = n_sfts * n_band_bins * (COMPLEX64_BYTES + FLOAT32_BYTES)
-    # the template harmonics of every subgrid, which the search builds before its loop, one
-    # set per sub-bin offset
+    # the template harmonics of every subgrid, which the search builds before its loop,
+    # one set per sub-bin offset
     template_harmonics_bytes = 0
-    # one subgrid at a time: the band Doppler-corrected at every reference, and per trial
-    # period of a batch the orbital basis, F[j, k] over the transformed bins at every
-    # reference, and c[j] and S(phi_b) per f0 point of an f0 batch and modulation depth of the
-    # batch's window
+    # one subgrid at a time: the band Doppler-corrected at every reference, and per
+    # trial period of a batch the orbital basis, F[j, k] over the transformed bins at
+    # every reference, and c[j] and S(phi_b) per f0 point of an f0 batch and modulation
+    # depth of the batch's window
     subgrid_bytes = 0
     for layout in layouts:
         template_grid = layout.template_grid
@@ -187,7 +188,7 @@ def search_hours(
         n_band_bins: Bins of the band.
         n_sky_points: Sky points searched.
         n_sfts: SFTs over every detector.
-        rates: The ``rates`` of a jpec time-search result.
+        rates: The `rates` of a jpec time-search result.
 
     Returns:
         Hours.
@@ -244,13 +245,13 @@ def job_cost(
 
     Args:
         tiling: The tiling the templates are built on.
-        velocity: Detector velocity ``v/c`` at each SFT, every detector.
+        velocity: Detector velocity `v/c` at each SFT, every detector.
         f0_low: Low edge of the interval [Hz].
         f0_high: High edge [Hz].
         window: The window the SFTs were made with.
         n_sfts: SFTs over every detector.
         search_loop_config: How the search loop batches its work.
-        rates: The ``rates`` of a jpec time-search result; None prices no hours.
+        rates: The `rates` of a jpec time-search result; None prices no hours.
 
     Returns:
         (Giga-bytes, hours), the hours 0 without rates.
@@ -289,20 +290,22 @@ def split_job_by_f0(
     search_loop_config: SearchLoopConfig,
     rates: dict[str, float] | None,
 ) -> list[tuple[float, float]]:
-    """The f0 intervals that each fit in ``memory_gb``, and ``hours`` when the rates are known, tiling the prior's f0 range.
+    """The f0 intervals, tiling the prior's f0 range, that each fit in `memory_gb`.
+
+    Each also fits in `hours` when the rates are known.
 
     Args:
         tiling: The tiling the templates are built on.
-        velocity: Detector velocity ``v/c`` at each SFT, every detector.
+        velocity: Detector velocity `v/c` at each SFT, every detector.
         window: The window the SFTs were made with.
         n_sfts: SFTs over every detector.
         memory_gb: Giga-bytes one job may hold.
         hours: Hours one job may take.
         search_loop_config: How the search loop batches its work.
-        rates: The ``rates`` of a jpec time-search result; None splits on memory alone.
+        rates: The `rates` of a jpec time-search result; None splits on memory alone.
 
     Returns:
-        ``(f0_low, f0_high)`` of each job, in order.
+        `(f0_low, f0_high)` of each job, in order.
     """
     f0_low, f0_high = tiling.prior.f0
     subgrid_f0_step = tiling.f0_step * BCC_SUBGRID_STEP
@@ -349,9 +352,9 @@ def split_job_by_f0(
                     high = middle
                 else:
                     failing_high = middle
-        # the hours per Hz fall with the width until the next Doppler reference doubles the
-        # transform, so the cheapest job is that one or one whose f0 points span just under a
-        # whole number of references
+        # the hours per Hz fall with the width until the next Doppler reference doubles
+        # the transform, so the cheapest job is that one or one whose f0 points span
+        # just under a whole number of references
         if rates is not None:
             reference_counts = np.arange(
                 1, int((high - low + f0_overhang) / f0_width_per_reference) + 1
@@ -418,7 +421,8 @@ def run(args: argparse.Namespace) -> None:
         window=window,
     )
 
-    # cut the f0 range into jobs that each fit the memory, and the time when the rates are known
+    # cut the f0 range into jobs that each fit the memory, and the time when the rates
+    # are known
     timing = None if args.timing is None else json.loads(Path(args.timing).read_text())
     rates = None if timing is None else timing["rates"]
     f0_intervals = split_job_by_f0(
@@ -433,9 +437,9 @@ def run(args: argparse.Namespace) -> None:
     )
     if timing is None:
         run_logger.info(
-            f"{len(f0_intervals)} jobs under {compute.memory_gb:.1f} GB each; no timing "
-            "given, so the hours are not priced: time the first job with jpec time-search "
-            "and run this again with --timing"
+            f"{len(f0_intervals)} jobs under {compute.memory_gb:.1f} GB each; "
+            "no timing given, so the hours are not priced: time the first job with "
+            "jpec time-search and run this again with --timing"
         )
     else:
         run_logger.info(
@@ -495,7 +499,8 @@ def run(args: argparse.Namespace) -> None:
     n_templates_total = int(n_templates_per_job.sum())
     run_logger.info(f"Total templates: {n_templates_total:.3e}")
     run_logger.info(
-        f"Per-job templates: {n_templates_per_job.min():.3e} to {n_templates_per_job.max():.3e}"
+        f"Per-job templates: {n_templates_per_job.min():.3e} to "
+        f"{n_templates_per_job.max():.3e}"
     )
     if rates is not None:
         hours_per_job = np.array([job_setup.hours for job_setup in job_setups])
@@ -540,8 +545,8 @@ def add_arguments(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--timing",
         default=None,
-        help="jpec time-search result, the rates the jobs are priced at; without one the "
-        "jobs are cut on memory alone",
+        help="jpec time-search result, the rates the jobs are priced at; without one "
+        "the jobs are cut on memory alone",
     )
     p.add_argument(
         "--output",

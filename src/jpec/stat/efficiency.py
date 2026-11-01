@@ -1,4 +1,4 @@
-"""The detection efficiency against amplitude: its sigmoid fit, and the recovery curve that refines it."""
+"""Detection efficiency against amplitude: its sigmoid fit and the recovery curve."""
 
 from typing import NamedTuple
 
@@ -24,11 +24,11 @@ def detection_efficiency(
 
     Args:
         log_h0: Natural log of the strain amplitudes.
-        intercept: Log odds of recovery at ``h0 = 1``.
+        intercept: Log odds of recovery at `h0 = 1`.
         slope: Steepness in log amplitude.
 
     Returns:
-        Recovered fraction at each amplitude, in ``(0, 1)``.
+        Recovered fraction at each amplitude, in `(0, 1)`.
     """
     return jax.nn.sigmoid(intercept + slope * log_h0)
 
@@ -39,7 +39,7 @@ def _penalized_negative_log_likelihood(
     n_recovered: Float[Array, " n_h0"],
     n_injections: float,
 ) -> Scalar:
-    """Binomial negative log-likelihood with a weak ridge, convex in ``theta``."""
+    """Binomial negative log-likelihood with a weak ridge, convex in `theta`."""
     z = theta[0] + theta[1] * log_h0
     likelihood = -jnp.sum(
         n_recovered * jax.nn.log_sigmoid(z)
@@ -51,10 +51,11 @@ def _penalized_negative_log_likelihood(
 class EfficiencyFit(NamedTuple):
     """The efficiency curve fitted to a set of injections.
 
-    Args:
-        intercept: Log odds of recovery at ``h0 = 1``.
+    Attributes:
+        intercept: Log odds of recovery at `h0 = 1`.
         slope: Steepness in log amplitude.
-        covariance: Covariance of ``(intercept, slope)`` from the likelihood's curvature.
+        covariance: Covariance of `(intercept, slope)` from the likelihood's
+            curvature.
     """
 
     intercept: Scalar
@@ -67,7 +68,7 @@ class EfficiencyFit(NamedTuple):
             log h0 = (logit(efficiency) - intercept) / slope
 
         Args:
-            efficiency: Recovered fraction to solve for, in ``(0, 1)``.
+            efficiency: Recovered fraction to solve for, in `(0, 1)`.
 
         Returns:
             The log amplitude and its standard error, the covariance carried through by
@@ -85,10 +86,10 @@ class EfficiencyFit(NamedTuple):
         """The amplitude recovered a given fraction of the time, and its error.
 
         Args:
-            efficiency: Recovered fraction to solve for, in ``(0, 1)``.
+            efficiency: Recovered fraction to solve for, in `(0, 1)`.
 
         Returns:
-            ``h0`` and its standard error, which is ``h0`` times the log amplitude's
+            `h0` and its standard error, which is `h0` times the log amplitude's
             because the fit is in the log.
         """
         log_h0, log_error = self.log_h0_at(efficiency)
@@ -138,7 +139,8 @@ def fit_efficiency(
     n_recovered = jnp.sum(jnp.asarray(recovered), axis=0).astype(float)
     n_injections = float(recovered.shape[0])
 
-    # a straight line through the two ends of the measured log odds, which Newton then sharpens
+    # a straight line through the two ends of the measured log odds, which Newton
+    # then sharpens
     fraction = jnp.clip(
         n_recovered / n_injections, 0.5 / n_injections, 1.0 - 0.5 / n_injections
     )
@@ -151,20 +153,20 @@ def fit_efficiency(
 
 
 class RecoveryCurve:
-    """The fraction of sources recovered against the amplitude they were injected at.
-
-    Args:
-        efficiency: The recovered fraction the quoted amplitude is taken at.
-    """
+    """The fraction of sources recovered against the amplitude they were injected at."""
 
     def __init__(self, *, efficiency: float) -> None:
-        """Start the curve with no amplitude tried."""
+        """Start the curve with no amplitude tried.
+
+        Args:
+            efficiency: The recovered fraction the quoted amplitude is taken at.
+        """
         self.efficiency = efficiency
         self.h0_values: Float[np.ndarray, " n_h0"] = np.empty(0)
         self.recovered: Bool[np.ndarray, "n_source n_h0"] = np.empty((0, 0), dtype=bool)
 
     def add(self, h0: float, recovered: Bool[np.ndarray, " n_source"]) -> None:
-        """Record whether each source was recovered at one amplitude, keeping the h0 values sorted.
+        """Record whether each source was recovered at one amplitude, h0 kept sorted.
 
         Args:
             h0: Strain amplitude the sources were injected at.
@@ -182,11 +184,11 @@ class RecoveryCurve:
         return self.recovered.mean(axis=0)
 
     def fit(self) -> tuple[float, float]:
-        """The amplitude recovered the wanted fraction of the time, and its standard error.
+        """The amplitude recovered the wanted fraction of the time, and its error.
 
         Returns:
-            ``h0`` at the efficiency and its error, both NaN while the amplitudes tried do not
-            bracket the efficiency.
+            `h0` at the efficiency and its error, both NaN while the amplitudes tried
+            do not bracket the efficiency.
         """
         fraction = self.fraction
         if fraction.max() < self.efficiency or fraction.min() > self.efficiency:
@@ -202,8 +204,9 @@ class RecoveryCurve:
             h0_at_efficiency: The fit from `fit`, NaN while unbracketed.
 
         Returns:
-            Twice the loudest amplitude tried while every one falls short of the efficiency,
-            half the weakest while every one exceeds it, and the fit otherwise.
+            Twice the loudest amplitude tried while every one falls short of the
+            efficiency, half the weakest while every one exceeds it, and the fit
+            otherwise.
         """
         fraction = self.fraction
         if fraction.max() < self.efficiency:

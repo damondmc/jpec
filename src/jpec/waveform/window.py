@@ -31,10 +31,10 @@ def rectangular_spectrum(offset: Float[Array, "..."]) -> Float[Array, "..."]:
 
 
 def tukey_window(length: int, beta: float) -> Float[Array, " length"]:
-    """The Tukey window sampled over ``length`` points.
+    """The Tukey window sampled over `length` points.
 
-    With ``d = min(i, length - 1 - i)`` the distance to the nearer end and
-    ``T = round(beta * length)`` the taper width in samples::
+    With `d = min(i, length - 1 - i)` the distance to the nearer end and
+    `T = round(beta * length)` the taper width in samples::
 
         Y    = (2d - (T - 1)) / (T - 1)
         w[i] = cos(pi/2 * Y)**2            , 0 <= d < (T + 1) // 2
@@ -58,7 +58,7 @@ def tukey_window(length: int, beta: float) -> Float[Array, " length"]:
 
 
 def tukey_spectrum(offset: Float[Array, "..."], *, beta: float) -> Float[Array, "..."]:
-    """Fourier transform of `tukey_window()`, at ``offset`` bins in closed form.
+    """Fourier transform of `tukey_window()`, at `offset` bins in closed form.
 
     The transform is given by:
         W(f) = 2a sinc(2a f) + 2 Re[ (1/2) S(f)
@@ -67,12 +67,13 @@ def tukey_spectrum(offset: Float[Array, "..."], *, beta: float) -> Float[Array, 
 
         S(u) = L sinc(u L) exp(-2 pi i u m)
 
-    with ``a = (1 - beta)/2`` the flat half-width, ``L = beta/2`` the width of the
-    taper at each end, and ``m = 1/2 - L/2`` its midpoint.
+    with `a = (1 - beta)/2` the flat half-width, `L = beta/2` the width of the
+    taper at each end, and `m = 1/2 - L/2` its midpoint.
 
     Args:
         offset: Distance from the sinusoid to the frequency bin's centre [bins].
-        beta: Fraction of the window that is tapered, beta = 0: rectangular, beta = 1: Hann.
+        beta: Fraction of the window that is tapered, beta = 0: rectangular,
+            beta = 1: Hann.
 
     Returns:
         Fourier transform window.
@@ -102,9 +103,10 @@ def tukey_spectrum(offset: Float[Array, "..."], *, beta: float) -> Float[Array, 
 class Window:
     """The window an SFT was made with, and the response it gives a frequency bin.
 
-    Args:
-        kind: ``"rectangular"``, ``"tukey"`` or ``"hann"``, the Tukey window at beta = 1.
-        beta: Fraction of the window that is not flat, in ``(0, 1]``; used only by ``"tukey"``.
+    Attributes:
+        kind: `"rectangular"`, `"tukey"` or `"hann"`, the Tukey window at beta = 1.
+        beta: Fraction of the window that is not flat, in `(0, 1]`; used only by
+            `"tukey"`.
     """
 
     kind: str = "tukey"
@@ -122,7 +124,7 @@ class Window:
             )
 
     def samples(self, length: int) -> Float[Array, " length"]:
-        """The window itself, sampled over ``length`` points.
+        """The window itself, sampled over `length` points.
 
         Args:
             length: Number of samples.
@@ -136,7 +138,7 @@ class Window:
         return tukey_window(length, beta)
 
     def amplitude(self, offset: Float[Array, "..."]) -> Float[Array, "..."]:
-        """Amplitude a frequency bin receives from a unit sinusoid ``offset`` bins from its centre.
+        """Amplitude a bin gets from a unit sinusoid `offset` bins from its centre.
 
         Real, because the window is symmetric about the SFT's middle; the
         linear phase from that middle is left to the caller.
@@ -145,7 +147,7 @@ class Window:
             offset: Distance from the sinusoid to the frequency bin's centre [bins].
 
         Returns:
-            Response, same shape as ``offset``, 1 on the centre.
+            Response, same shape as `offset`, 1 on the centre.
         """
         if self.kind == "rectangular":
             return rectangular_spectrum(offset)
@@ -153,12 +155,12 @@ class Window:
         return tukey_spectrum(offset, beta=beta) / (1.0 - 0.5 * beta)
 
     def power(self, offset: Float[Array, "..."]) -> Float[Array, "..."]:
-        """Power a frequency bin receives from a sinusoid ``offset`` bins from its centre.
+        """Power a bin receives from a sinusoid `offset` bins from its centre.
 
         Args:
             offset: Distance from the sinusoid to the frequency bin's centre [bins].
 
         Returns:
-            Response, same shape as ``offset``, 1 on the centre.
+            Response, same shape as `offset`, 1 on the centre.
         """
         return self.amplitude(offset) ** 2

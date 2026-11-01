@@ -201,7 +201,7 @@ def test_plane_vmaps(theta, offsets):
 
 
 def test_harmonics_cutoff_gets_most_of_the_power(case: Case, theta, offsets):
-    """Ties the plane back to :func:`harmonic_count`."""
+    """Ties the plane back to harmonic_count()."""
     plane_transform = jnp.fft.fft(
         template_plane(
             offsets,

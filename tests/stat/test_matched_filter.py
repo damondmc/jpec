@@ -88,7 +88,7 @@ def test_statistic_over_phase_shape(setup):
 
 
 def test_max_over_phase_is_the_peak_of_the_statistic(setup):
-    """max_over_phase returns the maximum of statistic_over_phase and the index it sits at."""
+    """max_over_phase returns the peak of statistic_over_phase and its index."""
     statistic = statistic_over_phase(
         harmonic_overlap(
             data_harmonics=setup["data_harmonics"],
@@ -106,7 +106,7 @@ def test_max_over_phase_is_the_peak_of_the_statistic(setup):
 
 
 def test_one_basis_and_a_batch_of_bases_agree(case: Case, setup):
-    """An array of omegas gives one basis each, so a period batch is many single templates at once."""
+    """An omega array gives a basis each, so a period batch is many single templates."""
     times = jnp.arange(setup["n_theta"]) * (2.0 * jnp.pi / setup["n_theta"])
     omegas = jnp.array([1.0, 1.5, 2.0])
     plane = jnp.ones((setup["n_theta"], setup["bin_offsets"].size))

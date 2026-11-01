@@ -1,4 +1,4 @@
-"""The template bank: each orbital subgrid over a sky lattice, over an f0 interval or around one point."""
+"""Template bank: subgrids on a sky lattice, over an f0 interval or around a point."""
 
 from functools import partial
 from typing import NamedTuple
@@ -33,7 +33,7 @@ def template_harmonics_at_depths(
     window: Window,
     batch_size: int,
 ) -> Complex[Array, "n_modulation_depth n_harmonic n_freq"]:
-    """``tau[j, k]`` at every modulation depth on one grid, ``batch_size`` at a time.
+    """`tau[j, k]` at every modulation depth on one grid, `batch_size` at a time.
 
     Args:
         bin_offsets: Bin centres, as offsets from f0 [bins].
@@ -44,7 +44,7 @@ def template_harmonics_at_depths(
         batch_size: Modulation depths built at once, which caps the planes held.
 
     Returns:
-        ``tau[j, k]`` for every modulation depth, in their order.
+        `tau[j, k]` for every modulation depth, in their order.
     """
 
     def at_depth(
@@ -62,9 +62,11 @@ def template_harmonics_at_depths(
 
 
 class OrbitalTemplateGrid(NamedTuple):
-    """One orbital subgrid and what its template harmonics are built from, the same at every sky point.
+    """One orbital subgrid and what its template harmonics are built from.
 
-    Args:
+    The same at every sky point.
+
+    Attributes:
         orbital_subgrid: The orbital subgrid.
         tsft: SFT length [s].
         window: The window the SFTs were made with.
@@ -86,7 +88,7 @@ class OrbitalTemplateGrid(NamedTuple):
 
     @property
     def bin_offsets(self) -> Float[Array, " n_freq"]:
-        """Bin centres wide enough for the deepest modulation depth, as offsets from f0 [bins]."""
+        """Bin centres spanning the deepest modulation depth, offsets from f0 [bins]."""
         return arc_bin_offsets(
             float(self.orbital_subgrid.modulation_depth_bins[-1]), pad_bins=ARC_PAD_BINS
         )
@@ -94,14 +96,15 @@ class OrbitalTemplateGrid(NamedTuple):
     def template_harmonics(
         self, *, sub_bin_offset: float, batch_size: int
     ) -> Complex[Array, "n_modulation_depth n_harmonic n_freq"]:
-        """``tau[j, k]`` at every modulation depth, on the phase grid the statistic uses.
+        """`tau[j, k]` at every modulation depth on the phase grid the statistic uses.
 
         Args:
-            sub_bin_offset: Bins from the window's origin to the f0 points the templates serve.
+            sub_bin_offset: Bins from the window's origin to the f0 points the
+                templates serve.
             batch_size: Modulation depths built at once.
 
         Returns:
-            ``tau[j, k]`` for every modulation depth of the subgrid.
+            `tau[j, k]` for every modulation depth of the subgrid.
         """
         bin_offsets = self.bin_offsets - sub_bin_offset
         return template_harmonics_at_depths(
@@ -119,10 +122,11 @@ class OrbitalTemplateGrid(NamedTuple):
         *,
         batch_size: int,
     ) -> Complex[Array, "n_sub_bin_offset n_modulation_depth n_harmonic n_freq"]:
-        """``tau[j, k]`` at every modulation depth, one stack per sub-bin offset.
+        """`tau[j, k]` at every modulation depth, one stack per sub-bin offset.
 
         Args:
-            sub_bin_offsets: Bins from the window's origin to the f0 points each stack serves.
+            sub_bin_offsets: Bins from the window's origin to the f0 points each
+                stack serves.
             batch_size: Modulation depths built at once.
 
         Returns:
@@ -141,7 +145,9 @@ class OrbitalTemplateGrid(NamedTuple):
 def idxs_around(
     values: Float[np.ndarray, " n_axis_point"], value: float, *, n_steps: int
 ) -> Int[np.ndarray, " n_kept"]:
-    """Indices of the ``n_steps`` points each side of the one nearest ``value``, clipped to the axis.
+    """Indices of the `n_steps` points each side of the one nearest `value`.
+
+    They are clipped to the axis.
 
     Args:
         values: One axis of a subgrid, increasing.
@@ -158,10 +164,10 @@ def idxs_around(
 
 
 class TemplateBank(NamedTuple):
-    """The templates of one job: every subgrid of the setup's orbital lattice over the job's sky points.
+    """One job's templates: every orbital subgrid of the setup over its sky points.
 
-    Args:
-        template_grids: One per subgrid, in the order of ``BCC_SUBGRID_OFFSETS``.
+    Attributes:
+        template_grids: One per subgrid, in the order of `BCC_SUBGRID_OFFSETS`.
         alpha: Right ascension of each sky point [rad].
         delta: Declination of each sky point [rad].
     """
@@ -197,7 +203,7 @@ class TemplateBank(NamedTuple):
             f0_idx: Index of the f0 point.
             period_idx: Index of the trial period.
             modulation_depth_idx: Index of the modulation depth.
-            phase_idx: Index of the orbital phase, of the subgrid's ``n_phi``.
+            phase_idx: Index of the orbital phase, of the subgrid's `n_phi`.
 
         Returns:
             The template's parameters.
@@ -239,7 +245,8 @@ class TemplateBank(NamedTuple):
             tiling: The setup's tiling.
             f0_low: Low edge of the interval [Hz].
             f0_high: High edge [Hz].
-            velocity: Detector velocity ``v/c`` at each SFT, every detector, which sets the sky lattice.
+            velocity: Detector velocity `v/c` at each SFT, every detector, which
+                sets the sky lattice.
             window: The window the data was made with.
 
         Returns:
@@ -270,13 +277,13 @@ class TemplateBank(NamedTuple):
         Args:
             tiling: The lattice, over the box the sources were drawn from.
             point: The parameters searched around.
-            velocity: Detector velocity ``v/c`` at each SFT, every detector.
+            velocity: Detector velocity `v/c` at each SFT, every detector.
             window: The window the SFTs were made with.
             n_sky_neighbours: Sky lattice points searched around the source.
             n_steps: Lattice steps each side of the source, per orbital axis.
 
         Returns:
-            The bank, each subgrid's ``in_box`` as the search has it.
+            The bank, each subgrid's `in_box` as the search has it.
         """
         # the sky lattice points nearest the source in mismatch, not in angle: near the
         # ecliptic a cell is many times taller in latitude than it is wide

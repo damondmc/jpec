@@ -71,7 +71,7 @@ def test_one_call_matches_one_f0_point_per_call(grid):
 
 
 def test_loudest_in_box_is_the_sorted_in_box_grid(grid):
-    """The device-side cut keeps the in-box templates a host sort would, loudest first."""
+    """The device-side cut keeps in-box templates a host sort would, loudest first."""
     max_statistic, phase_idxs = match(grid, slice(None), f0_batch_size=4)
     in_box = jax.random.bernoulli(
         jax.random.key(1), 0.5, (N_PERIODS, N_MATCHED_MODULATION_DEPTHS)

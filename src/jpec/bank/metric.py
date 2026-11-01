@@ -1,4 +1,4 @@
-"""The metric of the statistic over the parameters: physical, projected, orbital and on the sky."""
+"""The metric of the statistic: physical, projected, orbital and on the sky."""
 
 import jax
 import jax.numpy as jnp
@@ -13,21 +13,22 @@ from jpec.waveform.window import Window
 
 
 def freq_bin_curvature(window: Window, *, n_positions: int) -> float:
-    """Mismatch per squared frequency bin of track error, ``g_freq_bin``, for a window.
+    """Mismatch per squared frequency bin of track error, `g_freq_bin`, for a window.
 
         1 - sum_k W(k - x) W(k - x - d) / sum_k W(k - x)^2  ~  g_freq_bin d^2
 
-    with ``d`` the track's error in frequency bins, averaged over the fractional
-    frequency-bin position ``x`` of the track.
+    with `d` the track's error in frequency bins, averaged over the fractional
+    frequency-bin position `x` of the track.
 
     Args:
         window: The window the SFTs were made with.
         n_positions: Fractional positions averaged over.
 
     Returns:
-        ``g_freq_bin`` [1 / frequency bins^2].
+        `g_freq_bin` [1 / frequency bins^2].
     """
-    # x: the track's position in its bin, at the centres of n_positions equal slices of [0, 1)
+    # x: the track's position in its bin, at the centres of n_positions equal slices
+    # of [0, 1)
     position = (jnp.arange(n_positions) + 0.5) / n_positions
     # k: each bin counted from the bin the track is in
     bin_offsets = jnp.arange(-40, 41)
@@ -41,7 +42,8 @@ def freq_bin_curvature(window: Window, *, n_positions: int) -> float:
         shifted = window.power(offsets - shift)
         return jnp.sum(centred * shifted) / jnp.sum(centred * centred)
 
-    # the second derivative at d = 0 by autodiff, which a float32 difference cannot resolve
+    # the second derivative at d = 0 by autodiff, which a float32 difference cannot
+    # resolve
     return -0.5 * float(jax.grad(jax.grad(overlap))(0.0))
 
 
@@ -57,17 +59,18 @@ def physical_metric(
 
         g_ij = g_freq_bin < d_ik  d_jk >
 
-    with ``k`` the track in frequency bins at each SFT midpoint and the average over the SFTs.
+    with `k` the track in frequency bins at each SFT midpoint and the average over
+    the SFTs.
 
     Args:
         point: Point to evaluate at.
         times: SFT midpoints from the reference epoch [s].
-        velocity: Detector velocity ``v/c`` at each SFT midpoint.
+        velocity: Detector velocity `v/c` at each SFT midpoint.
         tsft: SFT length [s].
         g_freq_bin: freq_bin_curvature() of the window the SFTs were made with.
 
     Returns:
-        ``g[i, j]`` in the field order of Parameters.
+        `g[i, j]` in the field order of Parameters.
     """
     flat, unravel = ravel_pytree(
         Parameters(*(jnp.asarray(x, dtype=float) for x in point))
@@ -96,8 +99,8 @@ def project_out(
         g'_ij = g_ij - g_ix g_xx^-1 g_xj
 
     Args:
-        metric: ``g_ij`` in the field order of Parameters.
-        name: The field maximized over, ``phi_b`` by default.
+        metric: `g_ij` in the field order of Parameters.
+        name: The field maximized over, `phi_b` by default.
 
     Returns:
         Metric on the other five fields, in their original order.
@@ -114,15 +117,15 @@ def project_out(
 def orbital_lattice_metric(
     metric: Float[Array, "5 5"], point: Parameters, *, tsft: float
 ) -> Float[Array, "3 3"]:
-    """The physical metric moved onto the orbital lattice's axes ``(f0, modulation_depth_bins, omega^2)``.
+    """The physical metric moved onto the orbital lattice's axes.
 
     Args:
-        metric: physical_metric() with ``phi_b`` projected out, at ``point``.
+        metric: physical_metric() with `phi_b` projected out, at `point`.
         point: Where the metric was taken.
         tsft: SFT length [s].
 
     Returns:
-        ``g`` on ``(f0, modulation_depth_bins, omega^2)``.
+        `g` on `(f0, modulation_depth_bins, omega^2)`.
     """
     modulation_depth_bins = point.modulation_depth_bins(tsft)
     omega2 = point.omega**2
@@ -150,13 +153,14 @@ def sky_metric(
         g_sky = g_f0f0 f0^2 Cov(v)
 
     Args:
-        velocity: Detector velocity ``v/c`` at each SFT, every detector.
+        velocity: Detector velocity `v/c` at each SFT, every detector.
         f0: Frequency the metric is for [Hz].
         g_f0f0: The f0 metric [1/Hz^2].
 
     Returns:
-        The mismatch per unit offset squared along each eigenvector, largest first, and
-        the eigenvectors as columns, so that ``direction @ eigenvectors`` gives ``(x1, x2, x3)``.
+        The mismatch per unit offset squared along each eigenvector, largest first,
+            and the eigenvectors as columns, so that `direction @ eigenvectors`
+            gives `(x1, x2, x3)`.
     """
     covariance = np.cov(np.asarray(velocity).T, bias=True)
     eigenvalues, eigenvectors = np.linalg.eigh(covariance)

@@ -4,7 +4,7 @@ from jaxtyping import Array, Float
 
 Scalar = int | float | Float[Array, ""]
 """One real number that may be traced: a Python number or a 0-d float array.
-Not an integer array, which ``jax.grad`` cannot differentiate, and not a
+Not an integer array, which `jax.grad` cannot differentiate, and not a
 length-one array.
 """
 
@@ -22,8 +22,11 @@ length-one array.
 #   n_f0        f0 points of a bank
 #   n_period    trial orbital periods of a bank
 #   n_loudest   templates of a grid kept on the device, loudest first
-#   n_doppler_reference  frequencies a band is Doppler-corrected at, shared by the f0 points near each
+#   n_doppler_reference  frequencies a band is Doppler-corrected at, shared by
+#                        the f0 points near each
 #   n_band      frequency bins of the loaded band
-#   n_transformed_bin  bins of the band the template windows read, the ones transformed
-#   n_lattice_point  points of a sky lattice in its eigenframe, before they are cut to the box
+#   n_transformed_bin  bins of the band the template windows read, the ones
+#                      transformed
+#   n_lattice_point  points of a sky lattice in its eigenframe, before they are
+#                    cut to the box
 #   length      samples within one SFT, for a window

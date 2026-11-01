@@ -6,7 +6,7 @@ from jpec.waveform.track import frequency_offset, observed_frequency
 
 
 def test_observed_frequency_is_the_orbit_plus_the_earth(case: Case, times):
-    """f = f0 (1 + v.n/c) + orbital offset, and f0 plus the orbit with no Earth motion."""
+    """f = f0 (1 + v.n/c) + orbital offset; f0 plus the orbit with no Earth motion."""
     parameters = case.parameters
     doppler = 1e-4 * jnp.sin(2.0 * jnp.pi * times / (365.25 * 86400.0))
     observed = observed_frequency(

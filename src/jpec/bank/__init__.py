@@ -1,1 +1,1 @@
-"""The template bank: the metric over the parameters, the lattice laid on it, and the templates."""
+"""The template bank: the parameter metric, the lattice on it, and the templates."""

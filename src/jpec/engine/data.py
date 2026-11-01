@@ -1,4 +1,4 @@
-"""The band one job searches: how wide it is for an f0 interval or around one f0, its SFTs on the device, and the epoch its templates use."""
+"""The band one job searches: its width, its SFTs on the device, and its epoch."""
 
 import jax.numpy as jnp
 import numpy as np
@@ -38,13 +38,7 @@ def band_edges_for_f0(
 
 
 class SearchData:
-    """What one job searches on: the band as loaded, on the device, and the epoch its templates use.
-
-    Args:
-        sfts: The SFTs per detector, scaled.
-        floor: Mean noise power at each point per detector.
-        t_ref: Epoch ``phi_b`` is quoted at, absolute GPS [s].
-    """
+    """What one job searches on: the band on the device and its templates' epoch."""
 
     def __init__(
         self,
@@ -53,18 +47,27 @@ class SearchData:
         floor: list[Float[Array, "n_sft n_band"]],
         t_ref: float,
     ) -> None:
-        """Put the band on the device, with the time series, velocities and times the loop reads."""
+        """Put the band, its time series, velocities and times on the device.
+
+        Args:
+            sfts: The SFTs per detector, scaled.
+            floor: Mean noise power at each point per detector.
+            t_ref: Epoch `phi_b` is quoted at, absolute GPS [s].
+        """
         self.sfts = sfts
         self.floor = floor
         self.t_ref = t_ref
-        # the inverse transform the Doppler correction shifts, the same at every sky and f0
+        # the inverse transform the Doppler correction shifts, the same at every
+        # sky and f0
         self.sft_time_series = [
             jnp.fft.ifft(jnp.asarray(sft.sft_data), axis=-1) for sft in sfts
         ]
         self.velocity_per_detector = [jnp.asarray(sft.velocity) for sft in sfts]
-        # the velocity [v/c] the sky lattice is built from, detectors concatenated, on the host
+        # the velocity [v/c] the sky lattice is built from, detectors
+        # concatenated, on the host
         self.velocity = np.concatenate([sft.velocity for sft in sfts])
-        # every SFT midpoint from t_ref [s], detectors concatenated, for the orbital basis
+        # every SFT midpoint from t_ref [s], detectors concatenated, for the
+        # orbital basis
         self.times = jnp.asarray(
             np.concatenate([sft.timestamps_midpoints for sft in sfts]) - t_ref
         )
@@ -113,14 +116,15 @@ class SearchData:
         return cls(sfts, floor=floor, t_ref=data_setup.t_ref)
 
     def around_f0(self, prior: Prior, f0: float) -> "SearchData":
-        """The part of the band the search around one f0 reads, its SFTs and floor cut together.
+        """The band the search around one f0 reads, its SFTs and floor cut together.
 
         Args:
             prior: The region searched, whose deepest orbit sets the widest template.
             f0: The frequency searched around [Hz].
 
         Returns:
-            The narrower band, wide enough for the template, the Doppler shift and the f0 shift, at the same epoch.
+            The narrower band, wide enough for the template, the Doppler shift and
+                the f0 shift, at the same epoch.
         """
         search_freq_low, search_freq_high = band_edges_for_f0(
             prior, f0, f0, tsft=self.tsft
@@ -129,8 +133,10 @@ class SearchData:
         stop_idx = int(round((search_freq_high - self.freq_low) * self.tsft))
         if start_idx < 0 or stop_idx > self.n_band_bins:
             raise ValueError(
-                f"the search around {f0:.5f} Hz needs {search_freq_low:.5f} to {search_freq_high:.5f} Hz, "
-                f"and the band holds {self.freq_low:.5f} to {self.freq_low + self.n_band_bins / self.tsft:.5f} Hz; "
+                f"the search around {f0:.5f} Hz needs {search_freq_low:.5f} "
+                f"to {search_freq_high:.5f} Hz, "
+                f"and the band holds {self.freq_low:.5f} "
+                f"to {self.freq_low + self.n_band_bins / self.tsft:.5f} Hz; "
                 "widen the loaded band"
             )
         bin_idxs = slice(start_idx, stop_idx)
@@ -166,7 +172,8 @@ class SearchData:
     def sqrt_sn(self) -> float:
         """Noise amplitude spectral density over the band and the run [1/sqrt(Hz)].
 
-            P_i = <floor[i, k]>_k,  P = 1 / <1 / P_i>_i,  sqrt_sn = sqrt(P / tsft) * strain_unit
+            P_i = <floor[i, k]>_k,  P = 1 / <1 / P_i>_i,
+            sqrt_sn = sqrt(P / tsft) * strain_unit
 
         i runs over every SFT of every detector and k over the band; floor estimates
         2|X|^2 = Sn tsft, so P / tsft is Sn in units of strain_unit^2.

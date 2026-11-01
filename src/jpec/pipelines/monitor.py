@@ -1,4 +1,4 @@
-"""What a run logs and saves: its backend, a summary before it starts, its progress, and its results."""
+"""What a run logs and saves: its backend, a summary, its progress, and its results."""
 
 import importlib.metadata
 import json
@@ -20,18 +20,20 @@ from jpec.engine.data import SearchData
 
 
 class Progress:
-    """How far one job has got, a line no more often than every ``seconds``.
-
-    Args:
-        bank: The job's bank, whose sky points and templates are counted, sky point by sky point.
-        seconds: Minimum gap between lines; 0 or less gives none.
-        started: When the job began, from `time.perf_counter`.
-    """
+    """How far one job has got, a line no more often than every `seconds`."""
 
     def __init__(self, bank: TemplateBank, *, seconds: float, started: float) -> None:
-        """Count the bank's templates per sky point, subgrid by subgrid."""
+        """Count the bank's templates per sky point, subgrid by subgrid.
+
+        Args:
+            bank: The job's bank, whose sky points and templates are counted, sky
+                point by sky point.
+            seconds: Minimum gap between lines; 0 or less gives none.
+            started: When the job began, from `time.perf_counter`.
+        """
         self.n_sky_points = int(bank.alpha.size)
-        # templates of the subgrids before each one at a sky point, so a subgrid index maps to templates done
+        # templates of the subgrids before each one at a sky point, so a subgrid
+        # index maps to templates done
         self.n_templates_before_subgrid = np.cumsum(
             [0]
             + [
@@ -54,8 +56,8 @@ class Progress:
             subgrid_idx: Index of the subgrid being searched at it.
 
         Returns:
-            The fraction, sky points and templates done, the time spent and the time left;
-            None when no line is due.
+            The fraction, sky points and templates done, the time spent and the time
+            left; None when no line is due.
         """
         now = time.perf_counter()
         if self.seconds <= 0.0 or now < self.due:
@@ -80,39 +82,42 @@ class Progress:
 
 
 class RunLogger:
-    """One command's run: it selects the JAX backend, logs to the terminal and a file, tracks a job's progress, and saves what the run makes.
-
-    Args:
-        name: Name of the command, which the log file is named for.
-        output: Directory the log and the results are written into, created if missing.
-        platform: JAX backend, cpu or gpu; None for whatever JAX picks.
-        x64: Whether JAX runs in float64.
-    """
+    """One command's run: its JAX backend, logs, job progress and saved results."""
 
     def __init__(
         self, name: str, output: str | Path, *, platform: str | None, x64: bool
     ) -> None:
-        """Select the backend and precision, record the run's metadata, and open the log."""
+        """Select the backend and precision, record the run metadata, open the log.
+
+        Args:
+            name: Name of the command, which the log file is named for.
+            output: Directory the log and the results are written into, created if
+                missing.
+            platform: JAX backend, cpu or gpu; None for whatever JAX picks.
+            x64: Whether JAX runs in float64.
+        """
         # the backend and precision before any array exists
         if platform is not None:
             jax.config.update("jax_platforms", {"cpu": "cpu", "gpu": "cuda"}[platform])
         jax.config.update("jax_enable_x64", x64)
+        host = socket.gethostname()
+        self.short_host = host.split(".")[0]
         self.run_metadata = {
             "backend": jax.default_backend(),
             "devices": [str(device) for device in jax.devices()],
             "x64": x64,
             "jax": jax.__version__,
             "jpec": importlib.metadata.version("jpec"),
-            "host": socket.gethostname(),
+            "host": host,
             "machine": machine(),
         }
         self.output = Path(output)
         self.output.mkdir(parents=True, exist_ok=True)
 
         # plain lines on the terminal, time-stamped ones in a log of this run alone
-        short_host = self.run_metadata["host"].split(".")[0]
         log_path = (
-            self.output / f"{name}_{time.strftime('%Y%m%dT%H%M%S')}_{short_host}.log"
+            self.output
+            / f"{name}_{time.strftime('%Y%m%dT%H%M%S')}_{self.short_host}.log"
         )
         self.logger = logging.getLogger(f"jpec.{name}")
         self.logger.setLevel(logging.INFO)
@@ -127,7 +132,8 @@ class RunLogger:
         self.job_progress: Progress | None = None
 
         self.info(
-            f"backend {self.run_metadata['backend']}  devices {self.run_metadata['devices']}  "
+            f"backend {self.run_metadata['backend']}  "
+            f"devices {self.run_metadata['devices']}  "
             f"x64 {x64}  jax {jax.__version__}  host {self.run_metadata['host']}"
         )
         if platform == "gpu" and jax.default_backend() != "gpu":
@@ -159,7 +165,7 @@ class RunLogger:
         """
         stem = name
         if per_host:
-            stem = f"{name}_{self.run_metadata['backend']}_{self.run_metadata['host'].split('.')[0]}"
+            stem = f"{name}_{self.run_metadata['backend']}_{self.short_host}"
         path = self.output / f"{stem}.json"
         path.write_text(
             json.dumps({"name": name, **self.run_metadata, **payload}, indent=2)
@@ -188,7 +194,8 @@ class RunLogger:
         """Start tracking a job, so progress() can log how far it has got.
 
         Args:
-            bank: The job's bank, whose sky points and templates are counted, sky point by sky point.
+            bank: The job's bank, whose sky points and templates are counted, sky
+                point by sky point.
             seconds: Minimum gap between progress lines; 0 or less logs none.
             started: When the job began, from `time.perf_counter`.
         """
@@ -258,7 +265,8 @@ class RunLogger:
             data: The band as loaded.
             bank: The job's bank.
             setup_path: Where the setup was read from.
-            n_doppler_references_per_subgrid: Number of Doppler reference frequencies of each subgrid.
+            n_doppler_references_per_subgrid: Number of Doppler reference frequencies
+                of each subgrid.
         """
         self.info(f"Job {job_setup.job_idx} of {len(setup.jobs)} from {setup_path}")
         self.info(f"Search band: {job_setup.f0_low:.5f} to {job_setup.f0_high:.5f} Hz")
@@ -295,16 +303,18 @@ class RunLogger:
         self.info(f"Sources: {trials_config.n_injections}")
         self.info(f"Mismatch: {setup.tiling['mismatch']:g}")
         self.info(
-            f"Bank around each source: {trials_config.n_steps} lattice steps each side per "
-            f"orbital axis, {trials_config.n_sky_neighbours} sky points"
+            f"Bank around each source: {trials_config.n_steps} lattice steps "
+            f"each side per orbital axis, {trials_config.n_sky_neighbours} sky points"
         )
         thresholds = ", ".join(f"{threshold:.4g}" for threshold in setup.thresholds)
         self.info(f"Thresholds: S {thresholds}, one depth each")
         self.search_loop_summary(setup.search_loop)
         self.info(
             f"First scan: sensitivity depth {curve_config.sensitivity_depth[0]} to "
-            f"{curve_config.sensitivity_depth[1]} at {curve_config.n_amplitudes} h0 values, "
-            f"then up to {curve_config.n_refinements} per threshold at its fitted {h_label}"
+            f"{curve_config.sensitivity_depth[1]} at "
+            f"{curve_config.n_amplitudes} h0 values, "
+            f"then up to {curve_config.n_refinements} per threshold "
+            f"at its fitted {h_label}"
         )
         self.info(
             f"Fit: {h_label} at {curve_config.efficiency:.0%} recovery to "

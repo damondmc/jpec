@@ -12,12 +12,12 @@ def orbital_phase(
     omega: Scalar,
     phi_b: Scalar,
 ) -> Float[Array, " n_time"]:
-    """Orbital phase ``theta = omega*t - phi_b``, unwrapped.
+    """Orbital phase `theta = omega*t - phi_b`, unwrapped.
 
     Args:
         t: Times [s].
         omega: Orbital angular frequency [rad/s].
-        phi_b: Orbital phase at the epoch of ``t`` [rad].
+        phi_b: Orbital phase at the epoch of `t` [rad].
 
     Returns:
         Orbital phase [rad].
@@ -32,7 +32,7 @@ def roemer_delay(
     omega: Scalar,
     phi_b: Scalar,
 ) -> Float[Array, " n_time"]:
-    """Binary Roemer delay, ``ap * sin(omega*t - phi_b)``.
+    """Binary Roemer delay, `ap * sin(omega*t - phi_b)`.
 
     Args:
         t: Times [s].
@@ -41,7 +41,7 @@ def roemer_delay(
         phi_b: Orbital phase [rad].
 
     Returns:
-        Delay [s], amplitude ``ap``.
+        Delay [s], amplitude `ap`.
     """
     return ap * jnp.sin(orbital_phase(t, omega=omega, phi_b=phi_b))
 
@@ -65,7 +65,7 @@ def frequency_offset(
         phi_b: Orbital phase [rad].
 
     Returns:
-        Frequency offset [Hz], within ``+/- modulation_depth``.
+        Frequency offset [Hz], within `+/- modulation_depth`.
     """
     return -modulation_depth * jnp.cos(orbital_phase(t, omega=omega, phi_b=phi_b))
 

@@ -1,4 +1,4 @@
-"""The lattice tiling of a box, its steps taken from the metric at the top of the box."""
+"""Lattice tiling of a box, its steps taken from the metric at the top of the box."""
 
 from dataclasses import dataclass
 from typing import Any
@@ -25,8 +25,9 @@ from jpec.constant import CURVATURE_POSITIONS
 from jpec.params import Parameters, Prior
 from jpec.waveform.window import Window
 
-# (alpha, delta) [rad]: the orbital metric depends on the sky only through the 1 + v.n of its
-# f0 entry, which moves it by under 2e-4 over the sky, so it is taken at one position
+# (alpha, delta) [rad]: the orbital metric depends on the sky only through the 1 + v.n
+# of its f0 entry, which moves it by under 2e-4 over the sky, so it is taken at one
+# position
 METRIC_SKY_POSITION = (1.2, 0.3)
 # f0, modulation depth, omega^2 and two sky coordinates share the mismatch
 N_AXES = 5
@@ -34,13 +35,14 @@ N_AXES = 5
 
 @dataclass(frozen=True)
 class LatticeTiling:
-    """The bank's five axes: a body-centred cubic lattice on the orbit and a hexagonal one on the sky.
+    """The bank's five axes: a bcc lattice on the orbit and a hexagonal one on the sky.
 
-    Args:
-        prior: The region searched; its ``phi_b`` interval is not used.
+    Attributes:
+        prior: The region searched; its `phi_b` interval is not used.
         mismatch: Mismatch budget over every axis.
         tsft: SFT length [s].
-        ap_blocks: One per ap block, in order, all from the metric at the top of the box.
+        ap_blocks: One per ap block, in order, all from the metric at the top of the
+            box.
     """
 
     prior: Prior
@@ -60,7 +62,7 @@ class LatticeTiling:
 
     @property
     def g_f0f0(self) -> float:
-        """The f0 curvature at the top of the box, which the f0 grid and the sky lattice are set by."""
+        """The f0 curvature at the box's top, which sets the f0 grid and sky lattice."""
         return self.ap_blocks[-1].g_f0f0
 
     @property
@@ -90,7 +92,7 @@ class LatticeTiling:
         Args:
             prior: The region searched.
             times: SFT midpoints from the reference epoch [s], every detector.
-            velocity: Detector velocity ``v/c`` at each of them.
+            velocity: Detector velocity `v/c` at each of them.
             tsft: SFT length [s].
             mismatch: Mismatch budget over every axis.
             n_ap_blocks: ap blocks the box is cut into.
@@ -124,8 +126,8 @@ class LatticeTiling:
             cubic_step(jnp.diag(orbital_metric), mismatch_per_axis)
         )
 
-        # ap enters the track only through the modulation depth, so the omega^2 step goes exactly
-        # as 1 / ap and the other steps do not change with it
+        # ap enters the track only through the modulation depth, so the omega^2 step
+        # goes exactly as 1 / ap and the other steps do not change with it
         edges = np.linspace(*prior.ap, n_ap_blocks + 1)
         ap_blocks = [
             ApBlock(
@@ -140,7 +142,9 @@ class LatticeTiling:
         return cls(prior=prior, mismatch=mismatch, tsft=tsft, ap_blocks=ap_blocks)
 
     def orbital_subgrids(self, f0_low: float, f0_high: float) -> list[OrbitalSubgrid]:
-        """Every subgrid of the orbital lattice over an f0 band, in the order of ``BCC_SUBGRID_OFFSETS``.
+        """Every subgrid of the orbital lattice over an f0 band.
+
+        In the order of `BCC_SUBGRID_OFFSETS`.
 
         Args:
             f0_low: Low edge of the band [Hz].
@@ -173,7 +177,7 @@ class LatticeTiling:
         """The sky lattice at one frequency, on the same mismatch per axis.
 
         Args:
-            velocity: Detector velocity ``v/c`` at each SFT, every detector.
+            velocity: Detector velocity `v/c` at each SFT, every detector.
             f0: Frequency the lattice is for [Hz].
 
         Returns:
@@ -191,7 +195,8 @@ class LatticeTiling:
         """The lattice as a record, with its derived steps written out for a reader.
 
         Returns:
-            The record, the prior field by field in its own units, the period in seconds.
+            The record, the prior field by field in its own units, the period in
+                seconds.
         """
         return {
             "lattice": "bcc",
@@ -219,7 +224,8 @@ class LatticeTiling:
         """
         if record.get("lattice") != "bcc" or "prior" not in record:
             raise ValueError(
-                "the record is not a bcc lattice this class wrote; rerun jpec search-setup"
+                "the record is not a bcc lattice this class wrote; "
+                "rerun jpec search-setup"
             )
         prior = Prior(
             **{name: tuple(interval) for name, interval in record["prior"].items()}

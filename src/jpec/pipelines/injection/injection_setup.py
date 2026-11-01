@@ -28,7 +28,7 @@ from jpec.pipelines.monitor import RunLogger
 
 
 def run(args: argparse.Namespace) -> None:
-    """Build the injection band, its files and the lattice at one mismatch, and write the setup.
+    """Build the injection band, files and lattice at one mismatch; write the setup.
 
     Args:
         args: The parsed flags.

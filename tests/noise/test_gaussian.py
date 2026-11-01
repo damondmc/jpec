@@ -7,7 +7,7 @@ from jpec.noise.gaussian import gaussian_noise_sft
 
 
 def test_sqrt_sn_is_recovered_from_the_power():
-    """2|x|^2 has mean sqrt_sn^2 * tsft, so sqrt(mean power / tsft) gives sqrt_sn back."""
+    """<2|x|^2> = sqrt_sn^2 * tsft, so sqrt(<2|x|^2> / tsft) gives sqrt_sn back."""
     tsft = 1800.0
     sqrt_sn = 3.0
     timestamps = 1.3e9 + tsft * np.arange(200)

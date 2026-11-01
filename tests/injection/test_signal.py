@@ -103,7 +103,7 @@ def test_injection_lands_on_the_signal_track(timestamps, t_ref):
 
 
 def test_injection_adds_and_scales_with_h0(timestamps, t_ref):
-    """Injecting into noise adds the same amplitudes, and power grows as h0^2 well above the noise."""
+    """Injecting into noise adds the same amplitudes; signal power grows as h0^2."""
     noisy = noise(timestamps, seed=2, sqrt_sn=SQRT_SN)
     quiet = noise(timestamps, seed=2, sqrt_sn=0.0)
     h0 = 1e3 * SQRT_SN
@@ -120,7 +120,7 @@ def test_injection_adds_and_scales_with_h0(timestamps, t_ref):
 
 
 def test_injection_is_in_strain_whatever_the_strain_unit(timestamps, t_ref):
-    """SFTs held in a strain unit take the signal in strain x s and divide it down to theirs."""
+    """SFTs in a strain unit take the signal in strain x s, divided down to theirs."""
     quiet = noise(timestamps, seed=4, sqrt_sn=0.0)
     unscaled = inject(quiet, t_ref=t_ref, h0=1.0)
     scaled = inject(quiet.rescaled(4.0), t_ref=t_ref, h0=1.0)

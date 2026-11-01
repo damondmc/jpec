@@ -1,4 +1,4 @@
-"""The Doppler correction of SFT amplitudes toward a sky position, before they are squared."""
+"""Doppler correction of SFT amplitudes toward a sky position, before squaring."""
 
 import jax.numpy as jnp
 from jaxtyping import Array, Complex, Float
@@ -14,7 +14,7 @@ def sky_direction(alpha: Scalar, delta: Scalar) -> Float[Array, " 3"]:
         delta: Declination [rad].
 
     Returns:
-        ``(cos(delta) cos(alpha), cos(delta) sin(alpha), sin(delta))``.
+        `(cos(delta) cos(alpha), cos(delta) sin(alpha), sin(delta))`.
     """
     return jnp.stack(
         [
@@ -30,7 +30,7 @@ def shift_spectrum(
     *,
     shift: Float[Array, " n_sft"],
 ) -> Complex[Array, "n_sft n_band"]:
-    """Correct the complex spectrum for Doppler shift, moving bin ``k + dk`` to bin ``k``.
+    """Correct the spectrum for Doppler shift, moving bin `k + dk` to bin `k`.
 
         Y[k] = X[k + dk],  by  y[n] = x[n] * exp(-2*pi*i * dk * n/n_band_bins)
 
@@ -41,12 +41,12 @@ def shift_spectrum(
     ends, which is why the band wants margin beyond the template's.
 
     Args:
-        sft_time_series: ``x[n]``, the inverse transform of each SFT's band; it does not
+        sft_time_series: `x[n]`, the inverse transform of each SFT's band; it does not
             depend on the shift, so it is taken once.
         shift: dk(t) to apply on the time axis to move.
 
     Returns:
-        The shifted spectrum, in ``sft_time_series.dtype``.
+        The shifted spectrum, in `sft_time_series.dtype`.
     """
     n_band_bins = sft_time_series.shape[-1]
     sample_idxs = jnp.arange(n_band_bins)
@@ -65,21 +65,23 @@ def doppler_corrected_power(
     delta: Scalar,
     doppler_reference: Scalar,
 ) -> Float[Array, "n_sft n_band"]:
-    """A whole band corrected for the Earth's motion toward one sky position, squared and normalized.
+    """A band Doppler-corrected toward one sky position, squared and normalized.
 
         shift(t) = doppler_reference * (v(t).n/c) * tsft   [bins]
 
     Args:
-        sft_time_series: Inverse transform of the scaled SFT amplitudes' band, per detector.
+        sft_time_series: Inverse transform of the scaled SFT amplitudes' band, per
+            detector.
         floor: Mean noise power at each point per detector.
-        velocity_per_detector: Detector velocity ``v/c`` at each SFT, per detector.
+        velocity_per_detector: Detector velocity `v/c` at each SFT, per detector.
         tsft: SFT length [s].
         alpha: Right ascension [rad].
         delta: Declination [rad].
         doppler_reference: Frequency the Doppler shift is taken at [Hz].
 
     Returns:
-        Normalized power at each SFT of every detector, concatenated, the full band wide.
+        Normalized power at each SFT of every detector, concatenated, the full band
+        wide.
     """
     direction = sky_direction(alpha, delta)
     planes = []

@@ -1,4 +1,4 @@
-"""Inject a source into Gaussian noise and search for it with the search engine, then plot the loudest templates.
+"""Inject a source into Gaussian noise, search for it, and plot the loudest templates.
 
 Usage:
 
@@ -109,7 +109,8 @@ def main() -> None:
         window=WINDOW,
     )
 
-    # Gaussian noise on the band the search loads, each SFT cut from one continuous series
+    # Gaussian noise on the band the search loads, each SFT cut from one continuous
+    # series
     freq_low, freq_high = band_edges_for_f0(PRIOR, *PRIOR.f0, tsft=TSFT)
     n_band_bins = round((freq_high - freq_low) * TSFT)
     detector_keys = jax.random.split(jax.random.key(0), len(DETECTORS))
@@ -148,8 +149,8 @@ def main() -> None:
         source.injected_sfts(noise_sfts, h0=h0), floor=floor, t_ref=t_ref
     )
 
-    # the bank over the box at the source's sky position, its layouts and tau[j, k] built
-    # once for both searches
+    # the bank over the box at the source's sky position, its layouts and tau[j, k]
+    # built once for both searches
     template_grids = [
         OrbitalTemplateGrid(orbital_subgrid=orbital_subgrid, tsft=TSFT, window=WINDOW)
         for orbital_subgrid in tiling.orbital_subgrids(*PRIOR.f0)
@@ -180,12 +181,15 @@ def main() -> None:
     loudest = signal_candidates[0]
     print(
         f"loudest with the injection: S = {loudest.statistic / sigma_s:.1f} sigma_S at "
-        f"f0 {float(loudest.parameters.f0):.5f} Hz, ap {float(loudest.parameters.ap):.2f} ls, "
-        f"P {float(loudest.parameters.period) / DAY:.3f} d; injected {SOURCE.f0:.5f} Hz, "
+        f"f0 {float(loudest.parameters.f0):.5f} Hz, "
+        f"ap {float(loudest.parameters.ap):.2f} ls, "
+        f"P {float(loudest.parameters.period) / DAY:.3f} d; "
+        f"injected {SOURCE.f0:.5f} Hz, "
         f"{SOURCE.ap:.2f} ls, {SOURCE.period / DAY:.3f} d"
     )
     print(
-        f"loudest in noise alone: S = {noise_candidates[0].statistic / sigma_s:.1f} sigma_S"
+        "loudest in noise alone: "
+        f"S = {noise_candidates[0].statistic / sigma_s:.1f} sigma_S"
     )
 
     plt.style.use("jpec.style")
@@ -209,7 +213,10 @@ def main() -> None:
         bins=statistic_bins,
         density=True,
         histtype="step",
-        label=rf"with the injection, $\mathcal{{D}} = {SENSITIVITY_DEPTH:g}\,\mathrm{{Hz}}^{{-1/2}}$",
+        label=(
+            "with the injection, "
+            rf"$\mathcal{{D}} = {SENSITIVITY_DEPTH:g}\,\mathrm{{Hz}}^{{-1/2}}$"
+        ),
     )
     histogram_axes.set_yscale("log")
     histogram_axes.set_xlabel(r"$S / \sigma_S$")

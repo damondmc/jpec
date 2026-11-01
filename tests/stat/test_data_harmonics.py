@@ -37,7 +37,7 @@ NOISE_SIGMA = (
 
 
 def plane_harmonics(plane, theta, j_max):
-    """The data's harmonics of a plane sampled at these orbital phases, as times at unit omega."""
+    """Data harmonics of a plane at these orbital phases, as times at unit omega."""
     return data_harmonics(
         plane, orbital_basis(theta, omega=jnp.asarray(1.0), j_max=j_max)
     )
@@ -92,7 +92,8 @@ def test_gappy_harmonics_converge_with_more_sfts(case: Case):
 
 @pytest.fixture
 def sfts(case: Case) -> SFTData:
-    """Twenty days of complex SFTs of the signal in Gaussian noise, Doppler-shifted by H1's motion.
+    """Twenty days of complex SFTs of the signal in Gaussian noise, Doppler-shifted
+    by H1's motion.
 
     Each SFT is the FFT of a Tukey-windowed complex sinusoid at the frequency
     the detector sees at that SFT's midpoint, so the amplitudes carry the
@@ -146,7 +147,7 @@ def sfts(case: Case) -> SFTData:
 
 
 def statistic_from_sft(sft: SFTData, case: Case, *, velocity: np.ndarray):
-    """load, correct, square, slice, transform, match: the single-template path of the search."""
+    """load, correct, square, slice, transform, match: one template's search path."""
     modulation_depth_bins = case.modulation_depth_bins
     j_max = harmonic_count(modulation_depth_bins)
     half_width = int(np.ceil(modulation_depth_bins)) + 8

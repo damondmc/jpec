@@ -1,4 +1,4 @@
-"""The matched filter: the orbital basis, the data harmonics, and the statistic over the orbital phase."""
+"""Matched filter: orbital basis, data harmonics, statistic over orbital phase."""
 
 import jax
 import jax.numpy as jnp
@@ -18,13 +18,13 @@ def orbital_basis(
     The phase is formed here, so under jit it is never held as an array of its own.
 
     Args:
-        times: SFT midpoints from the epoch ``phi_b`` is quoted at [s].
+        times: SFT midpoints from the epoch `phi_b` is quoted at [s].
         omega: Orbital angular frequency [rad/s]; an array of them, one per trial
             period, gives one basis each.
         j_max: Highest harmonic to keep.
 
     Returns:
-        ``basis[..., j, i]``, j-th harmonic at the i-th SFT.
+        `basis[..., j, i]`, j-th harmonic at the i-th SFT.
     """
     theta = jnp.asarray(omega)[..., None] * times
     j = jnp.arange(1, j_max + 1)
@@ -44,7 +44,7 @@ def data_harmonics(
         harmonic_basis: orbital_basis() at the SFTs' phases.
 
     Returns:
-        ``F[j, k]`` for each basis given.
+        `F[j, k]` for each basis given.
     """
     # the power is real, so two real matmuls instead of one complex one
     real = jnp.real(harmonic_basis) @ sft_power
@@ -59,11 +59,11 @@ def harmonic_overlap(
     """Overlap of data and template at each harmonic, summed over frequency.
 
     Args:
-        data_harmonics: ``F[j, k]``, starting with 1st harmonic.
-        template_harmonics: ``tau[j, k]`` on the same ``[j, k]`` grid.
+        data_harmonics: `F[j, k]`, starting with 1st harmonic.
+        template_harmonics: `tau[j, k]` on the same `[j, k]` grid.
 
     Returns:
-        ``c[j] = sum_k conj(tau[j, k]) * F[j, k] / ||tau||``.
+        `c[j] = sum_k conj(tau[j, k]) * F[j, k] / ||tau||`.
     """
     if data_harmonics.shape != template_harmonics.shape:
         raise ValueError(
@@ -82,20 +82,20 @@ def statistic_over_phase(
 
        S(phi_b) = Re{ sum_j c[j] exp(+i j phi_b) } which is exactly the real inverse FFT
 
-       with ``phi_b = 2 pi m / n_phi``, since for ``x[0] = 0`` and ``x[j] = 0`` from
-       ``j = n_phi/2`` up
+       with `phi_b = 2 pi m / n_phi`, since for `x[0] = 0` and `x[j] = 0` from
+       `j = n_phi/2` up
 
            irfft(x)[m] = (2 / n_phi) Re{ sum_j x[j] exp(+2 pi i j m / n_phi) }
 
-       and multiplying by ``n_phi/2`` cancels its 2/N. Every phase therefore costs
+       and multiplying by `n_phi/2` cancels its 2/N. Every phase therefore costs
        one transform rather than one template each.
 
     Args:
-        coefficients: ``c[j]`` starting with 1st harmonic.
-        n_phi: Orbital phases to evaluate, more than ``2*len(coefficients)``.
+        coefficients: `c[j]` starting with 1st harmonic.
+        n_phi: Orbital phases to evaluate, more than `2*len(coefficients)`.
 
     Returns:
-        Statistic at ``phi_b = 2 pi m / n_phi``, ``m = 0..n_phi-1``.
+        Statistic at `phi_b = 2 pi m / n_phi`, `m = 0..n_phi-1`.
     """
     # a zero for the dropped j=0 slot, so harmonic j lands on index j
     padded = jnp.concatenate([jnp.zeros((1,), coefficients.dtype), coefficients])
@@ -111,12 +111,13 @@ def max_over_phase(
     """One template's statistic maximized over the orbital phase, and the phase index.
 
     Args:
-        data_harmonics: ``F[j, k]``, starting with 1st harmonic.
-        template_harmonics: ``tau[j, k]`` on the same grid.
+        data_harmonics: `F[j, k]`, starting with 1st harmonic.
+        template_harmonics: `tau[j, k]` on the same grid.
         n_phi: Orbital phases to evaluate, at least twice the harmonics kept.
 
     Returns:
-        The maximum of ``S(phi_b)`` and the index ``m`` of ``phi_b = 2 pi m / n_phi`` it sits at.
+        The maximum of `S(phi_b)` and the index `m` of `phi_b = 2 pi m / n_phi` it
+        sits at.
     """
     coefficients = harmonic_overlap(
         data_harmonics=data_harmonics, template_harmonics=template_harmonics

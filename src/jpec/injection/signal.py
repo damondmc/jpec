@@ -16,10 +16,10 @@ from jpec.waveform.track import frequency_offset
 
 
 class Orientation(NamedTuple):
-    """A source's orientation: how loud it presents, with nothing about where its track goes.
+    """A source's orientation: how loud it presents, nothing about where its track goes.
 
-    Args:
-        cos_iota: Cosine of the inclination, in ``[-1, 1]``.
+    Attributes:
+        cos_iota: Cosine of the inclination, in `[-1, 1]`.
         psi: Polarization angle [rad].
     """
 
@@ -30,8 +30,9 @@ class Orientation(NamedTuple):
 class Injection(NamedTuple):
     """One source: where it sits in the search space and how it is oriented.
 
-    Args:
-        parameters: Its track: f0, the orbit and the sky, ``phi_b`` at the reference epoch.
+    Attributes:
+        parameters: Its track: f0, the orbit and the sky, `phi_b` at the reference
+            epoch.
         orientation: Its inclination and polarization, which set only how loud it is.
     """
 
@@ -42,17 +43,17 @@ class Injection(NamedTuple):
 def simulated_signal_sft_data(
     sft: SFTData, injection: Injection, *, t_ref: float
 ) -> Complex[Array, "n_sft n_freq"]:
-    """The SFT data a simulated source leaves at unit strain, in closed form on the bins and at the times of some SFTs.
+    """The SFT data a simulated source leaves at unit strain, in closed form.
 
         s[i, k] = (A_+ F_+[i] - i A_x F_x[i]) (tsft / 2) W(k - arc[i])
 
     Args:
         sft: The SFTs whose bins, times, detector and window the signal is laid on.
-        injection: The source, its ``phi_b`` quoted at ``t_ref``.
-        t_ref: Epoch ``phi_b`` is quoted at, absolute GPS [s].
+        injection: The source, its `phi_b` quoted at `t_ref`.
+        t_ref: Epoch `phi_b` is quoted at, absolute GPS [s].
 
     Returns:
-        The source's SFT data in strain x s, for ``h0 = 1``.
+        The source's SFT data in strain x s, for `h0 = 1`.
     """
     parameters, orientation = injection
     f0 = float(parameters.f0)
@@ -66,7 +67,8 @@ def simulated_signal_sft_data(
         omega=float(parameters.omega),
         phi_b=parameters.phi_b,
     )
-    # [bins] from freq_low; f0 - freq_low on the host, so float32 never holds f0 itself
+    # [bins] from freq_low; f0 - freq_low on the host, so float32 never holds f0
+    # itself
     f0_from_freq_low = f0 - sft.freq_low
     arc = (f0_from_freq_low + f0 * doppler + offset) * sft.tsft
     bins = jnp.arange(sft.sft_data.shape[1], dtype=float)
@@ -87,15 +89,16 @@ def sft_with_simulated_signal(
     *,
     h0: float,
 ) -> SFTData:
-    """SFTs, real or simulated noise, with a simulated signal added at strain amplitude ``h0``.
+    """SFTs, real or simulated noise, with a simulated signal added at amplitude `h0`.
 
     Args:
-        sft: The SFTs, at their own ``strain_unit``.
-        unit_signal: simulated_signal_sft_data() on the same bins and times, in strain x s.
+        sft: The SFTs, at their own `strain_unit`.
+        unit_signal: simulated_signal_sft_data() on the same bins and times, in
+            strain x s.
         h0: Strain amplitude.
 
     Returns:
-        The SFTs holding the signal, at the same ``strain_unit``.
+        The SFTs holding the signal, at the same `strain_unit`.
     """
     added = h0 * unit_signal / sft.strain_unit
     sft_data = (sft.sft_data + added).astype(sft.sft_data.dtype)
@@ -103,18 +106,19 @@ def sft_with_simulated_signal(
 
 
 class SimulatedSource(NamedTuple):
-    """One source and its SFT data at unit strain, the same at every amplitude and mismatch.
+    """One source and its unit-strain SFT data, the same at any amplitude and mismatch.
 
-    Args:
+    Attributes:
         injection: The source.
-        unit_sft_data: Its SFT data at unit strain on the SFTs it was simulated on, per detector.
+        unit_sft_data: Its SFT data at unit strain on the SFTs it was simulated on, per
+            detector.
     """
 
     injection: Injection
     unit_sft_data: list[Complex[np.ndarray, "n_sft n_freq"]]
 
     def injected_sfts(self, sfts: list[SFTData], *, h0: float) -> list[SFTData]:
-        """The SFTs it was simulated on, with it added at amplitude ``h0``.
+        """The SFTs it was simulated on, with it added at amplitude `h0`.
 
         Args:
             sfts: The SFTs, per detector, on the bins and times it was simulated on.
@@ -135,9 +139,9 @@ def simulated_source(
     """One source simulated on the bins and at the times of some SFTs, at unit strain.
 
     Args:
-        injection: The source, its ``phi_b`` quoted at ``t_ref``.
+        injection: The source, its `phi_b` quoted at `t_ref`.
         sfts: The SFTs per detector, real or simulated noise, it is laid on.
-        t_ref: Epoch ``phi_b`` is quoted at, absolute GPS [s].
+        t_ref: Epoch `phi_b` is quoted at, absolute GPS [s].
 
     Returns:
         The source, to be scaled by h0 and added to those SFTs.

@@ -11,7 +11,7 @@ N_DRAWS = 400
 
 
 def draw(n_draws: int, seed: int = 0) -> tuple[np.ndarray, np.ndarray]:
-    """Injections recovered with the known efficiency, at amplitudes around its midpoint."""
+    """Injections recovered with the known efficiency, at h0 around its midpoint."""
     h0 = np.geomspace(0.3 * H0_50, 3.0 * H0_50, N_H0_VALUES)
     truth = np.asarray(
         detection_efficiency(jnp.log(h0), intercept=-SLOPE * np.log(H0_50), slope=SLOPE)
@@ -33,14 +33,14 @@ def test_the_fit_recovers_the_curve_it_was_drawn_from():
 
 
 def test_more_injections_tighten_the_limit():
-    """The error on h95 falls as 1/sqrt(draws), which is what the covariance must carry."""
+    """The error on h95 falls as 1/sqrt(draws), as the covariance must carry."""
     few = fit_efficiency(*draw(100, seed=1)).h0_at(0.95)[1]
     many = fit_efficiency(*draw(1600, seed=1)).h0_at(0.95)[1]
     assert float(few / many) == pytest.approx(4.0, rel=0.5)
 
 
 def test_saturated_amplitudes_do_not_break_the_fit():
-    """Least squares on the fractions needs a floor where p is 0 or 1; the likelihood does not."""
+    """Least squares on fractions needs a floor at p = 0, 1; the likelihood does not."""
     h0 = np.geomspace(1e-3 * H0_50, 1e3 * H0_50, N_H0_VALUES)
     recovered = np.asarray(h0 > H0_50)[None, :].repeat(N_DRAWS, axis=0)
     fit = fit_efficiency(h0, recovered)

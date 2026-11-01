@@ -24,7 +24,7 @@ def test_phase_samples_is_a_power_of_two_above_nyquist(j_max):
 
 
 def test_template_harmonics_are_the_mean_normalized_transform(case: Case, theta):
-    """The /n in the transform, checked directly against the plane's rfft, with j = 0 dropped."""
+    """The /n in the transform, checked against the plane's rfft, with j = 0 dropped."""
     offsets = arc_bin_offsets(case.modulation_depth_bins, pad_bins=ARC_PAD_BINS)
     plane = template_plane(
         offsets,

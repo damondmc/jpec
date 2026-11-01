@@ -29,7 +29,7 @@ WHOLE_SKY = (0.0, 2.0 * np.pi, -0.5 * np.pi, 0.5 * np.pi)
 
 
 def test_sky_lattice_covers_the_sphere_within_the_mismatch():
-    """Any sky position's nearest lattice template is within two axes' budget, on the sky metric it is laid on."""
+    """Every sky point is within two axes' budget of a template, on the sky metric."""
     midpoints = np.arange(0.0, DAYS * DAY, TSFT) + TSFT / 2.0
     times = jnp.asarray(midpoints - midpoints.mean())
     velocity = Detector("H1").velocity(T0 + midpoints)
@@ -72,11 +72,13 @@ def test_sky_lattice_covers_the_sphere_within_the_mismatch():
 
 
 def test_orbital_lattice_covers_band_edges_blocks_and_faces_within_the_budget():
-    """Any point of two neighbouring f0 bands has an in-box template within the three orbital axes' budget.
+    """Any point of two neighbouring f0 bands has an in-box template within the
+    three orbital axes' budget.
 
-    In cubic steps a template ``u`` away costs ``4 mu_axis |u|^2``, so the budget ``3 mu_axis`` is
-    ``|u|^2 <= 3/4``. The omega^2 step is the lower band's, the larger of the two, so a template
-    within the budget in its own band's step is within it in this one.
+    In cubic steps a template ``u`` away costs ``4 mu_axis |u|^2``, so the budget
+    ``3 mu_axis`` is ``|u|^2 <= 3/4``. The omega^2 step is the lower band's, the
+    larger of the two, so a template within the budget in its own band's step is
+    within it in this one.
     """
     period_low, period_high = 7.0 * DAY, 15.0 * DAY
     omega_low, omega_high = 2.0 * np.pi / period_high, 2.0 * np.pi / period_low
@@ -97,7 +99,8 @@ def test_orbital_lattice_covers_band_edges_blocks_and_faces_within_the_budget():
     bands = ((F0, F0 + 0.01), (F0 + 0.01, F0 + 0.02))
     f0_reference = bands[1][1]
 
-    # every in-box template of both bands and both subgrids, in (f0, modulation depth, omega^2)
+    # every in-box template of both bands and both subgrids, in
+    # (f0, modulation depth, omega^2)
     lattice = []
     for band in bands:
         for offset in BCC_SUBGRID_OFFSETS:
@@ -131,8 +134,8 @@ def test_orbital_lattice_covers_band_edges_blocks_and_faces_within_the_budget():
             )
     lattice = np.concatenate(lattice)
 
-    # signals over both bands, the whole box in ap and P: the outer f0 edges, the shared one,
-    # the ap block boundaries and every face of the box are all inside it
+    # signals over both bands, the whole box in ap and P: the outer f0 edges, the
+    # shared one, the ap block boundaries and every face of the box are all inside it
     rng = np.random.default_rng(0)
     n = 20000
     f0 = rng.uniform(bands[0][0], bands[1][1], n)

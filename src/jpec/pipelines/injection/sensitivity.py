@@ -27,12 +27,12 @@ from jpec.stat.efficiency import RecoveryCurve
 def measure_sensitivity_depth(
     run_logger: RunLogger, setup: InjectionSetup, args: argparse.Namespace
 ) -> None:
-    """Inject sources into the setup's band, search around each, and fit the depth per threshold.
+    """Inject sources, search around each, and fit the depth per threshold.
 
     Args:
         run_logger: The run's log and output.
         setup: The injection setup.
-        args: The parsed flags, carrying ``setup`` and ``seed``.
+        args: The parsed flags, carrying `setup` and `seed`.
     """
     started = time.perf_counter()
     trials_config = setup.trials
@@ -68,7 +68,8 @@ def measure_sensitivity_depth(
         for injection, band_data in zip(injections, source_data)
     ]
 
-    # a template bank near each source laid out on the source's band, built once per source, not once per h0
+    # a template bank near each source laid out on the source's band, built once per
+    # source, not once per h0
     tiling = LatticeTiling.from_dict(setup.tiling)
     source_harmonic_banks = [
         HarmonicBank.from_bank(
@@ -89,7 +90,8 @@ def measure_sensitivity_depth(
         for injection, band_data in zip(injections, source_data)
     ]
 
-    # result tracking: one recovery curve per threshold, all fed by the same loudest statistics
+    # result tracking: one recovery curve per threshold, all fed by the same loudest
+    # statistics
     thresholds = setup.thresholds
     curves = [RecoveryCurve(efficiency=curve_config.efficiency) for _ in thresholds]
     run_logger.injection_summary(setup, data, setup_path=args.setup, seed=args.seed)
@@ -100,7 +102,8 @@ def measure_sensitivity_depth(
 
     def search_injections_at(h0: float) -> None:
         # noise + h0 x signal around every source, its floor taken before the injection,
-        # then the search loop over its bank, only the loudest template of each grid kept
+        # then the search loop over its bank, only the loudest template of each grid
+        # kept
         loudest = np.zeros(len(sources))
         for source_idx, (source, band_data, harmonic_bank) in enumerate(
             zip(sources, source_data, source_harmonic_banks)
@@ -132,8 +135,8 @@ def measure_sensitivity_depth(
             f"  h0 {h0:.4e}  depth {data.sqrt_sn / h0:>6.1f}  recovered {recovered}"
         )
 
-    # h0 loop: the first scan, then per threshold one point at its fitted h95 until it is
-    # known to tolerance; every point added feeds every curve
+    # h0 loop: the first scan, then per threshold one point at its fitted h95 until it
+    # is known to tolerance; every point added feeds every curve
     loud_depth, weak_depth = curve_config.sensitivity_depth
     for h0 in data.sqrt_sn / np.geomspace(
         weak_depth, loud_depth, curve_config.n_amplitudes
@@ -160,7 +163,8 @@ def measure_sensitivity_depth(
         thresholds, depth, depth_error, h95
     ):
         run_logger.info(
-            f"Depth at S {threshold:.4g}: {threshold_depth:.1f} +- {threshold_depth_error:.1f} (h95 {threshold_h95:.3e})"
+            f"Depth at S {threshold:.4g}: {threshold_depth:.1f} "
+            f"+- {threshold_depth_error:.1f} (h95 {threshold_h95:.3e})"
         )
     run_logger.info(f"Done: time used {elapsed:.1f} s")
 
