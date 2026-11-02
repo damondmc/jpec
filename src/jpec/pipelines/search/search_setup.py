@@ -156,7 +156,7 @@ def search_memory_gb(
         corrected_bytes = n_doppler_references * n_sfts * n_band_bins * FLOAT32_BYTES
         per_period_bytes = (
             j_max * n_sfts * COMPLEX64_BYTES
-            + j_max * n_sfts * FLOAT32_BYTES
+            + j_max * n_sfts * 2 * FLOAT32_BYTES
             + n_doppler_references * j_max * n_transformed_bins * COMPLEX64_BYTES
             + n_matched_f0_points * n_window_modulation_depths * j_max * COMPLEX64_BYTES
             + n_matched_f0_points
