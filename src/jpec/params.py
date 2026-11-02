@@ -3,6 +3,7 @@
 from typing import NamedTuple
 
 import jax.numpy as jnp
+import numpy as np
 from jaxtyping import Array, Float
 
 from jpec.typing import Scalar
@@ -65,12 +66,12 @@ def omega_from_period(period: Float[Array, "..."]) -> Float[Array, "..."]:
 
 
 def ap_from_modulation_depth_bins(
-    modulation_depth_bins: Float[Array, "..."],
+    modulation_depth_bins: float | Float[np.ndarray, "..."],
     *,
-    f0: Float[Array, "..."],
-    omega: Float[Array, "..."],
+    f0: float | Float[np.ndarray, "..."],
+    omega: float | Float[np.ndarray, "..."],
     tsft: float,
-) -> Float[Array, "..."]:
+) -> float | Float[np.ndarray, "..."]:
     """The projected semi-major axis a modulation depth in bins implies [light-seconds].
 
     Args:

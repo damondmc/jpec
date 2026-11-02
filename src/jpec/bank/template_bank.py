@@ -215,9 +215,9 @@ class TemplateBank(NamedTuple):
             template_grid.orbital_subgrid.modulation_depth_bins[modulation_depth_idx]
         )
         ap = ap_from_modulation_depth_bins(
-            jnp.asarray(modulation_depth_bins),
-            f0=jnp.asarray(f0),
-            omega=omega_from_period(jnp.asarray(period)),
+            modulation_depth_bins,
+            f0=f0,
+            omega=2.0 * np.pi / period,
             tsft=template_grid.tsft,
         )
         return Parameters(

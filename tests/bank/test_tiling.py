@@ -96,18 +96,18 @@ def test_templates_stay_inside_the_seam_margin(tiling: LatticeTiling):
         omega = 2.0 * np.pi / orbital_subgrid.period
         ap = np.asarray(
             ap_from_modulation_depth_bins(
-                jnp.asarray(orbital_subgrid.modulation_depth_bins[None, :]),
-                f0=jnp.asarray(f0_centre),
-                omega=jnp.asarray(omega[:, None]),
+                orbital_subgrid.modulation_depth_bins[None, :],
+                f0=f0_centre,
+                omega=omega[:, None],
                 tsft=tiling.tsft,
             )
         )
         step_ap = np.broadcast_to(
             np.asarray(
                 ap_from_modulation_depth_bins(
-                    jnp.asarray(BCC_SUBGRID_STEP * tiling.modulation_depth_step),
-                    f0=jnp.asarray(f0_centre),
-                    omega=jnp.asarray(omega[:, None]),
+                    BCC_SUBGRID_STEP * tiling.modulation_depth_step,
+                    f0=f0_centre,
+                    omega=omega[:, None],
                     tsft=tiling.tsft,
                 )
             ),

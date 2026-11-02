@@ -166,18 +166,18 @@ def orbital_subgrid(
         # [n_period, n_modulation_depth]
         ap = np.asarray(
             ap_from_modulation_depth_bins(
-                jnp.asarray(modulation_depth_bins[None, :]),
-                f0=jnp.asarray(f0_centre),
-                omega=jnp.asarray(omega[:, None]),
+                modulation_depth_bins[None, :],
+                f0=f0_centre,
+                omega=omega[:, None],
                 tsft=tsft,
             )
         )
         # one modulation-depth step, in ap
         ap_margin = np.asarray(
             ap_from_modulation_depth_bins(
-                jnp.asarray(subgrid_modulation_depth_step),
-                f0=jnp.asarray(f0_centre),
-                omega=jnp.asarray(omega[:, None]),
+                subgrid_modulation_depth_step,
+                f0=f0_centre,
+                omega=omega[:, None],
                 tsft=tsft,
             )
         )
