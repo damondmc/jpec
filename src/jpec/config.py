@@ -83,7 +83,7 @@ class SearchLoopConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # trial periods per transform
-    period_batch_size: int = Field(default=32, ge=1)
+    period_batch_size: int = Field(default=16, ge=1)
     # f0 points matched at once
     f0_batch_size: int = Field(default=32, ge=1)
     # template offsets across one bin
