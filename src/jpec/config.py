@@ -48,12 +48,23 @@ class ParameterSpaceConfig(BaseModel):
 
     @model_validator(mode="after")
     def _low_below_high(self) -> "ParameterSpaceConfig":
-        for axis in ("f0", "ap", "period", "phi_b", "alpha", "delta"):
+        for axis in ("f0", "phi_b"):
             low, high = getattr(self, axis)
             if low >= high:
                 raise ValueError(
                     f"parameter_space.{axis} is [{low}, {high}] and needs low < high"
                 )
+        for axis in ("ap", "period", "alpha", "delta"):
+            low, high = getattr(self, axis)
+            if low > high:
+                raise ValueError(
+                    f"parameter_space.{axis} is [{low}, {high}] and needs low <= high"
+                )
+        if (self.alpha[0] == self.alpha[1]) != (self.delta[0] == self.delta[1]):
+            raise ValueError(
+                "parameter_space.alpha and delta give a line on the sky; give both "
+                "as intervals, or both as one value for a point"
+            )
         return self
 
 

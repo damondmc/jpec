@@ -12,7 +12,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-from jpec.bank.template_bank import OrbitalTemplateGrid, TemplateBank
+from jpec.bank.template_bank import TemplateBank
 from jpec.bank.tiling import LatticeTiling
 from jpec.config import SearchLoopConfig
 from jpec.constant import DAY
@@ -150,16 +150,9 @@ def main() -> None:
         source.injected_sfts(noise_sfts, h0=h0), floor=floor, t_ref=t_ref
     )
 
-    # the bank over the box at the source's sky position, its layouts, tau[j, k] and
-    # x_n built once for both searches
-    template_grids = [
-        OrbitalTemplateGrid(orbital_subgrid=orbital_subgrid, tsft=TSFT, window=WINDOW)
-        for orbital_subgrid in tiling.orbital_subgrids(*PRIOR.f0)
-    ]
-    bank = TemplateBank(
-        template_grids=template_grids,
-        alpha=np.array([ALPHA]),
-        delta=np.array([DELTA]),
+    # the bank over the box
+    bank = TemplateBank.over_f0_interval(
+        tiling, *PRIOR.f0, velocity=noise_data.velocity, window=WINDOW
     )
     harmonic_bank = HarmonicBank.from_bank(
         bank,

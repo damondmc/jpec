@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -65,6 +67,18 @@ def test_record_round_trips(tiling: LatticeTiling):
     assert record["lattice"] == "bcc"
     assert record["prior"]["period"] == list(BOX.period)
     assert LatticeTiling.from_dict(record) == tiling
+
+
+def test_a_point_sky_gives_the_point(tiling: LatticeTiling):
+    """A point sky gives that point alone."""
+    point_tiling = replace(
+        tiling, prior=BOX._replace(alpha=(1.2, 1.2), delta=(0.3, 0.3))
+    )
+    midpoints = np.arange(0.0, DAYS * DAY, TSFT) + TSFT / 2.0
+    velocity = Detector("H1").velocity(T0 + midpoints)
+    alpha, delta = point_tiling.sky_points(velocity, f0=BOX.f0[1])
+    assert alpha.tolist() == [1.2]
+    assert delta.tolist() == [0.3]
 
 
 def test_a_foreign_record_is_rejected(tiling: LatticeTiling):

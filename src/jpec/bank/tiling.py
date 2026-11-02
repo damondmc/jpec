@@ -182,6 +182,10 @@ class LatticeTiling:
         Returns:
             Right ascension and declination of each position [rad].
         """
+        alpha_low, alpha_high = self.prior.alpha
+        delta_low, delta_high = self.prior.delta
+        if alpha_low == alpha_high and delta_low == delta_high:
+            return np.array([alpha_low]), np.array([delta_low])
         return sky_lattice(
             velocity,
             f0=f0,
