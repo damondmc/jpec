@@ -33,20 +33,21 @@ from jpec.pipelines.search.search_setup import GB
 from jpec.stat.matched_filter import orbital_phase_mod_2pi
 
 
-def mean_seconds(function: Callable[[], Any], *, repeats: int) -> float:
+def mean_seconds(function: Callable[..., Any], *args: Any, repeats: int) -> float:
     """The mean wall time of a call, its device work finished.
 
     Args:
         function: What to time; whatever it returns is waited on.
+        *args: What it is called with.
         repeats: Timed calls, after one untimed call that compiles.
 
     Returns:
         Mean seconds per call.
     """
-    jax.block_until_ready(function())
+    jax.block_until_ready(function(*args))
     began = time.perf_counter()
     for _ in range(repeats):
-        jax.block_until_ready(function())
+        jax.block_until_ready(function(*args))
     return (time.perf_counter() - began) / repeats
 
 
@@ -129,16 +130,24 @@ def run(args: argparse.Namespace) -> None:
             )
             return jitted_orbital_basis(jnp.asarray(batch_orbital_phase), j_max=j_max)
 
+        # timed before a basis is kept, so the device holds one at a time as the
+        # search does
+        orbital_basis_seconds.append(mean_seconds(orbital_basis, repeats=args.repeats))
         batch_orbital_basis = orbital_basis()
 
-        def transform() -> Complex[
-            Array, "n_doppler_reference n_period n_harmonic n_transformed_bin"
-        ]:
-            return jitted_data_harmonics_per_reference(
-                corrected_sft_power, batch_orbital_basis
+        # the basis passed, not closed over, so the del below frees it
+        transform_seconds.append(
+            mean_seconds(
+                jitted_data_harmonics_per_reference,
+                corrected_sft_power,
+                batch_orbital_basis,
+                repeats=args.repeats,
             )
-
-        batch_data_harmonics = transform()
+        )
+        batch_data_harmonics = jitted_data_harmonics_per_reference(
+            corrected_sft_power, batch_orbital_basis
+        )
+        del batch_orbital_basis
 
         # the match and the device-side cut to the loudest, as the search runs them
         def match() -> tuple[
@@ -164,8 +173,6 @@ def run(args: argparse.Namespace) -> None:
                 n_loudest=min(setup.n_toplist, max_statistic.size),
             )
 
-        orbital_basis_seconds.append(mean_seconds(orbital_basis, repeats=args.repeats))
-        transform_seconds.append(mean_seconds(transform, repeats=args.repeats))
         match_seconds.append(mean_seconds(match, repeats=args.repeats))
 
     # seconds per call, and calls per sky point over every subgrid as this one

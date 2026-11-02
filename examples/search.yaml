@@ -14,7 +14,7 @@ compute:
 n_toplist: 100000               # loudest templates kept per job
 
 search_loop:
-  period_batch_size: 32         # trial periods per transform; the orbital basis, a job's largest
+  period_batch_size: 16         # trial periods per transform; the orbital basis, a job's largest
                                 # memory term, grows with it
   f0_batch_size: 32             # f0 points matched at once, which caps the S(phi_b) held
   n_sub_bin_offsets: 8          # template offsets across one bin; an f0 point takes the nearest

@@ -333,6 +333,9 @@ def orbital_statistics(
             batch_data_harmonics = jitted_data_harmonics_per_reference(
                 corrected_sft_power, batch_orbital_basis
             )
+            # freed once the transform is done, not held while the next batch's basis
+            # is built
+            del batch_orbital_basis
             # one call for every f0 point of the batch
             max_statistic, phase_idxs = matched_filter_grid(
                 data_harmonics=batch_data_harmonics,
