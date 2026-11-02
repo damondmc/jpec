@@ -28,7 +28,6 @@ jpec = "jpec.pipelines.cli:main"
 [project.optional-dependencies]
 bench = ["fasttracks>=0.1.0"]
 gpu = ["jax[cuda12]>=0.10.1"]
-nufft = ["jax-finufft>=1.3.1"]
 nb = [
     "jupyterlab>=4.6",
     "nbformat>=5.11",
