@@ -136,9 +136,10 @@ def search_memory_gb(
     # one set per sub-bin offset
     template_harmonics_bytes = 0
     # one subgrid at a time: the band Doppler-corrected at every reference, and per
-    # trial period of a batch the orbital basis, F[j, k] over the transformed bins at
-    # every reference, and c[j] and S(phi_b) per f0 point of an f0 batch and modulation
-    # depth of the batch's window
+    # trial period of a batch the orbital basis, the float32 real or imaginary part the
+    # transform copies it into, F[j, k] over the transformed bins at every reference,
+    # and c[j] and S(phi_b) per f0 point of an f0 batch and modulation depth of the
+    # batch's window
     subgrid_bytes = 0
     for layout in layouts:
         template_grid = layout.template_grid
@@ -160,6 +161,7 @@ def search_memory_gb(
         corrected_bytes = n_doppler_references * n_sfts * n_band_bins * FLOAT32_BYTES
         per_period_bytes = (
             j_max * n_sfts * COMPLEX64_BYTES
+            + j_max * n_sfts * FLOAT32_BYTES
             + n_doppler_references * j_max * n_transformed_bins * COMPLEX64_BYTES
             + n_matched_f0_points * n_window_modulation_depths * j_max * COMPLEX64_BYTES
             + n_matched_f0_points
