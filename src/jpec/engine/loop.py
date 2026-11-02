@@ -182,15 +182,14 @@ def loudest_in_box(
 class HarmonicBank(NamedTuple):
     """A bank as the loop matches it: each subgrid's harmonics, phases and band layout.
 
-    Built once for every sky point and every data set on that band with those SFT
-    times.
+    Built once for every sky point and every data set on that band.
 
     Attributes:
         bank: The bank.
         layouts: Its subgrids in order, from subgrid_layout() on the band.
         template_harmonics: Each subgrid's `tau[j, k]` at its layout's sub-bin
             offsets.
-        orbital_phases: Each subgrid's `x_n` at every trial period of its layout.
+        orbital_phases: Each subgrid's orbital phase.
     """
 
     bank: TemplateBank
@@ -240,8 +239,6 @@ class HarmonicBank(NamedTuple):
             )
             for layout in layouts
         ]
-        # the phase depends on neither the sky nor f0, so it is wrapped once here, in
-        # float64 on the host so float32 holds the phase the highest harmonics need
         orbital_phases = [
             jnp.asarray(orbital_phase_mod_2pi(times, layout.omega))
             for layout in layouts
@@ -353,8 +350,7 @@ def orbital_statistics(
             batch_data_harmonics = jitted_data_harmonics_per_reference(
                 corrected_sft_power, batch_orbital_basis
             )
-            # freed once the transform is done, not held while the next batch's basis
-            # is built
+            # the match reads only F[j, k]
             del batch_orbital_basis
             # one call for every f0 point of the batch
             max_statistic, phase_idxs = matched_filter_grid(

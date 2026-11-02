@@ -52,7 +52,7 @@ def search_job(
         velocity=search_data.velocity,
         window=setup.data.window,
     )
-    # the layouts, tau[j, k] and x_n once per subgrid, shared by every sky point
+    # tau[j, k] and orbital phases once per subgrid, shared by every sky point
     harmonic_bank = HarmonicBank.from_bank(
         bank,
         times=search_data.times,
