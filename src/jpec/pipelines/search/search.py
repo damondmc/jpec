@@ -94,6 +94,12 @@ def search_job(
     elapsed = time.perf_counter() - started
     run_logger.info(f"Candidates kept: {len(candidate_dicts)} / {setup.n_toplist}.")
     run_logger.info(f"Done: time used {elapsed:.1f} s")
+    device_memory_gb = run_logger.device_memory_gb()
+    if device_memory_gb is not None:
+        run_logger.info(
+            f"Peak device memory: {device_memory_gb[1]:.2f} GB; the setup models the "
+            f"job at {job_setup.memory_gb:.2f} GB"
+        )
 
     run_logger.save_result(
         f"search_job{job_setup.job_idx:05d}",
@@ -105,6 +111,7 @@ def search_job(
             "n_sky_points": int(bank.alpha.size),
             "t_ref": search_data.t_ref,
             "seconds": elapsed,
+            "modelled_gb": job_setup.memory_gb,
             "n_doppler_references_per_subgrid": n_doppler_references_per_subgrid,
             "search_loop": search_loop_config.model_dump(),
             # loudest first

@@ -28,6 +28,7 @@ from jpec.config import (
     read_config,
     read_json,
 )
+from jpec.constant import GB
 from jpec.detector.site import reference_epoch, times_and_velocity
 from jpec.engine.data import band_edges_for_f0
 from jpec.engine.layout import (
@@ -40,7 +41,6 @@ from jpec.waveform.window import Window
 
 COMPLEX64_BYTES = 8
 FLOAT32_BYTES = 4
-GB = 2.0**30
 # halvings to find the widest f0 interval that fits
 N_BISECTIONS = 24
 

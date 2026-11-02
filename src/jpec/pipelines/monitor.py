@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from jpec.bank.template_bank import TemplateBank
 from jpec.config import InjectionSetup, JobSetup, SearchLoopConfig, SearchSetup
+from jpec.constant import GB
 from jpec.engine.data import SearchData
 
 
@@ -105,6 +106,7 @@ class RunLogger:
         self.run_metadata = {
             "backend": jax.default_backend(),
             "devices": [str(device) for device in jax.devices()],
+            "device_kind": jax.devices()[0].device_kind,
             "x64": x64,
             "jax": jax.__version__,
             "jpec": importlib.metadata.version("jpec"),
@@ -133,7 +135,8 @@ class RunLogger:
 
         self.info(
             f"backend {self.run_metadata['backend']}  "
-            f"devices {self.run_metadata['devices']}  "
+            f"devices {self.run_metadata['devices']} "
+            f"({self.run_metadata['device_kind']})  "
             f"x64 {x64}  jax {jax.__version__}  host {self.run_metadata['host']}"
         )
         if platform == "gpu" and jax.default_backend() != "gpu":
@@ -148,6 +151,20 @@ class RunLogger:
             message: The line.
         """
         self.logger.info(message)
+
+    def device_memory_gb(self) -> tuple[float, float] | None:
+        """Giga-bytes the first device holds now and has held at most.
+
+        Returns:
+            In use and peak, or None on a backend that keeps no memory stats.
+        """
+        memory_stats = jax.devices()[0].memory_stats()
+        if memory_stats is None:
+            return None
+        return (
+            memory_stats["bytes_in_use"] / GB,
+            memory_stats["peak_bytes_in_use"] / GB,
+        )
 
     def save_result(
         self, name: str, payload: dict[str, Any], *, per_host: bool = False
@@ -167,8 +184,13 @@ class RunLogger:
         if per_host:
             stem = f"{name}_{self.run_metadata['backend']}_{self.short_host}"
         path = self.output / f"{stem}.json"
+        device_memory_gb = self.device_memory_gb()
+        peak_gb = None if device_memory_gb is None else device_memory_gb[1]
         path.write_text(
-            json.dumps({"name": name, **self.run_metadata, **payload}, indent=2)
+            json.dumps(
+                {"name": name, **self.run_metadata, "peak_gb": peak_gb, **payload},
+                indent=2,
+            )
         )
         self.info(f"wrote {path}")
         return path
@@ -211,8 +233,13 @@ class RunLogger:
         if self.job_progress is None:
             return
         report = self.job_progress.report(sky_idx, subgrid_idx)
-        if report is not None:
-            self.info(report)
+        if report is None:
+            return
+        device_memory_gb = self.device_memory_gb()
+        if device_memory_gb is not None:
+            in_use_gb, peak_gb = device_memory_gb
+            report += f"  device {in_use_gb:.2f} GB, peak {peak_gb:.2f} GB"
+        self.info(report)
 
     def data_summary(self, search_data: SearchData) -> None:
         """Log the band as loaded, the lines a search and an injection run share.

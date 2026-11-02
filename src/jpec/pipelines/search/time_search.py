@@ -28,7 +28,6 @@ from jpec.engine.loop import (
     matched_filter_grid,
 )
 from jpec.pipelines.monitor import RunLogger
-from jpec.pipelines.search.search_setup import GB
 from jpec.stat.matched_filter import orbital_phase_mod_2pi
 
 
@@ -215,13 +214,12 @@ def run(args: argparse.Namespace) -> None:
             f"{seconds_per_sky_point[name] / sky_point_seconds:>8.1%}"
         )
     run_logger.info(f"{'one sky point':<24}{'':>13}{'':>21}{sky_point_seconds:>17.2f}")
-    # the device's peak against the memory model's for the job timed; no stats on CPU
-    memory_stats = jax.devices()[0].memory_stats()
-    peak_gb = None if memory_stats is None else memory_stats["peak_bytes_in_use"] / GB
-    if peak_gb is not None:
+    # the device's peak against the memory model's for the job timed
+    device_memory_gb = run_logger.device_memory_gb()
+    if device_memory_gb is not None:
         run_logger.info(
-            f"peak device memory {peak_gb:.2f} GB; the setup models job 0 at "
-            f"{job_setup.memory_gb:.2f} GB"
+            f"peak device memory {device_memory_gb[1]:.2f} GB; the setup models job 0 "
+            f"at {job_setup.memory_gb:.2f} GB"
         )
 
     run_logger.save_result(
@@ -242,7 +240,6 @@ def run(args: argparse.Namespace) -> None:
             "seconds_per_call": {name: call for name, (call, _) in stages.items()},
             "calls_per_sky_point": {name: calls for name, (_, calls) in stages.items()},
             "seconds_per_sky_point": seconds_per_sky_point,
-            "peak_gb": peak_gb,
             "modelled_gb": job_setup.memory_gb,
             # read by jpec search-setup
             "rates": rates,
