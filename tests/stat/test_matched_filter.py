@@ -8,7 +8,6 @@ from jpec.stat.matched_filter import (
     data_harmonics,
     harmonic_overlap,
     max_over_phase,
-    orbital_basis,
     orbital_phase_mod_2pi,
     statistic_over_phase,
 )
@@ -106,18 +105,17 @@ def test_max_over_phase_is_the_peak_of_the_statistic(setup):
     assert float(value) == pytest.approx(float(jnp.max(statistic)), rel=1e-12)
 
 
-def test_one_basis_and_a_batch_of_bases_agree(case: Case, setup):
-    """An omega array gives a basis each, so a period batch is many single templates."""
+def test_one_period_and_a_batch_of_periods_agree(case: Case, setup):
+    """An omega array gives `F[j, k]` each, so a period batch is many single periods."""
     times = jnp.arange(setup["n_theta"]) * (2.0 * jnp.pi / setup["n_theta"])
     omegas = jnp.array([1.0, 1.5, 2.0])
     plane = jnp.ones((setup["n_theta"], setup["bin_offsets"].size))
     batch = data_harmonics(
-        plane, orbital_basis(jnp.asarray(orbital_phase_mod_2pi(times, omegas)), j_max=4)
+        plane, jnp.asarray(orbital_phase_mod_2pi(times, omegas)), j_max=4
     )
     for row, omega in enumerate(omegas):
         single_omega_harmonics = data_harmonics(
-            plane,
-            orbital_basis(jnp.asarray(orbital_phase_mod_2pi(times, omega)), j_max=4),
+            plane, jnp.asarray(orbital_phase_mod_2pi(times, omega)), j_max=4
         )
         np.testing.assert_allclose(
             batch[row], single_omega_harmonics, rtol=1e-12, atol=1e-14
@@ -133,8 +131,11 @@ def test_wrapped_phase_holds_the_highest_harmonic_in_float32():
     j_max = 313
     j = np.arange(1, j_max + 1)
     exact = j[:, None] * omega * times
+    # unit power at one SFT per bin, so F[j, k] is the basis at SFT k over n_sft
+    unit_power = jnp.eye(times.size, dtype=jnp.float32)
 
-    wrapped = orbital_basis(
+    wrapped = data_harmonics(
+        unit_power,
         jnp.asarray(orbital_phase_mod_2pi(times, omega), dtype=jnp.float32),
         j_max=j_max,
     )
@@ -144,7 +145,7 @@ def test_wrapped_phase_holds_the_highest_harmonic_in_float32():
 
     # the phase formed in float32, unwrapped
     unwrapped_phase = jnp.float32(omega) * jnp.asarray(times, dtype=jnp.float32)
-    unwrapped = orbital_basis(unwrapped_phase, j_max=j_max)
+    unwrapped = data_harmonics(unit_power, unwrapped_phase, j_max=j_max)
     unwrapped_error = np.abs(np.angle(np.asarray(unwrapped) * np.exp(1j * exact)))
     assert unwrapped_error.max() > 10.0 * wrapped_error.max()
 

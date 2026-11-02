@@ -1,4 +1,4 @@
-"""Matched filter: orbital basis, data harmonics, statistic over orbital phase."""
+"""Matched filter: orbital phase, data harmonics, statistic over orbital phase."""
 
 import jax
 import jax.numpy as jnp
@@ -26,43 +26,29 @@ def orbital_phase_mod_2pi(
     return np.mod(phase, 2.0 * np.pi)
 
 
-def orbital_basis(
-    orbital_phase: Float[Array, "... n_sft"], *, j_max: int
-) -> Complex[Array, "... n_harmonic n_sft"]:
-    """The harmonic basis on orbital phase.
-
-        basis[j, n] = exp(-i j x_n),  j = 1..j_max
-
-    Args:
-        orbital_phase: `x_n`, orbital_phase_mod_2pi() at the SFT midpoints [rad]; a
-            leading axis of trial periods gives one basis each.
-        j_max: Highest harmonic to keep.
-
-    Returns:
-        `basis[..., j, n]`, j-th harmonic at the n-th SFT.
-    """
-    j = jnp.arange(1, j_max + 1)
-    return jnp.exp(-1j * j[:, None] * orbital_phase[..., None, :])
-
-
 def data_harmonics(
     sft_power: Float[Array, "n_sft n_freq"],
-    orbital_basis: Complex[Array, "... n_harmonic n_sft"],
+    orbital_phase: Float[Array, "... n_sft"],
+    *,
+    j_max: int,
 ) -> Complex[Array, "... n_harmonic n_freq"]:
-    """The SFT power expressed in the orbital basis.
+    """The SFT power expressed in the harmonic basis on orbital phase.
 
-        F[j, k] = <orbital_basis[j, n] sft_power[n, k]>_n
+        F[j, k] = <exp(-i j x_n) sft_power[n, k]>_n,  j = 1..j_max
 
     Args:
         sft_power: Normalized power, SFT n by frequency bin k.
-        orbital_basis: orbital_basis() at the SFTs' midpoints.
+        orbital_phase: `x_n`, orbital_phase_mod_2pi() at the SFT midpoints [rad]; a
+            leading axis of trial periods gives one `F[j, k]` each.
+        j_max: Highest harmonic to keep.
 
     Returns:
-        `F[j, k]` for each basis given.
+        `F[j, k]` for each phase given.
     """
-    # the power is real, so two real matmuls instead of one complex one
-    real = jnp.real(orbital_basis) @ sft_power
-    imag = jnp.imag(orbital_basis) @ sft_power
+    j = jnp.arange(1, j_max + 1, dtype=orbital_phase.dtype)
+    harmonic_phase = j[:, None] * orbital_phase[..., None, :]
+    real = jnp.cos(harmonic_phase) @ sft_power
+    imag = -jnp.sin(harmonic_phase) @ sft_power
     return jax.lax.complex(real, imag) / sft_power.shape[0]
 
 

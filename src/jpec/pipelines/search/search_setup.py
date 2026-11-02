@@ -155,8 +155,7 @@ def search_memory_gb(
         orbital_phase_bytes += layout.omega.size * n_sfts * FLOAT32_BYTES
         corrected_bytes = n_doppler_references * n_sfts * n_band_bins * FLOAT32_BYTES
         per_period_bytes = (
-            j_max * n_sfts * COMPLEX64_BYTES
-            + j_max * n_sfts * 2 * FLOAT32_BYTES
+            j_max * n_sfts * 2 * FLOAT32_BYTES
             + n_doppler_references * j_max * n_transformed_bins * COMPLEX64_BYTES
             + n_matched_f0_points * n_window_modulation_depths * j_max * COMPLEX64_BYTES
             + n_matched_f0_points
@@ -208,13 +207,12 @@ def search_hours(
         )
         # every batch is a full run of periods
         n_periods = len(layout.period_batches) * layout.period_batch_size
-        orbital_basis_seconds = j_max * n_sfts * rates["orbital_basis"]
         transform_seconds = (
             layout.doppler_references.size
             * j_max
             * n_sfts
             * n_transformed_bins
-            * rates["transform"]
+            * rates["data_harmonics"]
         )
         match_seconds = (
             layout.window_start_idxs.size
@@ -223,9 +221,7 @@ def search_hours(
             * template_grid.bin_offsets.shape[0]
             * rates["match"]
         )
-        seconds_per_sky_point += n_periods * float(
-            orbital_basis_seconds + transform_seconds + match_seconds
-        )
+        seconds_per_sky_point += n_periods * float(transform_seconds + match_seconds)
     return n_sky_points * seconds_per_sky_point / 3600.0
 
 

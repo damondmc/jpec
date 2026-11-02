@@ -9,11 +9,7 @@ import numpy as np
 from jpec.constant import ARC_PAD_BINS, DAY, PHASE_OVERSAMPLE
 from jpec.detector.doppler import doppler_corrected_power
 from jpec.params import Parameters
-from jpec.stat.matched_filter import (
-    data_harmonics,
-    orbital_basis,
-    orbital_phase_mod_2pi,
-)
+from jpec.stat.matched_filter import data_harmonics, orbital_phase_mod_2pi
 from jpec.waveform.harmonics import (
     harmonic_count,
     phase_sample_count,
@@ -126,10 +122,8 @@ def search_data_harmonics(
     kept_bin_idxs = slice(
         centre_idx - half_width_bins, centre_idx + half_width_bins + 1
     )
-    sft_orbital_basis = orbital_basis(
-        jnp.asarray(orbital_phase_mod_2pi(times, point.omega)), j_max=j_max
-    )
+    sft_orbital_phase = jnp.asarray(orbital_phase_mod_2pi(times, point.omega))
     return (
-        data_harmonics(sft_power[:, kept_bin_idxs], sft_orbital_basis),
+        data_harmonics(sft_power[:, kept_bin_idxs], sft_orbital_phase, j_max=j_max),
         bin_offsets[kept_bin_idxs],
     )

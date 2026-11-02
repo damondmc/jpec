@@ -22,9 +22,8 @@ from jpec.config import SearchSetup, read_json
 from jpec.engine.data import SearchData
 from jpec.engine.layout import subgrid_layout
 from jpec.engine.loop import (
+    data_harmonics_per_reference,
     doppler_corrected_power_per_reference,
-    jitted_data_harmonics_per_reference,
-    jitted_orbital_basis,
     loudest_in_box,
     matched_filter_grid,
 )
@@ -119,32 +118,21 @@ def run(args: argparse.Namespace) -> None:
 
     orbital_phases = jnp.asarray(orbital_phase_mod_2pi(search_data.times, layout.omega))
 
-    orbital_basis_seconds, transform_seconds, match_seconds = [], [], []
+    transform_seconds, match_seconds = [], []
     for batch in layout.period_batches[: args.n_period_batches_timed]:
 
-        def orbital_basis() -> Complex[Array, "n_period n_harmonic n_sft"]:
+        def transform() -> Complex[
+            Array, "n_doppler_reference n_period n_harmonic n_transformed_bin"
+        ]:
             batch_orbital_phase = jax.lax.dynamic_slice_in_dim(
                 orbital_phases, batch.period_start_idx, period_batch_size
             )
-            return jitted_orbital_basis(batch_orbital_phase, j_max=j_max)
-
-        # timed before the batch's basis is kept, so one basis is held at a time, as
-        # in the search loop
-        orbital_basis_seconds.append(mean_seconds(orbital_basis, repeats=args.repeats))
-        batch_orbital_basis = orbital_basis()
-
-        transform_seconds.append(
-            mean_seconds(
-                jitted_data_harmonics_per_reference,
-                corrected_sft_power,
-                batch_orbital_basis,
-                repeats=args.repeats,
+            return data_harmonics_per_reference(
+                corrected_sft_power, batch_orbital_phase, j_max=j_max
             )
-        )
-        batch_data_harmonics = jitted_data_harmonics_per_reference(
-            corrected_sft_power, batch_orbital_basis
-        )
-        del batch_orbital_basis
+
+        transform_seconds.append(mean_seconds(transform, repeats=args.repeats))
+        batch_data_harmonics = transform()
 
         # the match and the device-side cut to the loudest, as the search runs them
         def match() -> tuple[
@@ -178,10 +166,6 @@ def run(args: argparse.Namespace) -> None:
             doppler_seconds / n_doppler_references,
             n_subgrids * n_doppler_references,
         ),
-        "orbital basis": (
-            float(np.mean(orbital_basis_seconds)),
-            n_subgrids * n_period_batches,
-        ),
         "transform": (
             float(np.mean(transform_seconds)) / n_doppler_references,
             n_subgrids * n_period_batches * n_doppler_references,
@@ -194,9 +178,9 @@ def run(args: argparse.Namespace) -> None:
     sky_point_seconds = sum(seconds_per_sky_point.values())
 
     # what jpec search-setup prices a job with: seconds per SFT bin of the Doppler
-    # correction at one reference, per element of the basis, per multiply-add of the
-    # transform at one reference and of the match
-    orbital_basis_work = period_batch_size * j_max * search_data.n_sfts
+    # correction at one reference, per multiply-add of the transform at one reference,
+    # its basis included, and of the match
+    transform_work = period_batch_size * j_max * search_data.n_sfts * n_transformed_bins
     match_work = (
         n_f0_points
         * period_batch_size
@@ -207,8 +191,7 @@ def run(args: argparse.Namespace) -> None:
     rates = {
         "doppler_correction": stages["doppler correction"][0]
         / (search_data.n_sfts * search_data.n_band_bins),
-        "orbital_basis": stages["orbital basis"][0] / orbital_basis_work,
-        "transform": stages["transform"][0] / (orbital_basis_work * n_transformed_bins),
+        "data_harmonics": stages["transform"][0] / transform_work,
         "match": stages["match"][0] / match_work,
     }
 

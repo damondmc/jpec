@@ -19,7 +19,6 @@ from jpec.noise.gaussian import gaussian_noise_sft
 from jpec.stat.matched_filter import (
     data_harmonics,
     harmonic_overlap,
-    orbital_basis,
     statistic_over_phase,
 )
 from jpec.waveform.harmonics import harmonic_count, phase_sample_count
@@ -38,7 +37,7 @@ NOISE_SIGMA = (
 
 def plane_harmonics(plane, theta, j_max):
     """Data harmonics of a plane at these orbital phases."""
-    return data_harmonics(plane, orbital_basis(theta, j_max=j_max))
+    return data_harmonics(plane, theta, j_max=j_max)
 
 
 def test_data_harmonics_match_the_fft_on_a_uniform_grid(case: Case, theta):

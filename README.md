@@ -127,7 +127,6 @@ from jpec.params import Parameters
 from jpec.stat.matched_filter import (
     data_harmonics,
     max_over_phase,
-    orbital_basis,
     orbital_phase_mod_2pi,
 )
 from jpec.waveform.harmonics import (
@@ -170,8 +169,7 @@ tau = template_harmonics(
 
 # the data's harmonics: a second Fourier transform, of the power in orbital phase
 phase = orbital_phase_mod_2pi(times, signal.omega)
-basis = orbital_basis(jnp.asarray(phase), j_max=j_max)
-F = data_harmonics(sft_power, basis)
+F = data_harmonics(sft_power, jnp.asarray(phase), j_max=j_max)
 
 # the matched filter, over every orbital phase
 S, phase_idx = max_over_phase(F, tau, n_phi=n_phi)

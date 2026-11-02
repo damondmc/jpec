@@ -17,7 +17,6 @@ from jpec.engine.layout import PeriodBatch, SubgridLayout, subgrid_layouts
 from jpec.stat.matched_filter import (
     data_harmonics,
     max_over_phase,
-    orbital_basis,
     orbital_phase_mod_2pi,
 )
 
@@ -65,10 +64,26 @@ def doppler_corrected_power_per_reference(
     return jax.lax.map(at_reference, doppler_references)
 
 
-jitted_orbital_basis = jax.jit(orbital_basis, static_argnames="j_max")
-jitted_data_harmonics_per_reference = jax.jit(
-    jax.vmap(data_harmonics, in_axes=(0, None))
-)
+@partial(jax.jit, static_argnames="j_max")
+def data_harmonics_per_reference(
+    corrected_sft_power: Float[Array, "n_doppler_reference n_sft n_freq"],
+    orbital_phase: Float[Array, "n_period n_sft"],
+    *,
+    j_max: int,
+) -> Complex[Array, "n_doppler_reference n_period n_harmonic n_freq"]:
+    """data_harmonics() of the corrected power at every Doppler reference.
+
+    Args:
+        corrected_sft_power: The Doppler-corrected power at each reference.
+        orbital_phase: Orbital phase at each SFT and trial period of a batch [rad].
+        j_max: Highest harmonic to keep.
+
+    Returns:
+        `F[j, k]` at each reference and trial period.
+    """
+    return jax.vmap(partial(data_harmonics, j_max=j_max), in_axes=(0, None))(
+        corrected_sft_power, orbital_phase
+    )
 
 
 @partial(
@@ -343,15 +358,10 @@ def orbital_statistics(
                 batch.period_start_idx,
                 layout.period_batch_size,
             )
-            batch_orbital_basis = jitted_orbital_basis(
-                batch_orbital_phase, j_max=template_grid.j_max
-            )
             # one transform per Doppler reference, not per f0 point
-            batch_data_harmonics = jitted_data_harmonics_per_reference(
-                corrected_sft_power, batch_orbital_basis
+            batch_data_harmonics = data_harmonics_per_reference(
+                corrected_sft_power, batch_orbital_phase, j_max=template_grid.j_max
             )
-            # the match reads only F[j, k]
-            del batch_orbital_basis
             # one call for every f0 point of the batch
             max_statistic, phase_idxs = matched_filter_grid(
                 data_harmonics=batch_data_harmonics,

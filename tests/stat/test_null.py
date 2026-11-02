@@ -7,7 +7,6 @@ from jpec.constant import ARC_PAD_BINS, PHASE_OVERSAMPLE
 from jpec.stat.matched_filter import (
     data_harmonics,
     harmonic_overlap,
-    orbital_basis,
     orbital_phase_mod_2pi,
     statistic_over_phase,
 )
@@ -45,16 +44,14 @@ def background():
         window=case.window,
     )
     times = jnp.arange(N_SFTS) * (parameters.period / n_phi)
-    sft_orbital_basis = orbital_basis(
-        jnp.asarray(orbital_phase_mod_2pi(times, parameters.omega)), j_max=j_max
-    )
+    sft_orbital_phase = jnp.asarray(orbital_phase_mod_2pi(times, parameters.omega))
 
     rng = np.random.default_rng(3)
     peaks, values = np.empty(TRIALS), []
     for i in range(TRIALS):
         # floor-normalized power under noise: scaled chi2_2 with unit mean and variance
         sft_power = jnp.asarray(rng.exponential(1.0, size=(N_SFTS, offsets.size)))
-        noise_data_harmonics = data_harmonics(sft_power, sft_orbital_basis)
+        noise_data_harmonics = data_harmonics(sft_power, sft_orbital_phase, j_max=j_max)
         statistic = statistic_over_phase(
             harmonic_overlap(
                 data_harmonics=noise_data_harmonics,
