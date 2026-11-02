@@ -29,6 +29,7 @@ from jpec.engine.loop import (
     matched_filter_grid,
 )
 from jpec.pipelines.monitor import RunLogger
+from jpec.stat.matched_filter import orbital_phase_mod_2pi
 
 
 def mean_seconds(function: Callable[[], Any], *, repeats: int) -> float:
@@ -121,9 +122,11 @@ def run(args: argparse.Namespace) -> None:
         )
 
         def orbital_basis() -> Complex[Array, "n_period n_harmonic n_sft"]:
-            return jitted_orbital_basis(
-                search_data.times, omega=layout.omega[period_idxs], j_max=j_max
+            # the host's float64 phase wrap counted in, as the search pays it per batch
+            batch_orbital_phase = orbital_phase_mod_2pi(
+                search_data.times, layout.omega[period_idxs]
             )
+            return jitted_orbital_basis(jnp.asarray(batch_orbital_phase), j_max=j_max)
 
         batch_orbital_basis = orbital_basis()
 

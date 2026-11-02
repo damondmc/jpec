@@ -3,12 +3,13 @@ import numpy as np
 import pytest
 from signals import Case, harmonic_transform, orbit_offset
 
-from jpec.constant import ARC_PAD_BINS, PHASE_OVERSAMPLE
+from jpec.constant import ARC_PAD_BINS, DAY, PHASE_OVERSAMPLE
 from jpec.stat.matched_filter import (
     data_harmonics,
     harmonic_overlap,
     max_over_phase,
     orbital_basis,
+    orbital_phase_mod_2pi,
     statistic_over_phase,
 )
 from jpec.waveform.harmonics import (
@@ -110,14 +111,42 @@ def test_one_basis_and_a_batch_of_bases_agree(case: Case, setup):
     times = jnp.arange(setup["n_theta"]) * (2.0 * jnp.pi / setup["n_theta"])
     omegas = jnp.array([1.0, 1.5, 2.0])
     plane = jnp.ones((setup["n_theta"], setup["bin_offsets"].size))
-    batch = data_harmonics(plane, orbital_basis(times, omega=omegas, j_max=4))
+    batch = data_harmonics(
+        plane, orbital_basis(jnp.asarray(orbital_phase_mod_2pi(times, omegas)), j_max=4)
+    )
     for row, omega in enumerate(omegas):
         single_omega_harmonics = data_harmonics(
-            plane, orbital_basis(times, omega=omega, j_max=4)
+            plane,
+            orbital_basis(jnp.asarray(orbital_phase_mod_2pi(times, omega)), j_max=4),
         )
         np.testing.assert_allclose(
             batch[row], single_omega_harmonics, rtol=1e-12, atol=1e-14
         )
+
+
+def test_wrapped_phase_holds_the_highest_harmonic_in_float32():
+    """Over all of O4, at a one-day period, float32 holds the wrapped phase only."""
+    # every 50th SFT midpoint of a 909 day run from its middle: the error grows with
+    # |t|, not the count
+    times = np.arange(-454.5 * DAY, 454.5 * DAY, 50 * 1800.0)
+    omega = 2.0 * np.pi / 83941.0
+    j_max = 313
+    j = np.arange(1, j_max + 1)
+    exact = j[:, None] * omega * times
+
+    wrapped = orbital_basis(
+        jnp.asarray(orbital_phase_mod_2pi(times, omega), dtype=jnp.float32),
+        j_max=j_max,
+    )
+    assert wrapped.dtype == jnp.complex64
+    wrapped_error = np.abs(np.angle(np.asarray(wrapped) * np.exp(1j * exact)))
+    assert wrapped_error.max() < 1e-3
+
+    # the phase formed in float32, as it was before the wrap
+    unwrapped_phase = jnp.float32(omega) * jnp.asarray(times, dtype=jnp.float32)
+    unwrapped = orbital_basis(unwrapped_phase, j_max=j_max)
+    unwrapped_error = np.abs(np.angle(np.asarray(unwrapped) * np.exp(1j * exact)))
+    assert unwrapped_error.max() > 10.0 * wrapped_error.max()
 
 
 def test_det_stat_in_float32(case: Case):

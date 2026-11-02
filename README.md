@@ -124,7 +124,12 @@ import numpy as np
 
 from jpec.constant import ARC_PAD_BINS, DAY, PHASE_OVERSAMPLE
 from jpec.params import Parameters
-from jpec.stat.matched_filter import data_harmonics, max_over_phase, orbital_basis
+from jpec.stat.matched_filter import (
+    data_harmonics,
+    max_over_phase,
+    orbital_basis,
+    orbital_phase_mod_2pi,
+)
 from jpec.waveform.harmonics import (
     harmonic_count,
     phase_sample_count,
@@ -164,7 +169,8 @@ tau = template_harmonics(
 )
 
 # the data's harmonics: a second Fourier transform, of the power in orbital phase
-basis = orbital_basis(times, omega=signal.omega, j_max=j_max)
+phase = orbital_phase_mod_2pi(times, signal.omega)
+basis = orbital_basis(jnp.asarray(phase), j_max=j_max)
 F = data_harmonics(sft_power, basis)
 
 # the matched filter, over every orbital phase

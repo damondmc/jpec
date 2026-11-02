@@ -2,33 +2,47 @@
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from jaxtyping import Array, Complex, Float, Int
+from numpy.typing import ArrayLike
 
 
-def orbital_basis(
-    times: Float[Array, " n_sft"],
-    *,
-    omega: Float[Array, "..."],
-    j_max: int,
-) -> Complex[Array, "... n_harmonic n_sft"]:
-    """The harmonic basis on orbital phase.
-
-        basis[j, n] = exp(-i j omega t_n),  j = 1..j_max
-
-    The phase is formed here, so under jit it is never held as an array of its own.
+def orbital_phase_mod_2pi(
+    times: ArrayLike, omega: ArrayLike
+) -> Float[np.ndarray, "... n_sft"]:
+    """Orbital phase `omega t mod 2 pi` at each SFT, formed in float64.
 
     Args:
         times: SFT midpoints from the epoch `phi_b` is quoted at [s].
         omega: Orbital angular frequency [rad/s]; an array of them, one per trial
-            period, gives one basis each.
+            period, gives one row each.
+
+    Returns:
+        The phase in `[0, 2 pi)` [rad].
+    """
+    phase = np.asarray(omega, dtype=np.float64)[..., None] * np.asarray(
+        times, dtype=np.float64
+    )
+    return np.mod(phase, 2.0 * np.pi)
+
+
+def orbital_basis(
+    orbital_phase: Float[Array, "... n_sft"], *, j_max: int
+) -> Complex[Array, "... n_harmonic n_sft"]:
+    """The harmonic basis on orbital phase.
+
+        basis[j, n] = exp(-i j x_n),  j = 1..j_max
+
+    Args:
+        orbital_phase: `x_n`, orbital_phase_mod_2pi() at the SFT midpoints [rad]; a
+            leading axis of trial periods gives one basis each.
         j_max: Highest harmonic to keep.
 
     Returns:
         `basis[..., j, n]`, j-th harmonic at the n-th SFT.
     """
-    theta = jnp.asarray(omega)[..., None] * times
     j = jnp.arange(1, j_max + 1)
-    return jnp.exp(-1j * j[:, None] * theta[..., None, :])
+    return jnp.exp(-1j * j[:, None] * orbital_phase[..., None, :])
 
 
 def data_harmonics(

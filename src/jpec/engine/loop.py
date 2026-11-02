@@ -18,6 +18,7 @@ from jpec.stat.matched_filter import (
     data_harmonics,
     max_over_phase,
     orbital_basis,
+    orbital_phase_mod_2pi,
 )
 
 
@@ -320,10 +321,13 @@ def orbital_statistics(
                 batch.period_start_idx,
                 batch.period_start_idx + layout.period_batch_size,
             )
+            # wrapped in float64 on the host, so float32 holds the phase the highest
+            # harmonics need
+            batch_orbital_phase = orbital_phase_mod_2pi(
+                search_data.times, layout.omega[period_idxs]
+            )
             batch_orbital_basis = jitted_orbital_basis(
-                search_data.times,
-                omega=layout.omega[period_idxs],
-                j_max=template_grid.j_max,
+                jnp.asarray(batch_orbital_phase), j_max=template_grid.j_max
             )
             # one transform per Doppler reference, not per f0 point
             batch_data_harmonics = jitted_data_harmonics_per_reference(

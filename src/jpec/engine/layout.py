@@ -8,7 +8,6 @@ from jaxtyping import Array, Bool, Float, Int
 
 from jpec.bank.template_bank import OrbitalTemplateGrid, TemplateBank
 from jpec.constant import V_MAX
-from jpec.params import omega_from_period
 
 # the Doppler residual allowed, as a fraction of the residual the sub-bin template
 # harmonics leave
@@ -44,8 +43,9 @@ class SubgridLayout(NamedTuple):
         sub_bin_offsets: The sub-bin offsets some f0 point takes, the ones template
             harmonics are built at [bins].
         sub_bin_offset_idxs: Which of `sub_bin_offsets` each f0 point takes.
-        omega: Orbital angular frequency of each trial period [rad/s], the last
-            repeated `period_batch_size - 1` times so every batch reads a full run.
+        omega: Orbital angular frequency of each trial period [rad/s], on the host
+            in float64, the last repeated `period_batch_size - 1` times so every
+            batch reads a full run.
         period_batches: The period batches that hold an in-box template.
         period_batch_size: Trial periods every batch is transformed and matched over,
             so each call has one shape; a batch shorter than that runs on into the
@@ -60,7 +60,7 @@ class SubgridLayout(NamedTuple):
     doppler_reference_idxs: Int[Array, " n_f0"]
     sub_bin_offsets: Float[np.ndarray, " n_sub_bin_offset"]
     sub_bin_offset_idxs: Int[Array, " n_f0"]
-    omega: Float[Array, " n_period"]
+    omega: Float[np.ndarray, " n_period"]
     period_batches: list[PeriodBatch]
     period_batch_size: int
     n_window_modulation_depths: int
@@ -263,7 +263,7 @@ def subgrid_layout(
         doppler_reference_idxs=jnp.asarray(doppler_reference_idxs),
         sub_bin_offsets=sub_bin_offsets[used_offset_idxs],
         sub_bin_offset_idxs=jnp.asarray(sub_bin_offset_idxs),
-        omega=omega_from_period(jnp.asarray(padded_period)),
+        omega=2.0 * np.pi / padded_period,
         period_batches=period_batches,
         period_batch_size=period_batch_size,
         n_window_modulation_depths=n_window_modulation_depths,

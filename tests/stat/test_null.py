@@ -8,6 +8,7 @@ from jpec.stat.matched_filter import (
     data_harmonics,
     harmonic_overlap,
     orbital_basis,
+    orbital_phase_mod_2pi,
     statistic_over_phase,
 )
 from jpec.stat.null import (
@@ -44,7 +45,9 @@ def background():
         window=case.window,
     )
     times = jnp.arange(N_SFTS) * (parameters.period / n_phi)
-    sft_orbital_basis = orbital_basis(times, omega=parameters.omega, j_max=j_max)
+    sft_orbital_basis = orbital_basis(
+        jnp.asarray(orbital_phase_mod_2pi(times, parameters.omega)), j_max=j_max
+    )
 
     rng = np.random.default_rng(3)
     peaks, values = np.empty(TRIALS), []

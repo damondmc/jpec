@@ -37,10 +37,8 @@ NOISE_SIGMA = (
 
 
 def plane_harmonics(plane, theta, j_max):
-    """Data harmonics of a plane at these orbital phases, as times at unit omega."""
-    return data_harmonics(
-        plane, orbital_basis(theta, omega=jnp.asarray(1.0), j_max=j_max)
-    )
+    """Data harmonics of a plane at these orbital phases."""
+    return data_harmonics(plane, orbital_basis(theta, j_max=j_max))
 
 
 def test_data_harmonics_match_the_fft_on_a_uniform_grid(case: Case, theta):
