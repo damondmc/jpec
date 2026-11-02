@@ -3,7 +3,26 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from jpec.engine.loop import loudest_in_box, matched_filter_grid
+from jpec.bank.template_bank import OrbitalTemplateGrid, TemplateBank
+from jpec.bank.tiling import LatticeTiling
+from jpec.config import SearchLoopConfig
+from jpec.constant import DAY
+from jpec.detector.site import Detector, reference_epoch, times_and_velocity
+from jpec.engine.data import SearchData, band_edges_for_f0
+from jpec.engine.loop import (
+    HarmonicBank,
+    loudest_in_box,
+    matched_filter_grid,
+    orbital_statistics,
+)
+from jpec.noise.floor import noise_floor
+from jpec.noise.gaussian import gaussian_noise_sft
+from jpec.params import Prior
+from jpec.waveform.window import Window
+
+# the O4a start [GPS s], and the one sky point the small search is at [rad]
+RUN_START = 1368975618.0
+SKY_ALPHA, SKY_DELTA = 1.2, 0.3
 
 N_DOPPLER_REFERENCES = 2
 N_PERIODS = 4
@@ -91,3 +110,111 @@ def test_loudest_in_box_is_the_sorted_in_box_grid(grid):
     np.testing.assert_array_equal(
         loudest_phase_idxs, np.asarray(phase_idxs).ravel()[expected_flat_idxs]
     )
+
+
+@pytest.fixture(scope="module")
+def small_search():
+    """Ten days of one detector's Gaussian noise and a small bank at one sky point."""
+    tsft = 1800.0
+    window = Window(kind="tukey", beta=0.5)
+    search_loop_config = SearchLoopConfig()
+    timestamps = {"H1": RUN_START + np.arange(0.0, 10.0 * DAY, tsft)}
+    t_ref = reference_epoch(timestamps, tsft=tsft)
+    times, velocity = times_and_velocity(timestamps, tsft=tsft, t_ref=t_ref)
+    prior = Prior(
+        f0=(150.0, 150.004),
+        ap=(5.5, 6.0),
+        period=(8.5 * DAY, 9.5 * DAY),
+        phi_b=(0.0, 2.0 * np.pi),
+        alpha=(SKY_ALPHA, SKY_ALPHA),
+        delta=(SKY_DELTA, SKY_DELTA),
+    )
+    tiling = LatticeTiling.from_metric(
+        prior,
+        times=jnp.asarray(times),
+        velocity=jnp.asarray(velocity),
+        tsft=tsft,
+        mismatch=0.4,
+        n_ap_blocks=1,
+        window=window,
+    )
+    freq_low, freq_high = band_edges_for_f0(prior, *prior.f0, tsft=tsft)
+    sft = gaussian_noise_sft(
+        timestamps["H1"],
+        Detector("H1"),
+        key=jax.random.key(0),
+        freq_low=freq_low,
+        n_band_bins=round((freq_high - freq_low) * tsft),
+        tsft=tsft,
+        sqrt_sn=1.0,
+        window=window,
+    )
+    floor = noise_floor(
+        jnp.asarray(sft.sft_power),
+        width=search_loop_config.floor_width,
+        batch_size=search_loop_config.floor_batch_size,
+    )
+    search_data = SearchData([sft], floor=[floor], t_ref=t_ref)
+    template_grids = [
+        OrbitalTemplateGrid(orbital_subgrid=orbital_subgrid, tsft=tsft, window=window)
+        for orbital_subgrid in tiling.orbital_subgrids(*prior.f0)
+    ]
+    bank = TemplateBank(
+        template_grids=template_grids,
+        alpha=np.array([SKY_ALPHA]),
+        delta=np.array([SKY_DELTA]),
+    )
+    harmonic_bank = HarmonicBank.from_bank(
+        bank,
+        freq_low=search_data.freq_low,
+        n_band_bins=search_data.n_band_bins,
+        n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
+        period_batch_size=4,
+        modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
+    )
+    return search_data, harmonic_bank
+
+
+def loudest_per_grid(search_data, harmonic_bank):
+    return list(
+        orbital_statistics(
+            search_data, harmonic_bank, sky_idx=0, f0_batch_size=8, n_loudest=20
+        )
+    )
+
+
+def test_band_trim_leaves_the_statistic_unchanged(small_search):
+    """Transforming only the bins the windows read scores as the whole band does."""
+    search_data, harmonic_bank = small_search
+    n_band_bins = search_data.n_band_bins
+    for layout in harmonic_bank.layouts:
+        assert 0 <= layout.transformed_bin_idxs.start
+        assert layout.transformed_bin_idxs.stop <= n_band_bins
+    assert any(
+        layout.transformed_bin_idxs.stop - layout.transformed_bin_idxs.start
+        < n_band_bins
+        for layout in harmonic_bank.layouts
+    ), "the band holds only the windows, so there is nothing to trim"
+
+    # the whole band transformed, each window counted from the band's first bin
+    untrimmed_bank = harmonic_bank._replace(
+        layouts=[
+            layout._replace(
+                transformed_bin_idxs=slice(0, n_band_bins),
+                window_start_idxs=layout.window_start_idxs
+                + layout.transformed_bin_idxs.start,
+            )
+            for layout in harmonic_bank.layouts
+        ]
+    )
+    trimmed = loudest_per_grid(search_data, harmonic_bank)
+    untrimmed = loudest_per_grid(search_data, untrimmed_bank)
+    assert len(trimmed) == len(untrimmed)
+    for trimmed_grid, untrimmed_grid in zip(trimmed, untrimmed):
+        np.testing.assert_allclose(
+            trimmed_grid.max_statistic, untrimmed_grid.max_statistic, rtol=1e-10
+        )
+        for field in ("f0_idxs", "period_idxs", "modulation_depth_idxs", "phase_idxs"):
+            np.testing.assert_array_equal(
+                getattr(trimmed_grid, field), getattr(untrimmed_grid, field)
+            )
