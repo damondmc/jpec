@@ -117,18 +117,17 @@ def run(args: argparse.Namespace) -> None:
     corrected_sft_power = doppler_correction()[..., layout.transformed_bin_idxs]
     n_transformed_bins = int(corrected_sft_power.shape[-1])
 
+    # wrapped once per subgrid, as the search does before its sky points, so untimed
+    orbital_phases = jnp.asarray(orbital_phase_mod_2pi(search_data.times, layout.omega))
+
     orbital_basis_seconds, transform_seconds, match_seconds = [], [], []
     for batch in layout.period_batches[: args.n_period_batches_timed]:
-        period_idxs = slice(
-            batch.period_start_idx, batch.period_start_idx + period_batch_size
-        )
 
         def orbital_basis() -> Complex[Array, "n_period n_harmonic n_sft"]:
-            # the host's float64 phase wrap counted in, as the search pays it per batch
-            batch_orbital_phase = orbital_phase_mod_2pi(
-                search_data.times, layout.omega[period_idxs]
+            batch_orbital_phase = jax.lax.dynamic_slice_in_dim(
+                orbital_phases, batch.period_start_idx, period_batch_size
             )
-            return jitted_orbital_basis(jnp.asarray(batch_orbital_phase), j_max=j_max)
+            return jitted_orbital_basis(batch_orbital_phase, j_max=j_max)
 
         # timed before a basis is kept, so the device holds one at a time as the
         # search does

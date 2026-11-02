@@ -133,8 +133,9 @@ def search_memory_gb(
     # the SFT time series and the floor
     loaded_bytes = n_sfts * n_band_bins * (COMPLEX64_BYTES + FLOAT32_BYTES)
     # the template harmonics of every subgrid, which the search builds before its loop,
-    # one set per sub-bin offset
+    # one set per sub-bin offset, and its orbital phase at every trial period
     template_harmonics_bytes = 0
+    orbital_phase_bytes = 0
     # one subgrid at a time: the band Doppler-corrected at every reference, and per
     # trial period of a batch the orbital basis, the float32 real or imaginary part the
     # transform copies it into, F[j, k] over the transformed bins at every reference,
@@ -158,6 +159,7 @@ def search_memory_gb(
             * n_window_bins
             * COMPLEX64_BYTES
         )
+        orbital_phase_bytes += layout.omega.size * n_sfts * FLOAT32_BYTES
         corrected_bytes = n_doppler_references * n_sfts * n_band_bins * FLOAT32_BYTES
         per_period_bytes = (
             j_max * n_sfts * COMPLEX64_BYTES
@@ -172,7 +174,9 @@ def search_memory_gb(
         subgrid_bytes = max(
             subgrid_bytes, corrected_bytes + layout.period_batch_size * per_period_bytes
         )
-    return (loaded_bytes + template_harmonics_bytes + subgrid_bytes) / GB
+    return (
+        loaded_bytes + template_harmonics_bytes + orbital_phase_bytes + subgrid_bytes
+    ) / GB
 
 
 def search_hours(

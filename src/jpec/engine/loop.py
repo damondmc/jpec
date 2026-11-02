@@ -180,15 +180,17 @@ def loudest_in_box(
 
 
 class HarmonicBank(NamedTuple):
-    """A bank as the loop matches it: each subgrid's harmonics and band layout.
+    """A bank as the loop matches it: each subgrid's harmonics, phases and band layout.
 
-    Built once for every sky point and every data set on that band.
+    Built once for every sky point and every data set on that band with those SFT
+    times.
 
     Attributes:
         bank: The bank.
         layouts: Its subgrids in order, from subgrid_layout() on the band.
         template_harmonics: Each subgrid's `tau[j, k]` at its layout's sub-bin
             offsets.
+        orbital_phases: Each subgrid's `x_n` at every trial period of its layout.
     """
 
     bank: TemplateBank
@@ -196,22 +198,25 @@ class HarmonicBank(NamedTuple):
     template_harmonics: list[
         Complex[Array, "n_sub_bin_offset n_modulation_depth n_harmonic n_freq"]
     ]
+    orbital_phases: list[Float[Array, "n_period n_sft"]]
 
     @classmethod
     def from_bank(
         cls,
         bank: TemplateBank,
         *,
+        times: Float[np.ndarray, " n_sft"],
         freq_low: float,
         n_band_bins: int,
         n_sub_bin_offsets: int,
         period_batch_size: int,
         modulation_depth_batch_size: int,
     ) -> "HarmonicBank":
-        """Lay a bank out on a band and build its template harmonics.
+        """Lay a bank out on a band and build its template harmonics and phases.
 
         Args:
             bank: The bank.
+            times: SFT midpoints from the epoch `phi_b` is quoted at [s].
             freq_low: First frequency of the band [Hz].
             n_band_bins: Bins the band holds.
             n_sub_bin_offsets: Sub-bin template offsets across one bin.
@@ -235,7 +240,18 @@ class HarmonicBank(NamedTuple):
             )
             for layout in layouts
         ]
-        return cls(bank=bank, layouts=layouts, template_harmonics=template_harmonics)
+        # the phase depends on neither the sky nor f0, so it is wrapped once here, in
+        # float64 on the host so float32 holds the phase the highest harmonics need
+        orbital_phases = [
+            jnp.asarray(orbital_phase_mod_2pi(times, layout.omega))
+            for layout in layouts
+        ]
+        return cls(
+            bank=bank,
+            layouts=layouts,
+            template_harmonics=template_harmonics,
+            orbital_phases=orbital_phases,
+        )
 
 
 def orbital_statistics(
@@ -292,8 +308,16 @@ def orbital_statistics(
         )
 
     pending = None
-    for subgrid_idx, (layout, subgrid_template_harmonics) in enumerate(
-        zip(harmonic_bank.layouts, harmonic_bank.template_harmonics)
+    for subgrid_idx, (
+        layout,
+        subgrid_template_harmonics,
+        subgrid_orbital_phases,
+    ) in enumerate(
+        zip(
+            harmonic_bank.layouts,
+            harmonic_bank.template_harmonics,
+            harmonic_bank.orbital_phases,
+        )
     ):
         template_grid = layout.template_grid
         in_box = template_grid.orbital_subgrid.in_box
@@ -317,17 +341,13 @@ def orbital_statistics(
         for batch in layout.period_batches:
             # a full run of periods, whatever the batch holds, so every call has one
             # shape
-            period_idxs = slice(
+            batch_orbital_phase = jax.lax.dynamic_slice_in_dim(
+                subgrid_orbital_phases,
                 batch.period_start_idx,
-                batch.period_start_idx + layout.period_batch_size,
-            )
-            # wrapped in float64 on the host, so float32 holds the phase the highest
-            # harmonics need
-            batch_orbital_phase = orbital_phase_mod_2pi(
-                search_data.times, layout.omega[period_idxs]
+                layout.period_batch_size,
             )
             batch_orbital_basis = jitted_orbital_basis(
-                jnp.asarray(batch_orbital_phase), j_max=template_grid.j_max
+                batch_orbital_phase, j_max=template_grid.j_max
             )
             # one transform per Doppler reference, not per f0 point
             batch_data_harmonics = jitted_data_harmonics_per_reference(

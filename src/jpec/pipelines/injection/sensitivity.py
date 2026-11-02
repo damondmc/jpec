@@ -82,6 +82,7 @@ def measure_sensitivity_depth(
                 n_sky_neighbours=trials_config.n_sky_neighbours,
                 n_steps=trials_config.n_steps,
             ),
+            times=band_data.times,
             freq_low=band_data.freq_low,
             n_band_bins=band_data.n_band_bins,
             n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,

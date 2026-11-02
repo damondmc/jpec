@@ -52,9 +52,10 @@ def search_job(
         velocity=search_data.velocity,
         window=setup.data.window,
     )
-    # the layouts and tau[j, k] once per subgrid, shared by every sky point
+    # the layouts, tau[j, k] and x_n once per subgrid, shared by every sky point
     harmonic_bank = HarmonicBank.from_bank(
         bank,
+        times=search_data.times,
         freq_low=search_data.freq_low,
         n_band_bins=search_data.n_band_bins,
         n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,

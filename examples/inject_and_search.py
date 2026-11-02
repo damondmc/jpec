@@ -150,8 +150,8 @@ def main() -> None:
         source.injected_sfts(noise_sfts, h0=h0), floor=floor, t_ref=t_ref
     )
 
-    # the bank over the box at the source's sky position, its layouts and tau[j, k]
-    # built once for both searches
+    # the bank over the box at the source's sky position, its layouts, tau[j, k] and
+    # x_n built once for both searches
     template_grids = [
         OrbitalTemplateGrid(orbital_subgrid=orbital_subgrid, tsft=TSFT, window=WINDOW)
         for orbital_subgrid in tiling.orbital_subgrids(*PRIOR.f0)
@@ -163,6 +163,7 @@ def main() -> None:
     )
     harmonic_bank = HarmonicBank.from_bank(
         bank,
+        times=noise_data.times,
         freq_low=noise_data.freq_low,
         n_band_bins=noise_data.n_band_bins,
         n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,

@@ -166,6 +166,7 @@ def small_search():
     )
     harmonic_bank = HarmonicBank.from_bank(
         bank,
+        times=search_data.times,
         freq_low=search_data.freq_low,
         n_band_bins=search_data.n_band_bins,
         n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
