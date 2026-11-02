@@ -142,7 +142,7 @@ def test_wrapped_phase_holds_the_highest_harmonic_in_float32():
     wrapped_error = np.abs(np.angle(np.asarray(wrapped) * np.exp(1j * exact)))
     assert wrapped_error.max() < 1e-3
 
-    # the phase formed in float32, as it was before the wrap
+    # the phase formed in float32, unwrapped
     unwrapped_phase = jnp.float32(omega) * jnp.asarray(times, dtype=jnp.float32)
     unwrapped = orbital_basis(unwrapped_phase, j_max=j_max)
     unwrapped_error = np.abs(np.angle(np.asarray(unwrapped) * np.exp(1j * exact)))

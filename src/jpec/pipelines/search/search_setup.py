@@ -132,15 +132,8 @@ def search_memory_gb(
     """
     # the SFT time series and the floor
     loaded_bytes = n_sfts * n_band_bins * (COMPLEX64_BYTES + FLOAT32_BYTES)
-    # the template harmonics of every subgrid, which the search builds before its loop,
-    # one set per sub-bin offset, and its orbital phase at every trial period
     template_harmonics_bytes = 0
     orbital_phase_bytes = 0
-    # one subgrid at a time: the band Doppler-corrected at every reference, and per
-    # trial period of a batch the orbital basis, the float32 real or imaginary part the
-    # transform copies it into, F[j, k] over the transformed bins at every reference,
-    # and c[j] and S(phi_b) per f0 point of an f0 batch and modulation depth of the
-    # batch's window
     subgrid_bytes = 0
     for layout in layouts:
         template_grid = layout.template_grid

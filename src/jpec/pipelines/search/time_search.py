@@ -117,7 +117,6 @@ def run(args: argparse.Namespace) -> None:
     corrected_sft_power = doppler_correction()[..., layout.transformed_bin_idxs]
     n_transformed_bins = int(corrected_sft_power.shape[-1])
 
-    # wrapped once per subgrid, as the search does before its sky points, so untimed
     orbital_phases = jnp.asarray(orbital_phase_mod_2pi(search_data.times, layout.omega))
 
     orbital_basis_seconds, transform_seconds, match_seconds = [], [], []
@@ -129,12 +128,11 @@ def run(args: argparse.Namespace) -> None:
             )
             return jitted_orbital_basis(batch_orbital_phase, j_max=j_max)
 
-        # timed before a basis is kept, so the device holds one at a time as the
-        # search does
+        # timed before the batch's basis is kept, so one basis is held at a time, as
+        # in the search loop
         orbital_basis_seconds.append(mean_seconds(orbital_basis, repeats=args.repeats))
         batch_orbital_basis = orbital_basis()
 
-        # the basis passed, not closed over, so the del below frees it
         transform_seconds.append(
             mean_seconds(
                 jitted_data_harmonics_per_reference,
