@@ -22,7 +22,7 @@ from jpec.config import SearchSetup, read_json
 from jpec.engine.data import SearchData
 from jpec.engine.layout import subgrid_layout
 from jpec.engine.loop import (
-    data_harmonics_per_reference,
+    data_harmonics_per_sky_point,
     doppler_corrected_power_per_reference,
     loudest_in_box,
     matched_filter_grid,
@@ -96,23 +96,32 @@ def run(args: argparse.Namespace) -> None:
     n_doppler_references = int(layout.doppler_references.size)
     n_window_modulation_depths = layout.n_window_modulation_depths
     period_batch_size = layout.period_batch_size
+    # the bank's first sky points, as many as one transform takes
+    sky_batch_size = min(search_loop_config.sky_batch_size, int(bank.alpha.size))
     n_subgrids = len(bank.template_grids)
     n_period_batches = len(layout.period_batches)
     in_box = jnp.ones((period_batch_size, n_window_modulation_depths), dtype=bool)
 
-    def doppler_correction() -> Float[Array, "n_doppler_reference n_sft n_band"]:
+    def doppler_correction(
+        sky_idx: int,
+    ) -> Float[Array, "n_doppler_reference n_sft n_band"]:
         return doppler_corrected_power_per_reference(
             search_data.sft_time_series,
             search_data.floor,
             search_data.velocity_per_detector,
             layout.doppler_references,
             tsft=search_data.tsft,
-            alpha=float(bank.alpha[0]),
-            delta=float(bank.delta[0]),
+            alpha=float(bank.alpha[sky_idx]),
+            delta=float(bank.delta[sky_idx]),
         )
 
-    doppler_seconds = mean_seconds(doppler_correction, repeats=args.repeats)
-    corrected_sft_power = doppler_correction()[..., layout.transformed_bin_idxs]
+    doppler_seconds = mean_seconds(doppler_correction, 0, repeats=args.repeats)
+    corrected_sft_power = jnp.stack(
+        [
+            doppler_correction(sky_idx)[..., layout.transformed_bin_idxs]
+            for sky_idx in range(sky_batch_size)
+        ]
+    )
     n_transformed_bins = int(corrected_sft_power.shape[-1])
 
     orbital_phases = jnp.asarray(orbital_phase_mod_2pi(search_data.times, layout.omega))
@@ -121,17 +130,17 @@ def run(args: argparse.Namespace) -> None:
     for batch in layout.period_batches[: args.n_period_batches_timed]:
 
         def transform() -> Complex[
-            Array, "n_doppler_reference n_period n_harmonic n_transformed_bin"
+            Array, "n_sky n_doppler_reference n_period n_harmonic n_transformed_bin"
         ]:
             batch_orbital_phase = jax.lax.dynamic_slice_in_dim(
                 orbital_phases, batch.period_start_idx, period_batch_size
             )
-            return data_harmonics_per_reference(
+            return data_harmonics_per_sky_point(
                 corrected_sft_power, batch_orbital_phase, j_max=j_max
             )
 
         transform_seconds.append(mean_seconds(transform, repeats=args.repeats))
-        batch_data_harmonics = transform()
+        batch_data_harmonics = transform()[0]
 
         # the match and the device-side cut to the loudest, as the search runs them
         def match() -> tuple[
@@ -166,7 +175,7 @@ def run(args: argparse.Namespace) -> None:
             n_subgrids * n_doppler_references,
         ),
         "transform": (
-            float(np.mean(transform_seconds)) / n_doppler_references,
+            float(np.mean(transform_seconds)) / (sky_batch_size * n_doppler_references),
             n_subgrids * n_period_batches * n_doppler_references,
         ),
         "match": (float(np.mean(match_seconds)), n_subgrids * n_period_batches),
@@ -177,8 +186,8 @@ def run(args: argparse.Namespace) -> None:
     sky_point_seconds = sum(seconds_per_sky_point.values())
 
     # what jpec search-setup prices a job with: seconds per SFT bin of the Doppler
-    # correction at one reference, per multiply-add of the transform at one reference,
-    # its basis included, and of the match
+    # correction at one reference, per multiply-add of the transform at one sky point
+    # and reference, its share of the batch's basis included, and of the match
     transform_work = period_batch_size * j_max * search_data.n_sfts * n_transformed_bins
     match_work = (
         n_f0_points
@@ -196,7 +205,7 @@ def run(args: argparse.Namespace) -> None:
 
     run_logger.info(
         f"{n_f0_points} f0 points, {n_period_batches} period batches of "
-        f"{period_batch_size}, "
+        f"{period_batch_size}, {sky_batch_size} sky points per transform, "
         f"{n_window_modulation_depths} window modulation depths, j_max {j_max}, "
         f"{n_window_bins} window bins, {search_data.n_band_bins} band bins, "
         f"{n_transformed_bins} transformed, {search_data.n_sfts} SFTs, "
@@ -228,6 +237,7 @@ def run(args: argparse.Namespace) -> None:
             "setup": args.setup,
             "n_f0_points": n_f0_points,
             "n_period_batches": n_period_batches,
+            "sky_batch_size": sky_batch_size,
             "period_batch_size": period_batch_size,
             "n_window_modulation_depths": n_window_modulation_depths,
             "j_max": j_max,

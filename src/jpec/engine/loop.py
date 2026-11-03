@@ -1,6 +1,6 @@
-"""The search loop at one sky point: every template there scored against one band."""
+"""The search loop: every template at a batch of sky points scored on one band."""
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from functools import partial
 from typing import NamedTuple
 
@@ -65,23 +65,25 @@ def doppler_corrected_power_per_reference(
 
 
 @partial(jax.jit, static_argnames="j_max")
-def data_harmonics_per_reference(
-    corrected_sft_power: Float[Array, "n_doppler_reference n_sft n_freq"],
+def data_harmonics_per_sky_point(
+    corrected_sft_power: Float[Array, "n_sky n_doppler_reference n_sft n_freq"],
     orbital_phase: Float[Array, "n_period n_sft"],
     *,
     j_max: int,
-) -> Complex[Array, "n_doppler_reference n_period n_harmonic n_freq"]:
-    """data_harmonics() of the corrected power at every Doppler reference.
+) -> Complex[Array, "n_sky n_doppler_reference n_period n_harmonic n_freq"]:
+    """data_harmonics() of the corrected power at each sky point and reference.
 
     Args:
-        corrected_sft_power: The Doppler-corrected power at each reference.
+        corrected_sft_power: The Doppler-corrected power at each sky point and
+            reference.
         orbital_phase: Orbital phase at each SFT and trial period of a batch [rad].
         j_max: Highest harmonic to keep.
 
     Returns:
-        `F[j, k]` at each reference and trial period.
+        `F[j, k]` at each sky point, reference and trial period.
     """
-    return jax.vmap(partial(data_harmonics, j_max=j_max), in_axes=(0, None))(
+    per_reference = jax.vmap(partial(data_harmonics, j_max=j_max), in_axes=(0, None))
+    return jax.vmap(per_reference, in_axes=(0, None))(
         corrected_sft_power, orbital_phase
     )
 
@@ -270,33 +272,29 @@ def orbital_statistics(
     search_data: SearchData,
     harmonic_bank: HarmonicBank,
     *,
-    sky_idx: int,
+    sky_idxs: Sequence[int],
     f0_batch_size: int,
     n_loudest: int,
 ) -> Iterator[LoudestTemplates]:
-    """Every template at one sky point scored on one band, each grid's loudest kept.
+    """Every template at a batch of sky points scored, each grid's loudest kept.
 
     Args:
         search_data: The band searched, the one the bank is laid out on.
         harmonic_bank: The bank's template harmonics, laid out on the band.
-        sky_idx: Index of the sky point in the bank.
-        f0_batch_size: f0 points matched at once, which caps the S(phi_b) the match
-            holds.
+        sky_idxs: Indices of the sky points in the bank, transformed together.
+        f0_batch_size: no. f0 points matched at once.
         n_loudest: Templates kept of each grid, which caps what is copied to the host.
 
     Yields:
-        One LoudestTemplates per (subgrid, period batch), subgrid outermost; each one
-            batch after it was dispatched, so the device runs the next while the host
-            reads it.
+        One LoudestTemplates per (subgrid, period batch, sky point).
     """
     bank = harmonic_bank.bank
-    alpha = float(bank.alpha[sky_idx])
-    delta = float(bank.delta[sky_idx])
 
     def fetched(
         subgrid_idx: int,
         layout: SubgridLayout,
         batch: PeriodBatch,
+        sky_idx: int,
         loudest: tuple[Array, Array, Array],
     ) -> LoudestTemplates:
         max_statistic, flat_idxs, phase_idxs = (np.asarray(array) for array in loudest)
@@ -340,16 +338,20 @@ def orbital_statistics(
             * layout.period_batch_size
             * n_window_modulation_depths,
         )
-        corrected_sft_power = doppler_corrected_power_per_reference(
-            sft_time_series=search_data.sft_time_series,
-            floor=search_data.floor,
-            velocity_per_detector=search_data.velocity_per_detector,
-            doppler_references=layout.doppler_references,
-            tsft=search_data.tsft,
-            alpha=alpha,
-            delta=delta,
+        corrected_sft_power = jnp.stack(
+            [
+                doppler_corrected_power_per_reference(
+                    sft_time_series=search_data.sft_time_series,
+                    floor=search_data.floor,
+                    velocity_per_detector=search_data.velocity_per_detector,
+                    doppler_references=layout.doppler_references,
+                    tsft=search_data.tsft,
+                    alpha=float(bank.alpha[sky_idx]),
+                    delta=float(bank.delta[sky_idx]),
+                )[..., layout.transformed_bin_idxs]
+                for sky_idx in sky_idxs
+            ]
         )
-        corrected_sft_power = corrected_sft_power[..., layout.transformed_bin_idxs]
         for batch in layout.period_batches:
             # a full run of periods, whatever the batch holds, so every call has one
             # shape
@@ -358,21 +360,9 @@ def orbital_statistics(
                 batch.period_start_idx,
                 layout.period_batch_size,
             )
-            # one transform per Doppler reference, not per f0 point
-            batch_data_harmonics = data_harmonics_per_reference(
+            # one transform for every sky point and Doppler reference of the batch
+            batch_data_harmonics = data_harmonics_per_sky_point(
                 corrected_sft_power, batch_orbital_phase, j_max=template_grid.j_max
-            )
-            # one call for every f0 point of the batch
-            max_statistic, phase_idxs = matched_filter_grid(
-                data_harmonics=batch_data_harmonics,
-                template_harmonics=subgrid_template_harmonics,
-                doppler_reference_idxs=layout.doppler_reference_idxs,
-                window_start_idxs=layout.window_start_idxs,
-                sub_bin_offset_idxs=layout.sub_bin_offset_idxs,
-                modulation_depth_start_idx=batch.modulation_depth_start_idx,
-                n_matched_modulation_depths=n_window_modulation_depths,
-                n_phi=template_grid.n_phi,
-                f0_batch_size=f0_batch_size,
             )
             # the batch's own periods in its window; the run past period_stop_idx is
             # out of its box
@@ -385,17 +375,31 @@ def orbital_statistics(
                 batch.modulation_depth_start_idx : batch.modulation_depth_start_idx
                 + n_window_modulation_depths,
             ]
-            loudest = loudest_in_box(
-                max_statistic,
-                phase_idxs,
-                jnp.asarray(batch_in_box),
-                n_loudest=n_grid_loudest,
-            )
-            for array in loudest:
-                array.copy_to_host_async()
-            # the host reads the batch before while the device runs this one
-            if pending is not None:
-                yield fetched(*pending)
-            pending = (subgrid_idx, layout, batch, loudest)
+            device_batch_in_box = jnp.asarray(batch_in_box)
+            for sky_offset, sky_idx in enumerate(sky_idxs):
+                # one call for every f0 point of the batch
+                max_statistic, phase_idxs = matched_filter_grid(
+                    data_harmonics=batch_data_harmonics[sky_offset],
+                    template_harmonics=subgrid_template_harmonics,
+                    doppler_reference_idxs=layout.doppler_reference_idxs,
+                    window_start_idxs=layout.window_start_idxs,
+                    sub_bin_offset_idxs=layout.sub_bin_offset_idxs,
+                    modulation_depth_start_idx=batch.modulation_depth_start_idx,
+                    n_matched_modulation_depths=n_window_modulation_depths,
+                    n_phi=template_grid.n_phi,
+                    f0_batch_size=f0_batch_size,
+                )
+                loudest = loudest_in_box(
+                    max_statistic,
+                    phase_idxs,
+                    device_batch_in_box,
+                    n_loudest=n_grid_loudest,
+                )
+                for array in loudest:
+                    array.copy_to_host_async()
+                # the host reads the grid before while the device runs this one
+                if pending is not None:
+                    yield fetched(*pending)
+                pending = (subgrid_idx, layout, batch, sky_idx, loudest)
     if pending is not None:
         yield fetched(*pending)

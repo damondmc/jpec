@@ -76,11 +76,15 @@ def loudest_templates(
         The loudest templates, loudest first.
     """
     toplist = Toplist(n_toplist)
-    for sky_idx in range(harmonic_bank.bank.alpha.size):
+    n_sky_points = int(harmonic_bank.bank.alpha.size)
+    sky_batch_size = search_loop_config.sky_batch_size
+    for sky_start_idx in range(0, n_sky_points, sky_batch_size):
         loudest_per_grid = orbital_statistics(
             search_data,
             harmonic_bank,
-            sky_idx=sky_idx,
+            sky_idxs=range(
+                sky_start_idx, min(sky_start_idx + sky_batch_size, n_sky_points)
+            ),
             f0_batch_size=search_loop_config.f0_batch_size,
             n_loudest=n_toplist,
         )

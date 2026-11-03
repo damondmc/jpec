@@ -271,6 +271,7 @@ class RunLogger:
             search_loop_config: How the search loop batches its work.
         """
         self.info(f"Sub-bin template offsets: {search_loop_config.n_sub_bin_offsets}")
+        self.info(f"Sky points per transform: {search_loop_config.sky_batch_size}")
         self.info(f"Periods per transform: {search_loop_config.period_batch_size}")
         self.info(f"f0 points per match batch: {search_loop_config.f0_batch_size}")
 

@@ -82,6 +82,8 @@ class SearchLoopConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # sky points per transform, which share its basis
+    sky_batch_size: int = Field(default=8, ge=1)
     # trial periods per transform
     period_batch_size: int = Field(default=16, ge=1)
     # f0 points matched at once

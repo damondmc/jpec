@@ -117,13 +117,17 @@ def measure_sensitivity_depth(
                 floor=band_data.floor,
                 t_ref=band_data.t_ref,
             )
+            n_sky_points = int(harmonic_bank.bank.alpha.size)
+            sky_batch_size = search_loop_config.sky_batch_size
             loudest[source_idx] = max(
                 float(grid_loudest.max_statistic[0])
-                for sky_idx in range(harmonic_bank.bank.alpha.size)
+                for sky_start_idx in range(0, n_sky_points, sky_batch_size)
                 for grid_loudest in orbital_statistics(
                     injected_data,
                     harmonic_bank,
-                    sky_idx=sky_idx,
+                    sky_idxs=range(
+                        sky_start_idx, min(sky_start_idx + sky_batch_size, n_sky_points)
+                    ),
                     f0_batch_size=search_loop_config.f0_batch_size,
                     n_loudest=1,
                 )

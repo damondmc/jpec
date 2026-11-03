@@ -176,12 +176,42 @@ def small_search():
     return search_data, harmonic_bank
 
 
-def loudest_per_grid(search_data, harmonic_bank):
+def loudest_per_grid(search_data, harmonic_bank, sky_idxs=(0,)):
     return list(
         orbital_statistics(
-            search_data, harmonic_bank, sky_idx=0, f0_batch_size=8, n_loudest=20
+            search_data,
+            harmonic_bank,
+            sky_idxs=sky_idxs,
+            f0_batch_size=8,
+            n_loudest=20,
         )
     )
+
+
+def test_a_sky_batch_scores_as_each_sky_point_alone(small_search):
+    """Sky points transformed together score as each one transformed on its own."""
+    search_data, harmonic_bank = small_search
+    bank = harmonic_bank.bank
+    three_sky_bank = harmonic_bank._replace(
+        bank=bank._replace(
+            alpha=SKY_ALPHA + np.array([0.0, 0.05, 0.1]),
+            delta=SKY_DELTA + np.array([0.0, -0.05, 0.05]),
+        )
+    )
+    batched = loudest_per_grid(search_data, three_sky_bank, sky_idxs=range(3))
+    for sky_idx in range(3):
+        alone = loudest_per_grid(search_data, three_sky_bank, sky_idxs=[sky_idx])
+        batched_at_sky = [grid for grid in batched if grid.sky_idx == sky_idx]
+        assert len(batched_at_sky) == len(alone)
+        for batched_grid, alone_grid in zip(batched_at_sky, alone):
+            assert batched_grid.subgrid_idx == alone_grid.subgrid_idx
+            np.testing.assert_allclose(
+                batched_grid.max_statistic, alone_grid.max_statistic, rtol=1e-5
+            )
+            np.testing.assert_array_equal(batched_grid.f0_idxs, alone_grid.f0_idxs)
+            np.testing.assert_array_equal(
+                batched_grid.period_idxs, alone_grid.period_idxs
+            )
 
 
 def test_band_trim_leaves_the_statistic_unchanged(small_search):

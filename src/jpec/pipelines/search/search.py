@@ -78,16 +78,20 @@ def search_job(
     run_logger.start_progress(
         bank, seconds=60.0 * args.progress_minutes, started=started
     )
-    for sky_idx in range(bank.alpha.size):
+    n_sky_points = int(bank.alpha.size)
+    sky_batch_size = search_loop_config.sky_batch_size
+    for sky_start_idx in range(0, n_sky_points, sky_batch_size):
         loudest_per_grid = orbital_statistics(
             search_data,
             harmonic_bank,
-            sky_idx=sky_idx,
+            sky_idxs=range(
+                sky_start_idx, min(sky_start_idx + sky_batch_size, n_sky_points)
+            ),
             f0_batch_size=search_loop_config.f0_batch_size,
             n_loudest=setup.n_toplist,
         )
         for loudest in loudest_per_grid:
-            run_logger.progress(sky_idx, loudest.subgrid_idx)
+            run_logger.progress(loudest.sky_idx, loudest.subgrid_idx)
             toplist.add_loudest(loudest, bank)
 
     candidate_dicts = [candidate.to_dict() for candidate in toplist.descending()]
@@ -108,7 +112,7 @@ def search_job(
             "job_idx": job_setup.job_idx,
             "f0_low": job_setup.f0_low,
             "f0_high": job_setup.f0_high,
-            "n_sky_points": int(bank.alpha.size),
+            "n_sky_points": n_sky_points,
             "t_ref": search_data.t_ref,
             "seconds": elapsed,
             "modelled_gb": job_setup.memory_gb,

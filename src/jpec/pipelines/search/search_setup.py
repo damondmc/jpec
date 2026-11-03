@@ -117,6 +117,7 @@ def search_memory_gb(
     *,
     n_band_bins: int,
     n_sfts: int,
+    sky_batch_size: int,
     f0_batch_size: int,
 ) -> float:
     """Giga-bytes a search over a band holds at its peak.
@@ -125,6 +126,7 @@ def search_memory_gb(
         layouts: Its subgrids laid out on the band.
         n_band_bins: Bins of the band.
         n_sfts: SFTs over every detector.
+        sky_batch_size: Sky points per transform.
         f0_batch_size: f0 points matched at once.
 
     Returns:
@@ -153,10 +155,22 @@ def search_memory_gb(
             * COMPLEX64_BYTES
         )
         orbital_phase_bytes += layout.omega.size * n_sfts * FLOAT32_BYTES
-        corrected_bytes = n_doppler_references * n_sfts * n_band_bins * FLOAT32_BYTES
+        # one sky point's corrected band, and the batch's transformed bins twice
+        corrected_bytes = (
+            n_doppler_references
+            * n_sfts
+            * (n_band_bins + 2 * sky_batch_size * n_transformed_bins)
+            * FLOAT32_BYTES
+        )
+        # the basis, the batch's harmonics twice, and the match's overlaps and S(phi_b)
         per_period_bytes = (
             j_max * n_sfts * 2 * FLOAT32_BYTES
-            + n_doppler_references * j_max * n_transformed_bins * COMPLEX64_BYTES
+            + 2
+            * sky_batch_size
+            * n_doppler_references
+            * j_max
+            * n_transformed_bins
+            * COMPLEX64_BYTES
             + n_matched_f0_points * n_window_modulation_depths * j_max * COMPLEX64_BYTES
             + n_matched_f0_points
             * n_window_modulation_depths
@@ -258,6 +272,7 @@ def job_cost(
         layouts,
         n_band_bins=n_band_bins,
         n_sfts=n_sfts,
+        sky_batch_size=search_loop_config.sky_batch_size,
         f0_batch_size=search_loop_config.f0_batch_size,
     )
     if rates is None:
@@ -474,6 +489,7 @@ def run(args: argparse.Namespace) -> None:
                     layouts,
                     n_band_bins=n_band_bins,
                     n_sfts=n_sfts,
+                    sky_batch_size=search_loop_config.sky_batch_size,
                     f0_batch_size=search_loop_config.f0_batch_size,
                 ),
                 hours=None
