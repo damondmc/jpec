@@ -518,7 +518,7 @@ def run(args: argparse.Namespace) -> None:
         run_logger.info(
             f"Per-job hours: {hours_per_job.min():.1f} to {hours_per_job.max():.1f}"
         )
-        run_logger.info(f"Total hours: {hours_per_job.sum():.0f}")
+        run_logger.info(f"Total hours: {hours_per_job.sum():.1f}")
 
     setup = SearchSetup(
         jpec=importlib.metadata.version("jpec"),
