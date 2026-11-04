@@ -51,6 +51,10 @@ class SubgridLayout(NamedTuple):
         sub_bin_offsets: The sub-bin offsets some f0 point takes, the ones template
             harmonics are built at [bins].
         sub_bin_offset_idxs: Which of `sub_bin_offsets` each f0 point takes.
+        group_f0_idxs: The f0 points that read one reference and take one offset,
+            each group padded to the largest by repeating its last f0 point.
+        group_doppler_reference_idxs: The reference each group reads.
+        group_sub_bin_offset_idxs: The offset each group takes.
         omega: Orbital angular frequency of each trial period [rad/s], on the host
             in float64, the last repeated `period_batch_size - 1` times so every
             batch reads a full run.
@@ -68,6 +72,9 @@ class SubgridLayout(NamedTuple):
     doppler_reference_idxs: Int[Array, " n_f0"]
     sub_bin_offsets: Float[np.ndarray, " n_sub_bin_offset"]
     sub_bin_offset_idxs: Int[Array, " n_f0"]
+    group_f0_idxs: Int[Array, "n_group n_member"]
+    group_doppler_reference_idxs: Int[Array, " n_group"]
+    group_sub_bin_offset_idxs: Int[Array, " n_group"]
     omega: Float[np.ndarray, " n_period"]
     period_batches: list[PeriodBatch]
     period_batch_size: int
@@ -136,6 +143,48 @@ def split_periods(
         )
         for batch in period_batches
     ], n_window_modulation_depths
+
+
+def f0_groups(
+    doppler_reference_idxs: Int[np.ndarray, " n_f0"],
+    sub_bin_offset_idxs: Int[np.ndarray, " n_f0"],
+) -> tuple[
+    Int[np.ndarray, "n_group n_member"],
+    Int[np.ndarray, " n_group"],
+    Int[np.ndarray, " n_group"],
+]:
+    """The f0 points that read one reference and take one offset, padded to one size.
+
+    Args:
+        doppler_reference_idxs: The reference each f0 point reads.
+        sub_bin_offset_idxs: The sub-bin offset each f0 point takes.
+
+    Returns:
+        Each group's f0 points, its last repeated to the largest group's size, and
+            each group's reference and offset.
+    """
+    group_keys = sorted(
+        set(zip(doppler_reference_idxs.tolist(), sub_bin_offset_idxs.tolist()))
+    )
+    members = [
+        np.flatnonzero(
+            (doppler_reference_idxs == reference_idx)
+            & (sub_bin_offset_idxs == offset_idx)
+        )
+        for reference_idx, offset_idx in group_keys
+    ]
+    n_members = max(member.size for member in members)
+    group_f0_idxs = np.stack(
+        [
+            np.pad(member, (0, n_members - member.size), mode="edge")
+            for member in members
+        ]
+    )
+    group_doppler_reference_idxs = np.array(
+        [reference_idx for reference_idx, _ in group_keys]
+    )
+    group_sub_bin_offset_idxs = np.array([offset_idx for _, offset_idx in group_keys])
+    return group_f0_idxs, group_doppler_reference_idxs, group_sub_bin_offset_idxs
 
 
 def doppler_reference_f0_width(*, tsft: float, n_sub_bin_offsets: int) -> float:
@@ -255,6 +304,9 @@ def subgrid_layout(
     used_offset_idxs, sub_bin_offset_idxs = np.unique(
         sub_bin_offset_idxs, return_inverse=True
     )
+    group_f0_idxs, group_doppler_reference_idxs, group_sub_bin_offset_idxs = f0_groups(
+        doppler_reference_idxs, sub_bin_offset_idxs
+    )
     # no wider than the subgrid, as a bank around one source is
     period = template_grid.orbital_subgrid.period
     period_batch_size = min(period_batch_size, period.size)
@@ -286,6 +338,9 @@ def subgrid_layout(
         doppler_reference_idxs=jnp.asarray(doppler_reference_idxs),
         sub_bin_offsets=sub_bin_offsets[used_offset_idxs],
         sub_bin_offset_idxs=jnp.asarray(sub_bin_offset_idxs),
+        group_f0_idxs=jnp.asarray(group_f0_idxs),
+        group_doppler_reference_idxs=jnp.asarray(group_doppler_reference_idxs),
+        group_sub_bin_offset_idxs=jnp.asarray(group_sub_bin_offset_idxs),
         omega=2.0 * np.pi / padded_period,
         period_batches=period_batches,
         period_batch_size=period_batch_size,

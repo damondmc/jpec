@@ -146,7 +146,10 @@ def search_memory_gb(
             layout.transformed_bin_idxs.stop - layout.transformed_bin_idxs.start
         )
         n_window_modulation_depths = layout.n_window_modulation_depths
-        n_matched_f0_points = min(int(layout.window_start_idxs.size), f0_batch_size)
+        n_groups, n_members = layout.group_f0_idxs.shape
+        n_matched_f0_points = min(n_groups, max(f0_batch_size // n_members, 1)) * (
+            n_members
+        )
         template_harmonics_bytes += (
             layout.sub_bin_offsets.size
             * template_grid.orbital_subgrid.modulation_depth_bins.size

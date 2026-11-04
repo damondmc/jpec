@@ -9,6 +9,7 @@ from jpec.config import SearchLoopConfig
 from jpec.constant import DAY
 from jpec.detector.site import Detector, reference_epoch, times_and_velocity
 from jpec.engine.data import SearchData, band_edges_for_f0
+from jpec.engine.layout import f0_groups
 from jpec.engine.loop import (
     HarmonicBank,
     loudest_in_box,
@@ -18,6 +19,7 @@ from jpec.engine.loop import (
 from jpec.noise.floor import noise_floor
 from jpec.noise.gaussian import gaussian_noise_sft
 from jpec.params import Prior
+from jpec.stat.matched_filter import max_over_phase
 from jpec.waveform.window import Window
 
 # the O4a start [GPS s], and the one sky point the small search is at [rad]
@@ -63,12 +65,17 @@ def grid():
 
 
 def match(grid, f0_idxs: slice, *, f0_batch_size: int):
+    group_f0_idxs, group_doppler_reference_idxs, group_sub_bin_offset_idxs = f0_groups(
+        np.asarray(grid["doppler_reference_idxs"][f0_idxs]),
+        np.asarray(grid["sub_bin_offset_idxs"][f0_idxs]),
+    )
     return matched_filter_grid(
         data_harmonics=grid["data_harmonics"],
         template_harmonics=grid["template_harmonics"],
-        doppler_reference_idxs=grid["doppler_reference_idxs"][f0_idxs],
         window_start_idxs=grid["window_start_idxs"][f0_idxs],
-        sub_bin_offset_idxs=grid["sub_bin_offset_idxs"][f0_idxs],
+        group_f0_idxs=jnp.asarray(group_f0_idxs),
+        group_doppler_reference_idxs=jnp.asarray(group_doppler_reference_idxs),
+        group_sub_bin_offset_idxs=jnp.asarray(group_sub_bin_offset_idxs),
         modulation_depth_start_idx=jnp.asarray(1),
         n_matched_modulation_depths=N_MATCHED_MODULATION_DEPTHS,
         n_phi=N_PHI,
@@ -87,6 +94,55 @@ def test_one_call_matches_one_f0_point_per_call(grid):
             max_statistic[f0_idx], f0_max_statistic[0], rtol=1e-5
         )
         np.testing.assert_array_equal(phase_idxs[f0_idx], f0_phase_idxs[0])
+
+
+def test_each_template_scores_as_max_over_phase_alone(grid):
+    """The grouped match gives every template what max_over_phase() gives it alone."""
+    max_statistic, phase_idxs = match(grid, slice(None), f0_batch_size=4)
+    depth_start_idx = 1
+    for f0_idx in range(N_F0_POINTS):
+        window_start_idx = int(grid["window_start_idxs"][f0_idx])
+        reference_data_harmonics = grid["data_harmonics"][
+            int(grid["doppler_reference_idxs"][f0_idx])
+        ]
+        offset_template_harmonics = grid["template_harmonics"][
+            int(grid["sub_bin_offset_idxs"][f0_idx])
+        ]
+        for period_idx in range(N_PERIODS):
+            window_data_harmonics = reference_data_harmonics[
+                period_idx, :, window_start_idx : window_start_idx + N_WINDOW_BINS
+            ]
+            for depth_offset in range(N_MATCHED_MODULATION_DEPTHS):
+                template_max_statistic, template_phase_idx = max_over_phase(
+                    window_data_harmonics,
+                    offset_template_harmonics[depth_start_idx + depth_offset],
+                    n_phi=N_PHI,
+                )
+                np.testing.assert_allclose(
+                    max_statistic[f0_idx, period_idx, depth_offset],
+                    template_max_statistic,
+                    rtol=1e-5,
+                )
+                assert (
+                    phase_idxs[f0_idx, period_idx, depth_offset] == template_phase_idx
+                )
+
+
+def test_f0_groups_hold_every_f0_point_once_with_one_reference_and_offset():
+    """Each group shares a reference and offset, and every f0 point is in one group."""
+    doppler_reference_idxs = np.array([0, 1, 0, 0, 1, 1, 0, 1, 0])
+    sub_bin_offset_idxs = np.array([2, 0, 2, 1, 0, 2, 1, 0, 2])
+    group_f0_idxs, group_doppler_reference_idxs, group_sub_bin_offset_idxs = f0_groups(
+        doppler_reference_idxs, sub_bin_offset_idxs
+    )
+    for f0_idxs, reference_idx, offset_idx in zip(
+        group_f0_idxs, group_doppler_reference_idxs, group_sub_bin_offset_idxs
+    ):
+        assert np.all(doppler_reference_idxs[f0_idxs] == reference_idx)
+        assert np.all(sub_bin_offset_idxs[f0_idxs] == offset_idx)
+    assert sorted(set(group_f0_idxs.ravel().tolist())) == list(
+        range(doppler_reference_idxs.size)
+    )
 
 
 def test_loudest_in_box_is_the_sorted_in_box_grid(grid):

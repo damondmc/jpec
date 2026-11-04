@@ -152,9 +152,10 @@ def run(args: argparse.Namespace) -> None:
             max_statistic, phase_idxs = matched_filter_grid(
                 data_harmonics=batch_data_harmonics,
                 template_harmonics=template_harmonics,
-                doppler_reference_idxs=layout.doppler_reference_idxs,
                 window_start_idxs=layout.window_start_idxs,
-                sub_bin_offset_idxs=layout.sub_bin_offset_idxs,
+                group_f0_idxs=layout.group_f0_idxs,
+                group_doppler_reference_idxs=layout.group_doppler_reference_idxs,
+                group_sub_bin_offset_idxs=layout.group_sub_bin_offset_idxs,
                 modulation_depth_start_idx=batch.modulation_depth_start_idx,
                 n_matched_modulation_depths=n_window_modulation_depths,
                 n_phi=template_grid.n_phi,

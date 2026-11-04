@@ -98,9 +98,10 @@ def matched_filter_grid(
     template_harmonics: Complex[
         Array, "n_sub_bin_offset n_modulation_depth n_harmonic n_freq"
     ],
-    doppler_reference_idxs: Int[Array, " n_f0"],
     window_start_idxs: Int[Array, " n_f0"],
-    sub_bin_offset_idxs: Int[Array, " n_f0"],
+    group_f0_idxs: Int[Array, "n_group n_member"],
+    group_doppler_reference_idxs: Int[Array, " n_group"],
+    group_sub_bin_offset_idxs: Int[Array, " n_group"],
     modulation_depth_start_idx: Int[Array, ""],
     *,
     n_matched_modulation_depths: int,
@@ -116,17 +117,21 @@ def matched_filter_grid(
         data_harmonics: `F[j, k]` at each period over the transformed bins, per
             Doppler reference.
         template_harmonics: `tau[j, k]` at every modulation depth, per sub-bin offset.
-        doppler_reference_idxs: Which reference's data harmonics each f0 point reads.
         window_start_idxs: First transformed bin of each f0 point's template window.
-        sub_bin_offset_idxs: Which of `template_harmonics` each f0 point takes.
+        group_f0_idxs: The f0 points of each group, from f0_groups().
+        group_doppler_reference_idxs: Which reference's data harmonics each group
+            reads.
+        group_sub_bin_offset_idxs: Which of `template_harmonics` each group takes.
         modulation_depth_start_idx: First modulation depth matched.
         n_matched_modulation_depths: Modulation depths matched, from
             `modulation_depth_start_idx` on.
         n_phi: Orbital phases the statistic is evaluated at.
-        f0_batch_size: f0 points matched at once, which caps the memory held.
+        f0_batch_size: f0 points matched at once, in whole groups and at least one,
+            which caps the memory held.
 
     Returns:
-        The maximum of `S` over the orbital phase and the phase index it sits at.
+        The maximum of `S` over the orbital phase and the phase index it sits at,
+            per f0 point.
     """
     n_periods, n_harmonics = data_harmonics.shape[1], data_harmonics.shape[2]
     n_window_bins = template_harmonics.shape[-1]
@@ -140,28 +145,52 @@ def matched_filter_grid(
     # over the periods
     over_templates = jax.vmap(partial(max_over_phase, n_phi=n_phi), in_axes=(None, 0))
     over_periods = jax.vmap(over_templates, in_axes=(0, None))
+    # a group's f0 points share one template
+    over_members = jax.vmap(over_periods, in_axes=(0, None))
 
-    def match_f0(
-        f0_point: tuple[Int[Array, ""], Int[Array, ""], Int[Array, ""]],
-    ) -> tuple[
-        Float[Array, "n_period n_matched_modulation_depth"],
-        Int[Array, "n_period n_matched_modulation_depth"],
-    ]:
-        doppler_reference_idx, window_start_idx, sub_bin_offset_idx = f0_point
-        window_data_harmonics = jax.lax.dynamic_slice(
+    def window_data_harmonics(
+        doppler_reference_idx: Int[Array, ""], window_start_idx: Int[Array, ""]
+    ) -> Complex[Array, "n_period n_harmonic n_freq"]:
+        return jax.lax.dynamic_slice(
             data_harmonics[doppler_reference_idx],
             (0, 0, window_start_idx),
             (n_periods, n_harmonics, n_window_bins),
         )
-        return over_periods(
-            window_data_harmonics, matched_template_harmonics[sub_bin_offset_idx]
+
+    def match_group(
+        group: tuple[Int[Array, " n_member"], Int[Array, ""], Int[Array, ""]],
+    ) -> tuple[
+        Float[Array, "n_member n_period n_matched_modulation_depth"],
+        Int[Array, "n_member n_period n_matched_modulation_depth"],
+    ]:
+        f0_idxs, doppler_reference_idx, sub_bin_offset_idx = group
+        member_data_harmonics = jax.vmap(window_data_harmonics, in_axes=(None, 0))(
+            doppler_reference_idx, window_start_idxs[f0_idxs]
+        )
+        return over_members(
+            member_data_harmonics, matched_template_harmonics[sub_bin_offset_idx]
         )
 
-    return jax.lax.map(
-        match_f0,
-        (doppler_reference_idxs, window_start_idxs, sub_bin_offset_idxs),
-        batch_size=f0_batch_size,
+    n_members = group_f0_idxs.shape[1]
+    group_max_statistic, group_phase_idxs = jax.lax.map(
+        match_group,
+        (group_f0_idxs, group_doppler_reference_idxs, group_sub_bin_offset_idxs),
+        batch_size=max(f0_batch_size // n_members, 1),
     )
+    # each f0 point back in its own row; a repeated member writes the same values
+    flat_f0_idxs = group_f0_idxs.ravel()
+    grid_shape = (window_start_idxs.shape[0], *group_max_statistic.shape[2:])
+    max_statistic = (
+        jnp.zeros(grid_shape, group_max_statistic.dtype)
+        .at[flat_f0_idxs]
+        .set(group_max_statistic.reshape(-1, *grid_shape[1:]))
+    )
+    phase_idxs = (
+        jnp.zeros(grid_shape, group_phase_idxs.dtype)
+        .at[flat_f0_idxs]
+        .set(group_phase_idxs.reshape(-1, *grid_shape[1:]))
+    )
+    return max_statistic, phase_idxs
 
 
 @partial(jax.jit, static_argnames="n_loudest")
@@ -381,9 +410,10 @@ def orbital_statistics(
                 max_statistic, phase_idxs = matched_filter_grid(
                     data_harmonics=batch_data_harmonics[sky_offset],
                     template_harmonics=subgrid_template_harmonics,
-                    doppler_reference_idxs=layout.doppler_reference_idxs,
                     window_start_idxs=layout.window_start_idxs,
-                    sub_bin_offset_idxs=layout.sub_bin_offset_idxs,
+                    group_f0_idxs=layout.group_f0_idxs,
+                    group_doppler_reference_idxs=layout.group_doppler_reference_idxs,
+                    group_sub_bin_offset_idxs=layout.group_sub_bin_offset_idxs,
                     modulation_depth_start_idx=batch.modulation_depth_start_idx,
                     n_matched_modulation_depths=n_window_modulation_depths,
                     n_phi=template_grid.n_phi,
