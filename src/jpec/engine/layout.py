@@ -236,6 +236,7 @@ def subgrid_layout(
     n_band_bins: int,
     n_sub_bin_offsets: int,
     period_batch_size: int,
+    harmonic_fraction: float,
 ) -> SubgridLayout:
     """A subgrid's layout on one band: all the loop needs but data and harmonics.
 
@@ -245,6 +246,7 @@ def subgrid_layout(
         n_band_bins: Bins the loaded band holds.
         n_sub_bin_offsets: Sub-bin template offsets across one bin.
         period_batch_size: Trial periods per transform call.
+        harmonic_fraction: Share of each modulation depth's harmonics matched.
 
     Returns:
         The subgrid with its f0 points placed on the band, their references and
@@ -310,15 +312,18 @@ def subgrid_layout(
     # no wider than the subgrid, as a bank around one source is
     period = template_grid.orbital_subgrid.period
     period_batch_size = min(period_batch_size, period.size)
-    # each depth's harmonics, rounded up to the step and at most j_max
+    # each depth's share of its harmonics, rounded up to the step and at most j_max
+    n_kept_harmonics_per_depth = [
+        math.ceil(harmonic_fraction * harmonic_count(float(depth_bins)))
+        for depth_bins in template_grid.orbital_subgrid.modulation_depth_bins
+    ]
     n_harmonics_per_depth = np.array(
         [
             min(
-                HARMONIC_COUNT_STEP
-                * math.ceil(harmonic_count(float(depth_bins)) / HARMONIC_COUNT_STEP),
+                HARMONIC_COUNT_STEP * math.ceil(n_kept / HARMONIC_COUNT_STEP),
                 template_grid.j_max,
             )
-            for depth_bins in template_grid.orbital_subgrid.modulation_depth_bins
+            for n_kept in n_kept_harmonics_per_depth
         ]
     )
     period_batches, n_window_modulation_depths = split_periods(
@@ -355,6 +360,7 @@ def subgrid_layouts(
     n_band_bins: int,
     n_sub_bin_offsets: int,
     period_batch_size: int,
+    harmonic_fraction: float,
 ) -> list[SubgridLayout]:
     """Every subgrid of a bank laid out on one loaded band.
 
@@ -364,6 +370,7 @@ def subgrid_layouts(
         n_band_bins: Bins the loaded band holds.
         n_sub_bin_offsets: Sub-bin template offsets across one bin.
         period_batch_size: Trial periods per transform call.
+        harmonic_fraction: Share of each modulation depth's harmonics matched.
 
     Returns:
         One per subgrid, in the bank's order.
@@ -375,6 +382,7 @@ def subgrid_layouts(
             n_band_bins=n_band_bins,
             n_sub_bin_offsets=n_sub_bin_offsets,
             period_batch_size=period_batch_size,
+            harmonic_fraction=harmonic_fraction,
         )
         for template_grid in bank.template_grids
     ]

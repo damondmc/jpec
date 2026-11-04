@@ -106,6 +106,7 @@ def f0_interval_layouts(
             n_band_bins=n_band_bins,
             n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
             period_batch_size=search_loop_config.period_batch_size,
+            harmonic_fraction=search_loop_config.harmonic_fraction,
         )
         for orbital_subgrid in tiling.orbital_subgrids(f0_low, f0_high)
     ]

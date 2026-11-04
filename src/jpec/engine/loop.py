@@ -255,6 +255,7 @@ class HarmonicBank(NamedTuple):
         n_band_bins: int,
         n_sub_bin_offsets: int,
         period_batch_size: int,
+        harmonic_fraction: float,
         modulation_depth_batch_size: int,
     ) -> "HarmonicBank":
         """Lay a bank out on a band and build its template harmonics and phases.
@@ -266,6 +267,7 @@ class HarmonicBank(NamedTuple):
             n_band_bins: Bins the band holds.
             n_sub_bin_offsets: Sub-bin template offsets across one bin.
             period_batch_size: Trial periods per transform call.
+            harmonic_fraction: Share of each modulation depth's harmonics matched.
             modulation_depth_batch_size: Modulation depths whose templates are built at
                 once.
 
@@ -278,6 +280,7 @@ class HarmonicBank(NamedTuple):
             n_band_bins=n_band_bins,
             n_sub_bin_offsets=n_sub_bin_offsets,
             period_batch_size=period_batch_size,
+            harmonic_fraction=harmonic_fraction,
         )
         template_harmonics = [
             layout.template_grid.template_harmonics_at_offsets(

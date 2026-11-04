@@ -90,6 +90,8 @@ class SearchLoopConfig(BaseModel):
     f0_batch_size: int = Field(default=32, ge=1)
     # template offsets across one bin
     n_sub_bin_offsets: int = Field(default=8, ge=1)
+    # share of each modulation depth's harmonics matched
+    harmonic_fraction: float = Field(default=1.0, gt=0.0, le=1.0)
     # modulation depths whose templates are built at once
     modulation_depth_batch_size: int = Field(default=16, ge=1)
     # running-median window of the noise floor [bins], odd

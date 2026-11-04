@@ -227,6 +227,7 @@ def small_search():
         n_band_bins=search_data.n_band_bins,
         n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
         period_batch_size=4,
+        harmonic_fraction=search_loop_config.harmonic_fraction,
         modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
     )
     return search_data, harmonic_bank

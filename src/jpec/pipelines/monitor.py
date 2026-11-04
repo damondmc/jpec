@@ -274,6 +274,7 @@ class RunLogger:
         self.info(f"Sky points per transform: {search_loop_config.sky_batch_size}")
         self.info(f"Periods per transform: {search_loop_config.period_batch_size}")
         self.info(f"f0 points per match batch: {search_loop_config.f0_batch_size}")
+        self.info(f"Share of harmonics matched: {search_loop_config.harmonic_fraction}")
 
     def search_summary(
         self,

@@ -83,6 +83,7 @@ def run(args: argparse.Namespace) -> None:
         n_band_bins=search_data.n_band_bins,
         n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
         period_batch_size=search_loop_config.period_batch_size,
+        harmonic_fraction=search_loop_config.harmonic_fraction,
     )
     template_grid = layout.template_grid
     template_harmonics = template_grid.template_harmonics_at_offsets(

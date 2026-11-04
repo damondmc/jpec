@@ -31,6 +31,8 @@ search_loop:
                                 # memory term, grows with it
   f0_batch_size: 32             # f0 points matched at once, which caps the S(phi_b) held
   n_sub_bin_offsets: 8          # template offsets across one bin; an f0 point takes the nearest
+  harmonic_fraction: 1.0        # share of each depth's harmonic_count matched; 0.6 loses 1e-3
+                                # of a matched signal's S
 
 thresholds: [0.02835, 0.02716, 0.02591, 0.02460]
                                 # on S, one sensitivity depth measured at each; set them from the
