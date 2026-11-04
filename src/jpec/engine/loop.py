@@ -135,7 +135,7 @@ def matched_filter_grid(
         modulation_depth_start_idx,
         n_matched_modulation_depths,
         axis=1,
-    )
+    )[..., :n_harmonics, :]
     # data first, then template: the inner vmap runs over the templates, the outer
     # over the periods
     over_templates = jax.vmap(partial(max_over_phase, n_phi=n_phi), in_axes=(None, 0))
@@ -362,7 +362,7 @@ def orbital_statistics(
             )
             # one transform for every sky point and Doppler reference of the batch
             batch_data_harmonics = data_harmonics_per_sky_point(
-                corrected_sft_power, batch_orbital_phase, j_max=template_grid.j_max
+                corrected_sft_power, batch_orbital_phase, j_max=batch.n_harmonics
             )
             # the batch's own periods in its window; the run past period_stop_idx is
             # out of its box

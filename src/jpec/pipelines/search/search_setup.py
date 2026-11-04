@@ -208,7 +208,6 @@ def search_hours(
     seconds_per_sky_point = 0.0
     for layout in layouts:
         template_grid = layout.template_grid
-        j_max = template_grid.j_max
         # once per subgrid and sky point, at every reference
         seconds_per_sky_point += float(
             layout.doppler_references.size
@@ -219,11 +218,12 @@ def search_hours(
         n_transformed_bins = (
             layout.transformed_bin_idxs.stop - layout.transformed_bin_idxs.start
         )
-        # every batch is a full run of periods
-        n_periods = len(layout.period_batches) * layout.period_batch_size
+        # every batch is a full run of periods, at its own harmonics
+        n_period_harmonics = layout.period_batch_size * sum(
+            batch.n_harmonics for batch in layout.period_batches
+        )
         transform_seconds = (
             layout.doppler_references.size
-            * j_max
             * n_sfts
             * n_transformed_bins
             * rates["data_harmonics"]
@@ -231,11 +231,12 @@ def search_hours(
         match_seconds = (
             layout.window_start_idxs.size
             * layout.n_window_modulation_depths
-            * j_max
             * template_grid.bin_offsets.shape[0]
             * rates["match"]
         )
-        seconds_per_sky_point += n_periods * float(transform_seconds + match_seconds)
+        seconds_per_sky_point += n_period_harmonics * float(
+            transform_seconds + match_seconds
+        )
     return n_sky_points * seconds_per_sky_point / 3600.0
 
 

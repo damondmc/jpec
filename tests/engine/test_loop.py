@@ -214,6 +214,39 @@ def test_a_sky_batch_scores_as_each_sky_point_alone(small_search):
             )
 
 
+def test_harmonics_per_batch_leave_the_statistic_unchanged(small_search):
+    """Each batch at its own harmonics scores as every batch at the subgrid's j_max."""
+    search_data, harmonic_bank = small_search
+    assert any(
+        batch.n_harmonics < layout.template_grid.j_max
+        for layout in harmonic_bank.layouts
+        for batch in layout.period_batches
+    ), "every batch needs j_max, so there is nothing to cut"
+
+    full_bank = harmonic_bank._replace(
+        layouts=[
+            layout._replace(
+                period_batches=[
+                    batch._replace(n_harmonics=layout.template_grid.j_max)
+                    for batch in layout.period_batches
+                ]
+            )
+            for layout in harmonic_bank.layouts
+        ]
+    )
+    per_batch = loudest_per_grid(search_data, harmonic_bank)
+    full = loudest_per_grid(search_data, full_bank)
+    assert len(per_batch) == len(full)
+    for per_batch_grid, full_grid in zip(per_batch, full):
+        np.testing.assert_allclose(
+            per_batch_grid.max_statistic, full_grid.max_statistic, rtol=1e-5
+        )
+        for field in ("f0_idxs", "period_idxs", "modulation_depth_idxs", "phase_idxs"):
+            np.testing.assert_array_equal(
+                getattr(per_batch_grid, field), getattr(full_grid, field)
+            )
+
+
 def test_band_trim_leaves_the_statistic_unchanged(small_search):
     """Transforming only the bins the windows read scores as the whole band does."""
     search_data, harmonic_bank = small_search

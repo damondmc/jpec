@@ -127,6 +127,7 @@ def run(args: argparse.Namespace) -> None:
     orbital_phases = jnp.asarray(orbital_phase_mod_2pi(search_data.times, layout.omega))
 
     transform_seconds, match_seconds = [], []
+    transform_work, match_work = [], []
     for batch in layout.period_batches[: args.n_period_batches_timed]:
 
         def transform() -> Complex[
@@ -136,7 +137,7 @@ def run(args: argparse.Namespace) -> None:
                 orbital_phases, batch.period_start_idx, period_batch_size
             )
             return data_harmonics_per_sky_point(
-                corrected_sft_power, batch_orbital_phase, j_max=j_max
+                corrected_sft_power, batch_orbital_phase, j_max=batch.n_harmonics
             )
 
         transform_seconds.append(mean_seconds(transform, repeats=args.repeats))
@@ -167,6 +168,21 @@ def run(args: argparse.Namespace) -> None:
             )
 
         match_seconds.append(mean_seconds(match, repeats=args.repeats))
+        # multiply-adds of the transform at one sky point and reference, and of the
+        # match
+        transform_work.append(
+            period_batch_size
+            * batch.n_harmonics
+            * search_data.n_sfts
+            * n_transformed_bins
+        )
+        match_work.append(
+            n_f0_points
+            * period_batch_size
+            * n_window_modulation_depths
+            * batch.n_harmonics
+            * n_window_bins
+        )
 
     # seconds per call, and calls per sky point over every subgrid as this one
     stages = {
@@ -187,20 +203,15 @@ def run(args: argparse.Namespace) -> None:
 
     # what jpec search-setup prices a job with: seconds per SFT bin of the Doppler
     # correction at one reference, per multiply-add of the transform at one sky point
-    # and reference, its share of the batch's basis included, and of the match
-    transform_work = period_batch_size * j_max * search_data.n_sfts * n_transformed_bins
-    match_work = (
-        n_f0_points
-        * period_batch_size
-        * n_window_modulation_depths
-        * j_max
-        * n_window_bins
-    )
+    # and reference, its share of the batch's basis included, and of the match, over
+    # the batches timed
     rates = {
         "doppler_correction": stages["doppler correction"][0]
         / (search_data.n_sfts * search_data.n_band_bins),
-        "data_harmonics": stages["transform"][0] / transform_work,
-        "match": stages["match"][0] / match_work,
+        "data_harmonics": sum(transform_seconds)
+        / (sky_batch_size * n_doppler_references)
+        / sum(transform_work),
+        "match": sum(match_seconds) / sum(match_work),
     }
 
     run_logger.info(

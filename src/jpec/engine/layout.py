@@ -1,5 +1,6 @@
 """Where a bank's subgrids read from one loaded band, and how their work is batched."""
 
+import math
 from typing import NamedTuple
 
 import jax.numpy as jnp
@@ -8,10 +9,14 @@ from jaxtyping import Array, Bool, Float, Int
 
 from jpec.bank.template_bank import OrbitalTemplateGrid, TemplateBank
 from jpec.constant import V_MAX
+from jpec.waveform.harmonics import harmonic_count
 
 # the Doppler residual allowed, as a fraction of the residual the sub-bin template
 # harmonics leave
 DOPPLER_TOLERANCE_FRACTION = 1.0 / 3.0
+
+# a batch's harmonic count is rounded up to a multiple of this
+HARMONIC_COUNT_STEP = 16
 
 
 class PeriodBatch(NamedTuple):
@@ -21,11 +26,14 @@ class PeriodBatch(NamedTuple):
         period_start_idx: First trial period of the run.
         period_stop_idx: One past its last.
         modulation_depth_start_idx: First modulation depth of the window.
+        n_harmonics: Harmonics the batch is transformed and matched with, the ones
+            its deepest in-box template needs.
     """
 
     period_start_idx: int
     period_stop_idx: int
     modulation_depth_start_idx: int
+    n_harmonics: int
 
 
 class SubgridLayout(NamedTuple):
@@ -69,6 +77,7 @@ class SubgridLayout(NamedTuple):
 def split_periods(
     in_box: Bool[np.ndarray, "n_period n_modulation_depth"],
     ap_block_idxs: Int[np.ndarray, " n_period"],
+    n_harmonics_per_depth: Int[np.ndarray, " n_modulation_depth"],
     batch_size: int,
 ) -> tuple[list[PeriodBatch], int]:
     """Periods of one ap block, `batch_size` at a time, with a modulation-depth window.
@@ -78,6 +87,7 @@ def split_periods(
     Args:
         in_box: Whether each (period, modulation depth) lies in its ap block.
         ap_block_idxs: The ap block each period belongs to, ap block after ap block.
+        n_harmonics_per_depth: Harmonics each modulation depth's templates need.
         batch_size: Trial periods per transform call.
 
     Returns:
@@ -108,8 +118,9 @@ def split_periods(
             if in_box_idxs.size == 0:
                 continue
             start_idx, stop_idx = int(in_box_idxs[0]), int(in_box_idxs[-1]) + 1
+            n_harmonics = int(n_harmonics_per_depth[in_box_idxs].max())
             period_batches.append(
-                PeriodBatch(period_start_idx, period_stop_idx, start_idx)
+                PeriodBatch(period_start_idx, period_stop_idx, start_idx, n_harmonics)
             )
             n_window_modulation_depths = max(
                 n_window_modulation_depths, stop_idx - start_idx
@@ -247,9 +258,21 @@ def subgrid_layout(
     # no wider than the subgrid, as a bank around one source is
     period = template_grid.orbital_subgrid.period
     period_batch_size = min(period_batch_size, period.size)
+    # each depth's harmonics, rounded up to the step and at most j_max
+    n_harmonics_per_depth = np.array(
+        [
+            min(
+                HARMONIC_COUNT_STEP
+                * math.ceil(harmonic_count(float(depth_bins)) / HARMONIC_COUNT_STEP),
+                template_grid.j_max,
+            )
+            for depth_bins in template_grid.orbital_subgrid.modulation_depth_bins
+        ]
+    )
     period_batches, n_window_modulation_depths = split_periods(
         template_grid.orbital_subgrid.in_box,
         template_grid.orbital_subgrid.ap_block_idxs,
+        n_harmonics_per_depth,
         batch_size=period_batch_size,
     )
     # the last batch starts at most at the last period, so it reads
