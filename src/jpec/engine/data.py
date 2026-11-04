@@ -1,8 +1,10 @@
 """The band one job searches: its width, its SFTs on the device, and its epoch."""
 
+from functools import cached_property
+
 import jax.numpy as jnp
 import numpy as np
-from jaxtyping import Array, Float
+from jaxtyping import Array, Complex, Float
 
 from jpec.config import DataSetup
 from jpec.constant import ARC_PAD_BINS, SHIFT_MARGIN_BINS, V_MAX
@@ -47,7 +49,7 @@ class SearchData:
         floor: list[Float[Array, "n_sft n_band"]],
         t_ref: float,
     ) -> None:
-        """Put the band, its time series, velocities and times on the device.
+        """Put the band's velocities and times on the device.
 
         Args:
             sfts: The SFTs per detector, scaled.
@@ -57,11 +59,6 @@ class SearchData:
         self.sfts = sfts
         self.floor = floor
         self.t_ref = t_ref
-        # the inverse transform the Doppler correction shifts, the same at every
-        # sky and f0
-        self.sft_time_series = [
-            jnp.fft.ifft(jnp.asarray(sft.sft_data), axis=-1) for sft in sfts
-        ]
         self.velocity_per_detector = [jnp.asarray(sft.velocity) for sft in sfts]
         # the velocity [v/c] the sky lattice is built from, detectors
         # concatenated, on the host
@@ -145,6 +142,11 @@ class SearchData:
             ],
             t_ref=self.t_ref,
         )
+
+    @cached_property
+    def sft_time_series(self) -> list[Complex[Array, "n_sft n_band"]]:
+        """The inverse transform the Doppler correction shifts, per detector."""
+        return [jnp.fft.ifft(jnp.asarray(sft.sft_data), axis=-1) for sft in self.sfts]
 
     @property
     def tsft(self) -> float:
