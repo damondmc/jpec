@@ -16,7 +16,7 @@ from jpec.waveform.harmonics import harmonic_count
 DOPPLER_TOLERANCE_FRACTION = 1.0 / 3.0
 
 # a batch's harmonic count is rounded up to a multiple of this
-HARMONIC_COUNT_STEP = 16
+HARMONIC_COUNT_STEP = 32
 
 
 class PeriodBatch(NamedTuple):
