@@ -146,6 +146,8 @@ def search_memory_gb(
             layout.transformed_bin_idxs.stop - layout.transformed_bin_idxs.start
         )
         n_window_modulation_depths = layout.n_window_modulation_depths
+        # the most harmonics any period batch transforms and matches
+        n_batch_harmonics = max(batch.n_harmonics for batch in layout.period_batches)
         n_groups, n_members = layout.group_f0_idxs.shape
         n_matched_f0_points = min(n_groups, max(f0_batch_size // n_members, 1)) * (
             n_members
@@ -165,16 +167,20 @@ def search_memory_gb(
             * (n_band_bins + 2 * sky_batch_size * n_transformed_bins)
             * FLOAT32_BYTES
         )
-        # the basis, the batch's harmonics twice, and the match's overlaps and S(phi_b)
+        # the basis at every sky point, the batch's harmonics twice, and the match's
+        # overlaps and S(phi_b)
         per_period_bytes = (
-            j_max * n_sfts * 2 * FLOAT32_BYTES
+            sky_batch_size * n_batch_harmonics * n_sfts * 2 * FLOAT32_BYTES
             + 2
             * sky_batch_size
             * n_doppler_references
-            * j_max
+            * n_batch_harmonics
             * n_transformed_bins
             * COMPLEX64_BYTES
-            + n_matched_f0_points * n_window_modulation_depths * j_max * COMPLEX64_BYTES
+            + n_matched_f0_points
+            * n_window_modulation_depths
+            * n_batch_harmonics
+            * COMPLEX64_BYTES
             + n_matched_f0_points
             * n_window_modulation_depths
             * template_grid.n_phi
