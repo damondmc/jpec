@@ -73,7 +73,7 @@ def measure_sensitivity_depth(
     # source, not once per h0
     tiling = LatticeTiling.from_dict(setup.tiling)
     source_harmonic_banks = [
-        HarmonicBank.from_bank(
+        HarmonicBank(
             TemplateBank.around_point(
                 tiling,
                 injection.parameters,

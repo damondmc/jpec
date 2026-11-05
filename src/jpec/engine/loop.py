@@ -2,7 +2,6 @@
 
 from collections.abc import Iterator, Sequence
 from functools import partial
-from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -225,7 +224,7 @@ def loudest_in_box(
     return loudest_max_statistic, flat_idxs, phase_idxs.ravel()[flat_idxs]
 
 
-class HarmonicBank(NamedTuple):
+class HarmonicBank:
     """A bank as the loop matches it: each subgrid's harmonics, phases and band layout.
 
     Built once for every sky point and every data set on that band.
@@ -239,17 +238,8 @@ class HarmonicBank(NamedTuple):
         omegas: Each subgrid's orbital angular frequencies [rad/s], on the device.
     """
 
-    bank: TemplateBank
-    layouts: list[SubgridLayout]
-    template_harmonics: list[
-        Complex[Array, "n_sub_bin_offset n_modulation_depth n_harmonic n_freq"]
-    ]
-    orbital_phases: list[Float[Array, "n_period n_sft"]]
-    omegas: list[Float[Array, " n_period"]]
-
-    @classmethod
-    def from_bank(
-        cls,
+    def __init__(
+        self,
         bank: TemplateBank,
         *,
         times: Float[np.ndarray, " n_sft"],
@@ -259,7 +249,7 @@ class HarmonicBank(NamedTuple):
         period_batch_size: int,
         harmonic_fraction: float,
         modulation_depth_batch_size: int,
-    ) -> "HarmonicBank":
+    ) -> None:
         """Lay a bank out on a band and build its template harmonics and phases.
 
         Args:
@@ -272,11 +262,9 @@ class HarmonicBank(NamedTuple):
             harmonic_fraction: Share of each modulation depth's harmonics matched.
             modulation_depth_batch_size: Modulation depths whose templates are built at
                 once.
-
-        Returns:
-            The bank and its subgrids laid out on the band.
         """
-        layouts = subgrid_layouts(
+        self.bank = bank
+        self.layouts = subgrid_layouts(
             bank,
             freq_low=freq_low,
             n_band_bins=n_band_bins,
@@ -284,24 +272,17 @@ class HarmonicBank(NamedTuple):
             period_batch_size=period_batch_size,
             harmonic_fraction=harmonic_fraction,
         )
-        template_harmonics = [
+        self.template_harmonics = [
             layout.template_grid.template_harmonics_at_offsets(
                 layout.sub_bin_offsets, batch_size=modulation_depth_batch_size
             )
-            for layout in layouts
+            for layout in self.layouts
         ]
-        orbital_phases = [
+        self.orbital_phases = [
             jnp.asarray(orbital_phase_mod_2pi(times, layout.omega))
-            for layout in layouts
+            for layout in self.layouts
         ]
-        omegas = [jnp.asarray(layout.omega) for layout in layouts]
-        return cls(
-            bank=bank,
-            layouts=layouts,
-            template_harmonics=template_harmonics,
-            orbital_phases=orbital_phases,
-            omegas=omegas,
-        )
+        self.omegas = [jnp.asarray(layout.omega) for layout in self.layouts]
 
 
 def orbital_statistics(

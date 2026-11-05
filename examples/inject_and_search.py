@@ -156,7 +156,7 @@ def main() -> None:
     bank = TemplateBank.over_f0_interval(
         tiling, *PRIOR.f0, velocity=noise_data.velocity, window=WINDOW
     )
-    harmonic_bank = HarmonicBank.from_bank(
+    harmonic_bank = HarmonicBank(
         bank,
         times=noise_data.times,
         freq_low=noise_data.freq_low,

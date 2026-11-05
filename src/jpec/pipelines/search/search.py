@@ -53,7 +53,7 @@ def search_job(
         window=setup.data.window,
     )
     # tau[j, k] and orbital phases once per subgrid, shared by every sky point
-    harmonic_bank = HarmonicBank.from_bank(
+    harmonic_bank = HarmonicBank(
         bank,
         times=search_data.times,
         freq_low=search_data.freq_low,

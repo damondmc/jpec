@@ -1,3 +1,5 @@
+import copy
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -218,7 +220,7 @@ def small_search():
         alpha=np.array([SKY_ALPHA]),
         delta=np.array([SKY_DELTA]),
     )
-    harmonic_bank = HarmonicBank.from_bank(
+    harmonic_bank = HarmonicBank(
         bank,
         times=search_data.times,
         freq_low=search_data.freq_low,
@@ -247,11 +249,10 @@ def test_a_sky_batch_scores_as_each_sky_point_alone(small_search):
     """Sky points transformed together score as each one transformed on its own."""
     search_data, harmonic_bank = small_search
     bank = harmonic_bank.bank
-    three_sky_bank = harmonic_bank._replace(
-        bank=bank._replace(
-            alpha=SKY_ALPHA + np.array([0.0, 0.05, 0.1]),
-            delta=SKY_DELTA + np.array([0.0, -0.05, 0.05]),
-        )
+    three_sky_bank = copy.copy(harmonic_bank)
+    three_sky_bank.bank = bank._replace(
+        alpha=SKY_ALPHA + np.array([0.0, 0.05, 0.1]),
+        delta=SKY_DELTA + np.array([0.0, -0.05, 0.05]),
     )
     batched = loudest_per_grid(search_data, three_sky_bank, sky_idxs=range(3))
     for sky_idx in range(3):
@@ -278,17 +279,16 @@ def test_harmonics_per_batch_leave_the_statistic_unchanged(small_search):
         for batch in layout.period_batches
     ), "every batch needs j_max, so there is nothing to cut"
 
-    full_bank = harmonic_bank._replace(
-        layouts=[
-            layout._replace(
-                period_batches=[
-                    batch._replace(n_harmonics=layout.template_grid.j_max)
-                    for batch in layout.period_batches
-                ]
-            )
-            for layout in harmonic_bank.layouts
-        ]
-    )
+    full_bank = copy.copy(harmonic_bank)
+    full_bank.layouts = [
+        layout._replace(
+            period_batches=[
+                batch._replace(n_harmonics=layout.template_grid.j_max)
+                for batch in layout.period_batches
+            ]
+        )
+        for layout in harmonic_bank.layouts
+    ]
     per_batch = loudest_per_grid(search_data, harmonic_bank)
     full = loudest_per_grid(search_data, full_bank)
     assert len(per_batch) == len(full)
@@ -316,16 +316,15 @@ def test_band_trim_leaves_the_statistic_unchanged(small_search):
     ), "the band holds only the windows, so there is nothing to trim"
 
     # the whole band transformed, each window counted from the band's first bin
-    untrimmed_bank = harmonic_bank._replace(
-        layouts=[
-            layout._replace(
-                transformed_bin_idxs=slice(0, n_band_bins),
-                window_start_idxs=layout.window_start_idxs
-                + layout.transformed_bin_idxs.start,
-            )
-            for layout in harmonic_bank.layouts
-        ]
-    )
+    untrimmed_bank = copy.copy(harmonic_bank)
+    untrimmed_bank.layouts = [
+        layout._replace(
+            transformed_bin_idxs=slice(0, n_band_bins),
+            window_start_idxs=layout.window_start_idxs
+            + layout.transformed_bin_idxs.start,
+        )
+        for layout in harmonic_bank.layouts
+    ]
     trimmed = loudest_per_grid(search_data, harmonic_bank)
     untrimmed = loudest_per_grid(search_data, untrimmed_bank)
     assert len(trimmed) == len(untrimmed)
