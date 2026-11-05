@@ -1,4 +1,4 @@
-"""Detectors: velocity from the ephemeris, the reference epoch, and the SFT times."""
+"""Detectors: velocity and position from the ephemeris, the epoch, and the SFT times."""
 
 import warnings
 from collections.abc import Mapping
@@ -22,15 +22,18 @@ def _ephemeris() -> Any:
 
 
 @cache
-def _velocity(detector_name: str, timestamps: bytes) -> Float[np.ndarray, "n_time 3"]:
-    """Detector velocity per timestamp, keyed on their bytes so a run is walked once.
+def _detector_states(
+    detector_name: str, timestamps: bytes
+) -> tuple[Float[np.ndarray, "n_time 3"], Float[np.ndarray, "n_time 3"]]:
+    """Detector velocity and position per timestamp, keyed on the timestamps' bytes.
 
     Args:
         detector_name: Detector name.
         timestamps: Absolute GPS times [s], as the bytes of a float64 array.
 
     Returns:
-        Cartesian `v/c` per time, read-only.
+        Cartesian `v/c` and position [light-s] from the Solar System Barycenter per
+        time, read-only.
     """
     gps_times = np.frombuffer(timestamps, dtype=np.float64)
     vector = lalpulsar.CreateTimestampVector(gps_times.size)
@@ -40,8 +43,10 @@ def _velocity(detector_name: str, timestamps: bytes) -> Float[np.ndarray, "n_tim
         vector, lal.cached_detector_by_prefix[detector_name], _ephemeris(), 0.0
     )
     velocity = np.array([state.vDetector for state in states.data], dtype=np.float64)
+    position = np.array([state.rDetector for state in states.data], dtype=np.float64)
     velocity.flags.writeable = False
-    return velocity
+    position.flags.writeable = False
+    return velocity, position
 
 
 class Detector:
@@ -74,9 +79,26 @@ class Detector:
         Returns:
             Cartesian `v/c` per time, ~1e-4, read-only.
         """
-        return _velocity(
+        return _detector_states(
             self.name, np.ascontiguousarray(gps_times, dtype=np.float64).tobytes()
-        )
+        )[0]
+
+    def position(
+        self, gps_times: Float[np.ndarray, " n_time"]
+    ) -> Float[np.ndarray, "n_time 3"]:
+        """Position of the site from the Solar System Barycenter, in light-seconds.
+
+        Cached on the timestamps with the velocity, so both cost one pass through LAL.
+
+        Args:
+            gps_times: Absolute GPS times [s].
+
+        Returns:
+            Cartesian position [light-s] per time, ~500, read-only.
+        """
+        return _detector_states(
+            self.name, np.ascontiguousarray(gps_times, dtype=np.float64).tobytes()
+        )[1]
 
     def antenna_pattern(
         self,
@@ -122,28 +144,42 @@ def reference_epoch(timestamps: Mapping[str, ArrayLike], *, tsft: float) -> floa
     return float((starts.max() + starts.min() + tsft) / 2.0)
 
 
-def times_and_velocity(
-    timestamps: Mapping[str, ArrayLike], *, tsft: float, t_ref: float
-) -> tuple[Float[np.ndarray, " n_sft"], Float[np.ndarray, "n_sft 3"]]:
-    """The SFT midpoints from the reference epoch, and the detector velocities there.
+class Observation:
+    """The SFT midpoints of a run, and where the detectors are and move at each.
 
-    Args:
-        timestamps: SFT start times per detector, absolute GPS [s].
+    Attributes:
         tsft: SFT length [s].
-        t_ref: Epoch the midpoints are measured from, absolute GPS [s].
-
-    Returns:
-        The midpoints from `t_ref` [s] and `v/c` at each, the detectors
-        concatenated in the dict's order.
+        times: SFT midpoints from `t_ref` in detector time [s], every detector.
+        velocity: Detector velocity `v/c` at each midpoint.
+        position: Detector position [light-s] at each midpoint.
     """
-    gps_midpoints = {
-        detector_name: np.asarray(starts, dtype=float) + tsft / 2.0
-        for detector_name, starts in timestamps.items()
-    }
-    velocity = np.concatenate(
-        [
-            Detector(detector_name).velocity(midpoints)
-            for detector_name, midpoints in gps_midpoints.items()
-        ]
-    )
-    return np.concatenate(list(gps_midpoints.values())) - t_ref, velocity
+
+    def __init__(
+        self, timestamps: Mapping[str, ArrayLike], *, tsft: float, t_ref: float
+    ) -> None:
+        """Take the midpoints and the detector motion there from the SFT start times.
+
+        Args:
+            timestamps: SFT start times per detector, absolute GPS [s].
+            tsft: SFT length [s].
+            t_ref: Epoch the midpoints are measured from, absolute GPS [s].
+        """
+        self.tsft = tsft
+        gps_midpoints = {
+            detector_name: np.asarray(starts, dtype=float) + tsft / 2.0
+            for detector_name, starts in timestamps.items()
+        }
+        # the detectors concatenated in the dict's order
+        self.times = np.concatenate(list(gps_midpoints.values())) - t_ref
+        self.velocity = np.concatenate(
+            [
+                Detector(detector_name).velocity(midpoints)
+                for detector_name, midpoints in gps_midpoints.items()
+            ]
+        )
+        self.position = np.concatenate(
+            [
+                Detector(detector_name).position(midpoints)
+                for detector_name, midpoints in gps_midpoints.items()
+            ]
+        )

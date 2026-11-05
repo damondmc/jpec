@@ -16,7 +16,7 @@ from jpec.bank.template_bank import TemplateBank
 from jpec.bank.tiling import LatticeTiling
 from jpec.config import SearchLoopConfig
 from jpec.constant import DAY
-from jpec.detector.site import Detector, reference_epoch, times_and_velocity
+from jpec.detector.site import Detector, Observation, reference_epoch
 from jpec.engine.candidates import Candidate, Toplist
 from jpec.engine.data import SearchData, band_edges_for_f0
 from jpec.engine.loop import HarmonicBank, orbital_statistics
@@ -101,14 +101,12 @@ def main() -> None:
         for detector_name in DETECTORS
     }
     t_ref = reference_epoch(timestamps, tsft=TSFT)
-    times, velocity = times_and_velocity(timestamps, tsft=TSFT, t_ref=t_ref)
+    observation = Observation(timestamps, tsft=TSFT, t_ref=t_ref)
 
     # the lattice over the box, its steps from the metric of this run
     tiling = LatticeTiling.from_metric(
         PRIOR,
-        times=jnp.asarray(times),
-        velocity=jnp.asarray(velocity),
-        tsft=TSFT,
+        observation=observation,
         mismatch=MISMATCH,
         n_ap_blocks=1,
         window=WINDOW,

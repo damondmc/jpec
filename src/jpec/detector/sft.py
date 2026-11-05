@@ -69,6 +69,11 @@ class SFTData:
         """Detector velocity `v/c` at each SFT midpoint, cached on the timestamps."""
         return self.detector.velocity(self.timestamps_midpoints)
 
+    @property
+    def position(self) -> Float[np.ndarray, "n_sft 3"]:
+        """Detector position [light-s] at each SFT midpoint, cached with `velocity`."""
+        return self.detector.position(self.timestamps_midpoints)
+
     def rescaled(self, strain_unit: float) -> "SFTData":
         """These SFTs with their amplitudes divided by `strain_unit`.
 

@@ -11,7 +11,6 @@ import importlib.metadata
 import json
 from pathlib import Path
 
-import jax.numpy as jnp
 import numpy as np
 from jaxtyping import Float
 
@@ -29,7 +28,7 @@ from jpec.config import (
     read_json,
 )
 from jpec.constant import GB
-from jpec.detector.site import reference_epoch, times_and_velocity
+from jpec.detector.site import Observation, reference_epoch
 from jpec.engine.data import band_edges_for_f0
 from jpec.engine.layout import (
     SubgridLayout,
@@ -422,15 +421,12 @@ def run(args: argparse.Namespace) -> None:
     tsft = sft_metadata.tsft
     n_sfts = sft_metadata.n_sfts
     t_ref = reference_epoch(sft_metadata.timestamps, tsft=tsft)
-    times, velocity = times_and_velocity(
-        sft_metadata.timestamps, tsft=tsft, t_ref=t_ref
-    )
+    observation = Observation(sft_metadata.timestamps, tsft=tsft, t_ref=t_ref)
+    velocity = observation.velocity
 
     tiling = LatticeTiling.from_metric(
         config.parameter_space.prior(),
-        times=jnp.asarray(times),
-        velocity=jnp.asarray(velocity),
-        tsft=tsft,
+        observation=observation,
         mismatch=template_bank_config.mismatch,
         n_ap_blocks=template_bank_config.n_ap_blocks,
         window=window,

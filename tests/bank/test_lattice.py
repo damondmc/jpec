@@ -16,7 +16,7 @@ from jpec.bank.metric import (
 )
 from jpec.constant import DAY, N_CURVATURE_POSITIONS
 from jpec.detector.doppler import sky_direction
-from jpec.detector.site import Detector
+from jpec.detector.site import Observation
 from jpec.params import Parameters
 from jpec.waveform.window import Window
 
@@ -30,16 +30,16 @@ WHOLE_SKY = (0.0, 2.0 * np.pi, -0.5 * np.pi, 0.5 * np.pi)
 
 def test_sky_lattice_covers_the_sphere_within_the_mismatch():
     """Every sky point is within two axes' budget of a template, on the sky metric."""
-    midpoints = np.arange(0.0, DAYS * DAY, TSFT) + TSFT / 2.0
-    times = jnp.asarray(midpoints - midpoints.mean())
-    velocity = Detector("H1").velocity(T0 + midpoints)
+    starts = T0 + np.arange(0.0, DAYS * DAY, TSFT)
+    observation = Observation(
+        {"H1": starts}, tsft=TSFT, t_ref=float(np.mean(starts + TSFT / 2.0))
+    )
+    velocity = observation.velocity
     reference = Parameters(f0=F0, ap=AP, period=PERIOD, phi_b=1.0, alpha=1.2, delta=0.3)
     metric = project_out(
         physical_metric(
             reference,
-            times=times,
-            velocity=jnp.asarray(velocity),
-            tsft=TSFT,
+            observation,
             g_freq_bin=freq_bin_curvature(Window(), n_positions=N_CURVATURE_POSITIONS),
         )
     )

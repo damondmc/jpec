@@ -26,6 +26,30 @@ def orbital_phase_mod_2pi(
     return np.mod(phase, 2.0 * np.pi)
 
 
+def barycenter_orbital_phase(
+    orbital_phase: Float[Array, "n_period n_sft"],
+    omega: Float[Array, " n_period"],
+    solar_roemer_delays: Float[Array, "n_sky n_sft"],
+) -> Float[Array, "n_sky n_period n_sft"]:
+    """The orbital phase in barycenter time at each sky point.
+
+        x_n = omega t_n + omega delay_n
+
+    with `omega t_n` the phase in detector time and `delay_n` the sky point's Solar
+    System Roemer delay at the n-th SFT.
+
+    Args:
+        orbital_phase: orbital_phase_mod_2pi() at the SFT midpoints, detector time
+            [rad].
+        omega: Orbital angular frequency of each trial period [rad/s].
+        solar_roemer_delays: The delay at each sky point and SFT [s].
+
+    Returns:
+        The phase at each sky point, trial period and SFT [rad].
+    """
+    return orbital_phase[None] + omega[None, :, None] * solar_roemer_delays[:, None, :]
+
+
 def data_harmonics(
     sft_power: Float[Array, "n_sft n_freq"],
     orbital_phase: Float[Array, "... n_sft"],

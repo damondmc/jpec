@@ -6,7 +6,8 @@ import numpy as np
 from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, Float
 
-from jpec.detector.doppler import sky_direction
+from jpec.detector.doppler import sky_direction, solar_roemer_delay
+from jpec.detector.site import Observation
 from jpec.params import Parameters
 from jpec.waveform.track import observed_frequency
 from jpec.waveform.window import Window
@@ -49,23 +50,20 @@ def freq_bin_curvature(window: Window, *, n_positions: int) -> float:
 
 def physical_metric(
     point: Parameters,
+    observation: Observation,
     *,
-    times: Float[Array, " n_sft"],
-    velocity: Float[Array, "n_sft 3"],
-    tsft: float,
     g_freq_bin: float,
 ) -> Float[Array, "6 6"]:
     """Mismatch metric on the physical parameters at one point, closed form.
 
         g_mu_nu = g_freq_bin tsft^2 <d_mu f(t_n) d_nu f(t_n)>_n
 
-    with `f(t_n)` the frequency track at the n-th SFT midpoint.
+    with `f(t_n)` the frequency track at the n-th SFT midpoint, its orbit in
+    barycenter time.
 
     Args:
         point: Point to evaluate at.
-        times: SFT midpoints from the reference epoch [s].
-        velocity: Detector velocity `v/c` at each SFT midpoint.
-        tsft: SFT length [s].
+        observation: The run's SFT length, midpoints and detector motion.
         g_freq_bin: freq_bin_curvature() of the window the SFTs were made with.
 
     Returns:
@@ -75,10 +73,15 @@ def physical_metric(
         Parameters(*(jnp.asarray(x, dtype=float) for x in point))
     )
 
+    times = jnp.asarray(observation.times)
+    velocity = jnp.asarray(observation.velocity)
+    position = jnp.asarray(observation.position)
+
     def track(vector: Float[Array, " 6"]) -> Float[Array, " n_sft"]:
         p = unravel(vector)
+        delay = solar_roemer_delay(position, alpha=p.alpha, delta=p.delta)
         return observed_frequency(
-            times,
+            times + delay,
             f0=p.f0,
             ap=p.ap,
             omega=p.omega,
@@ -86,7 +89,7 @@ def physical_metric(
             doppler=velocity @ sky_direction(p.alpha, p.delta),
         )
 
-    jacobian = jax.jacfwd(track)(flat) * tsft
+    jacobian = jax.jacfwd(track)(flat) * observation.tsft
     return g_freq_bin * (jacobian.T @ jacobian) / jacobian.shape[0]
 
 

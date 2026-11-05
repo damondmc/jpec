@@ -19,6 +19,7 @@ from jaxtyping import Array, Complex, Float, Int
 from jpec.bank.template_bank import TemplateBank
 from jpec.bank.tiling import LatticeTiling
 from jpec.config import SearchSetup, read_json
+from jpec.detector.doppler import solar_roemer_delay
 from jpec.engine.data import SearchData
 from jpec.engine.layout import subgrid_layout
 from jpec.engine.loop import (
@@ -28,7 +29,7 @@ from jpec.engine.loop import (
     matched_filter_grid,
 )
 from jpec.pipelines.monitor import RunLogger
-from jpec.stat.matched_filter import orbital_phase_mod_2pi
+from jpec.stat.matched_filter import barycenter_orbital_phase, orbital_phase_mod_2pi
 
 
 def mean_seconds(function: Callable[..., Any], *args: Any, repeats: int) -> float:
@@ -126,6 +127,12 @@ def run(args: argparse.Namespace) -> None:
     n_transformed_bins = int(corrected_sft_power.shape[-1])
 
     orbital_phases = jnp.asarray(orbital_phase_mod_2pi(search_data.times, layout.omega))
+    omega = jnp.asarray(layout.omega)
+    solar_roemer_delays = solar_roemer_delay(
+        search_data.position,
+        alpha=jnp.asarray(bank.alpha[:sky_batch_size]),
+        delta=jnp.asarray(bank.delta[:sky_batch_size]),
+    )
 
     transform_seconds, match_seconds = [], []
     transform_work, match_work = [], []
@@ -137,8 +144,16 @@ def run(args: argparse.Namespace) -> None:
             batch_orbital_phase = jax.lax.dynamic_slice_in_dim(
                 orbital_phases, batch.period_start_idx, period_batch_size
             )
+            batch_omega = jax.lax.dynamic_slice_in_dim(
+                omega, batch.period_start_idx, period_batch_size
+            )
+            batch_barycenter_orbital_phase = barycenter_orbital_phase(
+                batch_orbital_phase, batch_omega, solar_roemer_delays
+            )
             return data_harmonics_per_sky_point(
-                corrected_sft_power, batch_orbital_phase, j_max=batch.n_harmonics
+                corrected_sft_power,
+                batch_barycenter_orbital_phase,
+                j_max=batch.n_harmonics,
             )
 
         transform_seconds.append(mean_seconds(transform, repeats=args.repeats))

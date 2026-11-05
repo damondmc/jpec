@@ -60,12 +60,9 @@ class SearchData:
         self.floor = floor
         self.t_ref = t_ref
         self.velocity_per_detector = [jnp.asarray(sft.velocity) for sft in sfts]
-        # the velocity [v/c] the sky lattice is built from, detectors
-        # concatenated, on the host
         self.velocity = np.concatenate([sft.velocity for sft in sfts])
-        # every SFT midpoint from t_ref [s], detectors concatenated, on the host in
-        # float64, where the orbital phase is wrapped before it becomes float32
         self.times = np.concatenate([sft.timestamps_midpoints for sft in sfts]) - t_ref
+        self.position = jnp.asarray(np.concatenate([sft.position for sft in sfts]))
 
     @classmethod
     def load(

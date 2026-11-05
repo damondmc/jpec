@@ -10,7 +10,7 @@ from jpec.constant import (
     SHIFT_MARGIN_BINS,
     V_MAX,
 )
-from jpec.detector.site import Detector
+from jpec.detector.site import Detector, Observation
 from jpec.injection.signal import (
     Injection,
     Orientation,
@@ -94,14 +94,15 @@ class ObservedSignal:
         )
         return float(value)
 
-    def metric(self, true: Parameters, times) -> np.ndarray:
-        """The closed-form 6x6 metric at `true`, absolute units."""
+    def metric(self, true: Parameters, t_ref: float) -> np.ndarray:
+        """The closed-form 6x6 metric at `true`, epoch at `t_ref`, absolute units."""
+        observation = Observation(
+            {"H1": self.sft.timestamps}, tsft=self.tsft, t_ref=t_ref
+        )
         return np.asarray(
             physical_metric(
                 true,
-                times=times,
-                velocity=jnp.asarray(self.sft.velocity),
-                tsft=self.tsft,
+                observation,
                 g_freq_bin=freq_bin_curvature(
                     self.case.window, n_positions=N_CURVATURE_POSITIONS
                 ),
@@ -140,10 +141,10 @@ def test_projection_is_epoch_invariant(case: Case):
         phi_b=observed.parameters.phi_b - omega * shift
     )
     epoch_at_start = observed.relative_without_phi_b(
-        observed.metric(at_start, observed.times - shift)
+        observed.metric(at_start, observed.t_ref + shift)
     )
     epoch_at_middle = observed.relative_without_phi_b(
-        observed.metric(observed.parameters, observed.times)
+        observed.metric(observed.parameters, observed.t_ref)
     )
     assert (
         np.abs(epoch_at_start - epoch_at_middle).max()
@@ -162,7 +163,7 @@ def test_quadratic_form_predicts_the_mismatch(closed_orbits: ObservedSignal, axi
     """
     axis_idx = Parameters._fields.index(axis)
     relative_metric = closed_orbits.relative_without_phi_b(
-        closed_orbits.metric(closed_orbits.parameters, closed_orbits.times)
+        closed_orbits.metric(closed_orbits.parameters, closed_orbits.t_ref)
     )
     direction = np.zeros(5)
     direction[WITHOUT_PHI_B_IDXS.index(axis_idx)] = 1.0

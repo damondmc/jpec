@@ -11,8 +11,6 @@ import argparse
 import importlib.metadata
 from pathlib import Path
 
-import jax.numpy as jnp
-
 from jpec.bank.tiling import LatticeTiling
 from jpec.config import (
     DataSetup,
@@ -22,7 +20,7 @@ from jpec.config import (
     read_config,
     read_json,
 )
-from jpec.detector.site import reference_epoch, times_and_velocity
+from jpec.detector.site import Observation, reference_epoch
 from jpec.engine.data import band_edges_for_f0
 from jpec.pipelines.monitor import RunLogger
 
@@ -43,9 +41,7 @@ def run(args: argparse.Namespace) -> None:
     # the run's SFTs, epoch and detector motion
     tsft = sft_metadata.tsft
     t_ref = reference_epoch(sft_metadata.timestamps, tsft=tsft)
-    times, velocity = times_and_velocity(
-        sft_metadata.timestamps, tsft=tsft, t_ref=t_ref
-    )
+    observation = Observation(sft_metadata.timestamps, tsft=tsft, t_ref=t_ref)
 
     # the band the sources land in, and the files holding it
     injection_prior = box_config.prior()
@@ -57,9 +53,7 @@ def run(args: argparse.Namespace) -> None:
     )
     tiling = LatticeTiling.from_metric(
         injection_prior,
-        times=jnp.asarray(times),
-        velocity=jnp.asarray(velocity),
-        tsft=tsft,
+        observation=observation,
         mismatch=mismatch,
         n_ap_blocks=config.template_bank.n_ap_blocks,
         window=sft_metadata.window,

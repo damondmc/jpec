@@ -7,7 +7,7 @@ from jpec.bank.template_bank import OrbitalTemplateGrid, TemplateBank
 from jpec.bank.tiling import LatticeTiling
 from jpec.config import SearchLoopConfig
 from jpec.constant import DAY
-from jpec.detector.site import Detector, reference_epoch, times_and_velocity
+from jpec.detector.site import Detector, Observation, reference_epoch
 from jpec.engine.data import SearchData, band_edges_for_f0
 from jpec.engine.layout import f0_groups
 from jpec.engine.loop import (
@@ -176,7 +176,7 @@ def small_search():
     search_loop_config = SearchLoopConfig()
     timestamps = {"H1": RUN_START + np.arange(0.0, 10.0 * DAY, tsft)}
     t_ref = reference_epoch(timestamps, tsft=tsft)
-    times, velocity = times_and_velocity(timestamps, tsft=tsft, t_ref=t_ref)
+    observation = Observation(timestamps, tsft=tsft, t_ref=t_ref)
     prior = Prior(
         f0=(150.0, 150.004),
         ap=(5.5, 6.0),
@@ -187,9 +187,7 @@ def small_search():
     )
     tiling = LatticeTiling.from_metric(
         prior,
-        times=jnp.asarray(times),
-        velocity=jnp.asarray(velocity),
-        tsft=tsft,
+        observation=observation,
         mismatch=0.4,
         n_ap_blocks=1,
         window=window,

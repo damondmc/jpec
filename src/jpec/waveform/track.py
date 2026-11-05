@@ -1,4 +1,4 @@
-"""The orbit's track: orbital phase, Roemer delay, and the observed frequency."""
+"""The orbit's track: orbital phase, binary Roemer delay, and the observed frequency."""
 
 import jax.numpy as jnp
 from jaxtyping import Array, Float
@@ -15,7 +15,7 @@ def orbital_phase(
     """Orbital phase `theta = omega*t - phi_b`, unwrapped.
 
     Args:
-        t: Times [s].
+        t: Barycenter times from the epoch of `phi_b` [s].
         omega: Orbital angular frequency [rad/s].
         phi_b: Orbital phase at the epoch of `t` [rad].
 
@@ -25,7 +25,7 @@ def orbital_phase(
     return omega * t - phi_b
 
 
-def roemer_delay(
+def binary_roemer_delay(
     t: Float[Array, " n_time"],
     *,
     ap: Scalar,
@@ -35,7 +35,7 @@ def roemer_delay(
     """Binary Roemer delay, `ap * sin(omega*t - phi_b)`.
 
     Args:
-        t: Times [s].
+        t: Barycenter times from the epoch of `phi_b` [s].
         ap: Projected semi-major axis [light-seconds].
         omega: Orbital angular frequency [rad/s].
         phi_b: Orbital phase at the epoch of `t` [rad].
@@ -59,7 +59,7 @@ def frequency_offset(
         f(t) - f0  = -modulation_depth * cos(omega*t - phi_b)
 
     Args:
-        t: Times [s].
+        t: Barycenter times from the epoch of `phi_b` [s].
         modulation_depth: Modulation depth [Hz].
         omega: Orbital angular frequency [rad/s].
         phi_b: Orbital phase at the epoch of `t` [rad].
@@ -84,7 +84,7 @@ def observed_frequency(
         f(t) = f0 * (1 + doppler) - f0*ap*omega * cos(omega*t - phi_b)
 
     Args:
-        t: Times [s].
+        t: Barycenter times from the epoch of `phi_b` [s].
         f0: Signal frequency at the Solar System Barycenter [Hz].
         ap: Projected semi-major axis [light-seconds].
         omega: Orbital angular frequency [rad/s].

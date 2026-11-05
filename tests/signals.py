@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from jpec.constant import ARC_PAD_BINS, DAY, PHASE_OVERSAMPLE
-from jpec.detector.doppler import doppler_corrected_power
+from jpec.detector.doppler import doppler_corrected_power, solar_roemer_delay
 from jpec.params import Parameters
 from jpec.stat.matched_filter import data_harmonics, orbital_phase_mod_2pi
 from jpec.waveform.harmonics import (
@@ -122,7 +122,12 @@ def search_data_harmonics(
     kept_bin_idxs = slice(
         centre_idx - half_width_bins, centre_idx + half_width_bins + 1
     )
-    sft_orbital_phase = jnp.asarray(orbital_phase_mod_2pi(times, point.omega))
+    delay = solar_roemer_delay(
+        jnp.asarray(sft.position), alpha=float(point.alpha), delta=float(point.delta)
+    )
+    sft_orbital_phase = jnp.asarray(
+        orbital_phase_mod_2pi(np.asarray(times) + np.asarray(delay), point.omega)
+    )
     return (
         data_harmonics(sft_power[:, kept_bin_idxs], sft_orbital_phase, j_max=j_max),
         bin_offsets[kept_bin_idxs],

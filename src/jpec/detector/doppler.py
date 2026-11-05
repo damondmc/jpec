@@ -1,4 +1,4 @@
-"""Doppler correction of SFT amplitudes toward a sky position, before squaring."""
+"""Toward a sky position: the Solar System Roemer delay, and the Doppler correction."""
 
 import jax.numpy as jnp
 from jaxtyping import Array, Complex, Float
@@ -6,15 +6,18 @@ from jaxtyping import Array, Complex, Float
 from jpec.typing import Scalar
 
 
-def sky_direction(alpha: Scalar, delta: Scalar) -> Float[Array, " 3"]:
+def sky_direction(
+    alpha: Scalar | Float[Array, " n_sky"], delta: Scalar | Float[Array, " n_sky"]
+) -> Float[Array, "3 ..."]:
     """Unit vector toward a sky position, in the frame `Detector.velocity` uses.
 
     Args:
-        alpha: Right ascension [rad].
-        delta: Declination [rad].
+        alpha: Right ascension [rad], one or one per sky point.
+        delta: Declination [rad], one or one per sky point.
 
     Returns:
-        `(cos(delta) cos(alpha), cos(delta) sin(alpha), sin(delta))`.
+        `(cos(delta) cos(alpha), cos(delta) sin(alpha), sin(delta))`, a column per
+        sky point.
     """
     return jnp.stack(
         [
@@ -23,6 +26,29 @@ def sky_direction(alpha: Scalar, delta: Scalar) -> Float[Array, " 3"]:
             jnp.sin(delta),
         ]
     )
+
+
+def solar_roemer_delay(
+    position: Float[Array, "n_sft 3"],
+    *,
+    alpha: Scalar | Float[Array, " n_sky"],
+    delta: Scalar | Float[Array, " n_sky"],
+) -> Float[Array, "*n_sky n_sft"]:
+    """Solar System Barycenter time minus detector time toward sky positions.
+
+        delay(t) = r(t) . n_hat   [s]
+
+    with `r` the detector position from the barycenter in light-seconds.
+
+    Args:
+        position: Detector position at each SFT [light-s].
+        alpha: Right ascension [rad], one or one per sky point.
+        delta: Declination [rad], one or one per sky point.
+
+    Returns:
+        The delay at each SFT [s], a row per sky point.
+    """
+    return sky_direction(alpha, delta).T @ position.T
 
 
 def shift_spectrum(

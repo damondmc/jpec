@@ -10,11 +10,12 @@ import numpy as np
 from jaxtyping import Array, Bool, Complex, Float, Int
 
 from jpec.bank.template_bank import TemplateBank
-from jpec.detector.doppler import doppler_corrected_power
+from jpec.detector.doppler import doppler_corrected_power, solar_roemer_delay
 from jpec.engine.candidates import LoudestTemplates
 from jpec.engine.data import SearchData
 from jpec.engine.layout import PeriodBatch, SubgridLayout, subgrid_layouts
 from jpec.stat.matched_filter import (
+    barycenter_orbital_phase,
     data_harmonics,
     max_over_phase,
     orbital_phase_mod_2pi,
@@ -67,7 +68,7 @@ def doppler_corrected_power_per_reference(
 @partial(jax.jit, static_argnames="j_max")
 def data_harmonics_per_sky_point(
     corrected_sft_power: Float[Array, "n_sky n_doppler_reference n_sft n_freq"],
-    orbital_phase: Float[Array, "n_period n_sft"],
+    orbital_phase: Float[Array, "n_sky n_period n_sft"],
     *,
     j_max: int,
 ) -> Complex[Array, "n_sky n_doppler_reference n_period n_harmonic n_freq"]:
@@ -76,16 +77,15 @@ def data_harmonics_per_sky_point(
     Args:
         corrected_sft_power: The Doppler-corrected power at each sky point and
             reference.
-        orbital_phase: Orbital phase at each SFT and trial period of a batch [rad].
+        orbital_phase: barycenter_orbital_phase() at each sky point, SFT and trial
+            period of a batch [rad].
         j_max: Highest harmonic to keep.
 
     Returns:
         `F[j, k]` at each sky point, reference and trial period.
     """
     per_reference = jax.vmap(partial(data_harmonics, j_max=j_max), in_axes=(0, None))
-    return jax.vmap(per_reference, in_axes=(0, None))(
-        corrected_sft_power, orbital_phase
-    )
+    return jax.vmap(per_reference)(corrected_sft_power, orbital_phase)
 
 
 @partial(
@@ -235,7 +235,8 @@ class HarmonicBank(NamedTuple):
         layouts: Its subgrids in order, from subgrid_layout() on the band.
         template_harmonics: Each subgrid's `tau[j, k]` at its layout's sub-bin
             offsets.
-        orbital_phases: Each subgrid's orbital phase.
+        orbital_phases: Each subgrid's orbital phase in detector time.
+        omegas: Each subgrid's orbital angular frequencies [rad/s], on the device.
     """
 
     bank: TemplateBank
@@ -244,6 +245,7 @@ class HarmonicBank(NamedTuple):
         Complex[Array, "n_sub_bin_offset n_modulation_depth n_harmonic n_freq"]
     ]
     orbital_phases: list[Float[Array, "n_period n_sft"]]
+    omegas: list[Float[Array, " n_period"]]
 
     @classmethod
     def from_bank(
@@ -292,11 +294,13 @@ class HarmonicBank(NamedTuple):
             jnp.asarray(orbital_phase_mod_2pi(times, layout.omega))
             for layout in layouts
         ]
+        omegas = [jnp.asarray(layout.omega) for layout in layouts]
         return cls(
             bank=bank,
             layouts=layouts,
             template_harmonics=template_harmonics,
             orbital_phases=orbital_phases,
+            omegas=omegas,
         )
 
 
@@ -349,16 +353,24 @@ def orbital_statistics(
             phase_idxs=phase_idxs,
         )
 
+    sky_idx_array = np.asarray(sky_idxs)
+    solar_roemer_delays = solar_roemer_delay(
+        search_data.position,
+        alpha=jnp.asarray(bank.alpha[sky_idx_array]),
+        delta=jnp.asarray(bank.delta[sky_idx_array]),
+    )
     pending = None
     for subgrid_idx, (
         layout,
         subgrid_template_harmonics,
         subgrid_orbital_phases,
+        subgrid_omega,
     ) in enumerate(
         zip(
             harmonic_bank.layouts,
             harmonic_bank.template_harmonics,
             harmonic_bank.orbital_phases,
+            harmonic_bank.omegas,
         )
     ):
         template_grid = layout.template_grid
@@ -392,9 +404,17 @@ def orbital_statistics(
                 batch.period_start_idx,
                 layout.period_batch_size,
             )
+            batch_omega = jax.lax.dynamic_slice_in_dim(
+                subgrid_omega, batch.period_start_idx, layout.period_batch_size
+            )
             # one transform for every sky point and Doppler reference of the batch
+            batch_barycenter_orbital_phase = barycenter_orbital_phase(
+                batch_orbital_phase, batch_omega, solar_roemer_delays
+            )
             batch_data_harmonics = data_harmonics_per_sky_point(
-                corrected_sft_power, batch_orbital_phase, j_max=batch.n_harmonics
+                corrected_sft_power,
+                batch_barycenter_orbital_phase,
+                j_max=batch.n_harmonics,
             )
             # the batch's own periods in its window; the run past period_stop_idx is
             # out of its box

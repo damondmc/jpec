@@ -102,12 +102,15 @@ def sfts(case: Case) -> SFTData:
     starts = T0 + np.arange(0.0, 20.0 * DAY, case.tsft)
     midpoints = starts + case.tsft / 2.0
     velocity = Detector("H1").velocity(midpoints)
-    doppler = velocity @ np.asarray(
+    direction = np.asarray(
         [np.cos(DELTA) * np.cos(ALPHA), np.cos(DELTA) * np.sin(ALPHA), np.sin(DELTA)]
     )
+    doppler = velocity @ direction
+    # the orbit in barycenter time
+    delay = Detector("H1").position(midpoints) @ direction
     observed = np.asarray(
         observed_frequency(
-            jnp.asarray(midpoints - T0),
+            jnp.asarray(midpoints - T0 + delay),
             f0=parameters.f0,
             ap=parameters.ap,
             omega=parameters.omega,

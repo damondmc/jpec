@@ -1,13 +1,12 @@
 from dataclasses import replace
 
-import jax.numpy as jnp
 import numpy as np
 import pytest
 
 from jpec.bank.lattice import BCC_SUBGRID_STEP
 from jpec.bank.tiling import LatticeTiling
 from jpec.constant import DAY
-from jpec.detector.site import Detector
+from jpec.detector.site import Detector, Observation
 from jpec.params import Prior, ap_from_modulation_depth_bins
 from jpec.waveform.window import Window
 
@@ -30,14 +29,11 @@ BAND = (150.0, 150.02)  # narrow enough to check template by template
 @pytest.fixture(scope="module")
 def tiling() -> LatticeTiling:
     """One tiling from the metric over a short run."""
-    midpoints = np.arange(0.0, DAYS * DAY, TSFT) + TSFT / 2.0
-    times = jnp.asarray(midpoints - midpoints.mean())
-    velocity = jnp.asarray(Detector("H1").velocity(T0 + midpoints))
+    starts = T0 + np.arange(0.0, DAYS * DAY, TSFT)
+    t_ref = float(np.mean(starts + TSFT / 2.0))
     return LatticeTiling.from_metric(
         BOX,
-        times=times,
-        velocity=velocity,
-        tsft=TSFT,
+        observation=Observation({"H1": starts}, tsft=TSFT, t_ref=t_ref),
         mismatch=MISMATCH,
         n_ap_blocks=N_AP_BLOCKS,
         window=Window(),

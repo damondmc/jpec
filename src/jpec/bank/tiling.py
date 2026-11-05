@@ -5,7 +5,7 @@ from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
-from jaxtyping import Array, Float
+from jaxtyping import Float
 
 from jpec.bank.lattice import (
     BCC_SUBGRID_OFFSETS,
@@ -22,6 +22,7 @@ from jpec.bank.metric import (
     project_out,
 )
 from jpec.constant import N_CURVATURE_POSITIONS
+from jpec.detector.site import Observation
 from jpec.params import Parameters, Prior
 from jpec.waveform.window import Window
 
@@ -79,9 +80,7 @@ class LatticeTiling:
         cls,
         prior: Prior,
         *,
-        times: Float[Array, " n_sft"],
-        velocity: Float[Array, "n_sft 3"],
-        tsft: float,
+        observation: Observation,
         mismatch: float,
         n_ap_blocks: int,
         window: Window,
@@ -90,9 +89,7 @@ class LatticeTiling:
 
         Args:
             prior: The region searched.
-            times: SFT midpoints from the reference epoch [s], every detector.
-            velocity: Detector velocity `v/c` at each of them.
-            tsft: SFT length [s].
+            observation: The run's SFT length, midpoints and detector motion.
             mismatch: Mismatch budget over every axis.
             n_ap_blocks: ap blocks the box is cut into.
             window: The window the SFTs were made with.
@@ -111,15 +108,8 @@ class LatticeTiling:
             delta=METRIC_SKY_POSITION[1],
         )
 
-        metric = project_out(
-            physical_metric(
-                top,
-                times=times,
-                velocity=velocity,
-                tsft=tsft,
-                g_freq_bin=g_freq_bin,
-            )
-        )
+        tsft = observation.tsft
+        metric = project_out(physical_metric(top, observation, g_freq_bin=g_freq_bin))
         orbital_metric = orbital_lattice_metric(metric, top, tsft=tsft)
         orbital_steps = np.asarray(
             cubic_step(jnp.diag(orbital_metric), mismatch_per_axis)
