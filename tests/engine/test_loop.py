@@ -27,6 +27,9 @@ from jpec.waveform.window import Window
 # the O4a start [GPS s], and the one sky point the small search is at [rad]
 RUN_START = 1368975618.0
 SKY_ALPHA, SKY_DELTA = 1.2, 0.3
+# sub-bin offsets fine enough that the small search's f0 range needs several Doppler
+# references
+MULTI_REFERENCE_SUB_BIN_OFFSETS = 1024
 
 N_DOPPLER_REFERENCES = 2
 N_PERIODS = 4
@@ -302,26 +305,54 @@ def test_harmonics_per_batch_leave_the_statistic_unchanged(small_search):
             )
 
 
-def test_band_trim_leaves_the_statistic_unchanged(small_search):
-    """Transforming only the bins the windows read scores as the whole band does."""
+@pytest.fixture(scope="module")
+def multi_reference_search(small_search):
+    """The small search with sub-bin offsets fine enough to need several references."""
     search_data, harmonic_bank = small_search
+    search_loop_config = SearchLoopConfig()
+    multi_reference_bank = HarmonicBank(
+        harmonic_bank.bank,
+        times=search_data.times,
+        freq_low=search_data.freq_low,
+        n_band_bins=search_data.n_band_bins,
+        n_sub_bin_offsets=MULTI_REFERENCE_SUB_BIN_OFFSETS,
+        period_batch_size=4,
+        harmonic_fraction=search_loop_config.harmonic_fraction,
+        modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
+    )
+    return search_data, multi_reference_bank
+
+
+@pytest.mark.parametrize("search", ["small_search", "multi_reference_search"])
+def test_band_trim_leaves_the_statistic_unchanged(search, request):
+    """Each reference transforming only its windows' bins scores as the whole band."""
+    search_data, harmonic_bank = request.getfixturevalue(search)
     n_band_bins = search_data.n_band_bins
     for layout in harmonic_bank.layouts:
-        assert 0 <= layout.transformed_bin_idxs.start
-        assert layout.transformed_bin_idxs.stop <= n_band_bins
+        starts = np.asarray(layout.transformed_start_idxs)
+        windows = np.asarray(layout.window_start_idxs)
+        n_window_bins = layout.template_grid.bin_offsets.shape[0]
+        assert (starts >= 0).all()
+        assert (starts + layout.n_transformed_bins <= n_band_bins).all()
+        assert (windows >= 0).all()
+        assert (windows + n_window_bins <= layout.n_transformed_bins).all()
     assert any(
-        layout.transformed_bin_idxs.stop - layout.transformed_bin_idxs.start
-        < n_band_bins
-        for layout in harmonic_bank.layouts
+        layout.n_transformed_bins < n_band_bins for layout in harmonic_bank.layouts
     ), "the band holds only the windows, so there is nothing to trim"
+    if search == "multi_reference_search":
+        assert all(
+            layout.doppler_references.size > 1 for layout in harmonic_bank.layouts
+        ), "one reference per subgrid, so the references' bins are not split"
 
-    # the whole band transformed, each window counted from the band's first bin
+    # every reference transforms the whole band, each window counted from its first
+    # bin
     untrimmed_bank = copy.copy(harmonic_bank)
     untrimmed_bank.layouts = [
         layout._replace(
-            transformed_bin_idxs=slice(0, n_band_bins),
+            transformed_start_idxs=jnp.zeros_like(layout.transformed_start_idxs),
+            n_transformed_bins=n_band_bins,
             window_start_idxs=layout.window_start_idxs
-            + layout.transformed_bin_idxs.start,
+            + layout.transformed_start_idxs[layout.doppler_reference_idxs],
         )
         for layout in harmonic_bank.layouts
     ]

@@ -21,17 +21,19 @@ from jpec.stat.matched_filter import (
 )
 
 
-@jax.jit
+@partial(jax.jit, static_argnames="n_transformed_bins")
 def doppler_corrected_power_per_reference(
     sft_time_series: list[Complex[Array, "n_sft n_band"]],
     floor: list[Float[Array, "n_sft n_band"]],
     velocity_per_detector: list[Float[Array, "n_sft 3"]],
     doppler_references: Float[Array, " n_doppler_reference"],
+    transformed_start_idxs: Int[Array, " n_doppler_reference"],
     *,
+    n_transformed_bins: int,
     tsft: float,
     alpha: float,
     delta: float,
-) -> Float[Array, "n_doppler_reference n_sft n_band"]:
+) -> Float[Array, "n_doppler_reference n_sft n_transformed_bin"]:
     """The band corrected toward one sky position at every Doppler reference in turn.
 
     Args:
@@ -39,18 +41,21 @@ def doppler_corrected_power_per_reference(
         floor: Mean noise power in each SFT and bin, per detector.
         velocity_per_detector: Detector velocity `v/c` at each SFT, per detector.
         doppler_references: Frequencies the Doppler shift is taken at [Hz].
+        transformed_start_idxs: First band bin each reference keeps.
+        n_transformed_bins: Bins each reference keeps from its first.
         tsft: SFT length [s].
         alpha: Right ascension [rad].
         delta: Declination [rad].
 
     Returns:
-        doppler_corrected_power() at each Doppler reference.
+        doppler_corrected_power() at each Doppler reference, over the bins it keeps.
     """
 
     def at_reference(
-        doppler_reference: Float[Array, ""],
-    ) -> Float[Array, "n_sft n_band"]:
-        return doppler_corrected_power(
+        reference_and_start_idx: tuple[Float[Array, ""], Int[Array, ""]],
+    ) -> Float[Array, "n_sft n_transformed_bin"]:
+        doppler_reference, transformed_start_idx = reference_and_start_idx
+        corrected_power = doppler_corrected_power(
             sft_time_series,
             floor=floor,
             velocity_per_detector=velocity_per_detector,
@@ -59,9 +64,12 @@ def doppler_corrected_power_per_reference(
             delta=delta,
             doppler_reference=doppler_reference,
         )
+        return jax.lax.dynamic_slice_in_dim(
+            corrected_power, transformed_start_idx, n_transformed_bins, axis=-1
+        )
 
     # lax.map, not vmap: one reference's transforms in memory at a time
-    return jax.lax.map(at_reference, doppler_references)
+    return jax.lax.map(at_reference, (doppler_references, transformed_start_idxs))
 
 
 @partial(jax.jit, static_argnames="j_max")
@@ -116,7 +124,8 @@ def matched_filter_grid(
         data_harmonics: `F[j, k]` at each period over the transformed bins, per
             Doppler reference.
         template_harmonics: `tau[j, k]` at every modulation depth, per sub-bin offset.
-        window_start_idxs: First transformed bin of each f0 point's template window.
+        window_start_idxs: First bin of each f0 point's template window, among its
+            reference's transformed bins.
         group_f0_idxs: The f0 points of each group, from f0_groups().
         group_doppler_reference_idxs: Which reference's data harmonics each group
             reads.
@@ -370,10 +379,12 @@ def orbital_statistics(
                     floor=search_data.floor,
                     velocity_per_detector=search_data.velocity_per_detector,
                     doppler_references=layout.doppler_references,
+                    transformed_start_idxs=layout.transformed_start_idxs,
+                    n_transformed_bins=layout.n_transformed_bins,
                     tsft=search_data.tsft,
                     alpha=float(bank.alpha[sky_idx]),
                     delta=float(bank.delta[sky_idx]),
-                )[..., layout.transformed_bin_idxs]
+                )
                 for sky_idx in sky_idxs
             ]
         )

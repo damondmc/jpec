@@ -106,12 +106,14 @@ def run(args: argparse.Namespace) -> None:
 
     def doppler_correction(
         sky_idx: int,
-    ) -> Float[Array, "n_doppler_reference n_sft n_band"]:
+    ) -> Float[Array, "n_doppler_reference n_sft n_transformed_bin"]:
         return doppler_corrected_power_per_reference(
             search_data.sft_time_series,
             search_data.floor,
             search_data.velocity_per_detector,
             layout.doppler_references,
+            layout.transformed_start_idxs,
+            n_transformed_bins=layout.n_transformed_bins,
             tsft=search_data.tsft,
             alpha=float(bank.alpha[sky_idx]),
             delta=float(bank.delta[sky_idx]),
@@ -119,10 +121,7 @@ def run(args: argparse.Namespace) -> None:
 
     doppler_seconds = mean_seconds(doppler_correction, 0, repeats=args.repeats)
     corrected_sft_power = jnp.stack(
-        [
-            doppler_correction(sky_idx)[..., layout.transformed_bin_idxs]
-            for sky_idx in range(sky_batch_size)
-        ]
+        [doppler_correction(sky_idx) for sky_idx in range(sky_batch_size)]
     )
     n_transformed_bins = int(corrected_sft_power.shape[-1])
 

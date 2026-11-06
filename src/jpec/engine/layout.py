@@ -41,10 +41,11 @@ class SubgridLayout(NamedTuple):
 
     Attributes:
         template_grid: The subgrid's orbital template grid.
-        transformed_bin_idxs: The band bins some template window reads, the only ones
-            transformed.
+        transformed_start_idxs: First band bin each Doppler reference transforms.
+        n_transformed_bins: Bins every reference transforms from its first, enough
+            for the template windows of all its f0 points.
         window_start_idxs: First bin of each f0 point's template window, counted from
-            `transformed_bin_idxs.start`.
+            its reference's transformed start.
         doppler_references: Frequency each corrected band is Doppler-corrected at
             [Hz].
         doppler_reference_idxs: Which corrected band each f0 point reads.
@@ -66,7 +67,8 @@ class SubgridLayout(NamedTuple):
     """
 
     template_grid: OrbitalTemplateGrid
-    transformed_bin_idxs: slice
+    transformed_start_idxs: Int[Array, " n_doppler_reference"]
+    n_transformed_bins: int
     window_start_idxs: Int[Array, " n_f0"]
     doppler_references: Float[Array, " n_doppler_reference"]
     doppler_reference_idxs: Int[Array, " n_f0"]
@@ -269,22 +271,6 @@ def subgrid_layout(
             f"the subgrid's f0 points from {f0[0]:.5f} to {f0[-1]:.5f} Hz do not all "
             f"fit the {n_band_bins}-bin band loaded from {freq_low:.5f} Hz"
         )
-    # the margin beyond the windows is only for the Doppler shift, so the transform
-    # skips it
-    #
-    #   band:          [------------------------------------------------]  n_band_bins
-    #   lowest f0:          [--- n_window_bins ---]
-    #   highest f0:                       [--- n_window_bins ---]
-    #   transformed:        [====================================]
-    #                       ^ transformed_start_idx              ^ transformed_stop_idx
-    #
-    # window_start_idxs is then counted from transformed_start_idx, the first bin of
-    # the transformed slice
-    transformed_start_idx = int(window_start_idxs.min())
-    transformed_stop_idx = int(window_start_idxs.max()) + n_window_bins
-    transformed_bin_idxs = slice(transformed_start_idx, transformed_stop_idx)
-    window_start_idxs = window_start_idxs - transformed_start_idx
-
     # Doppler references at the centres of equal pieces of the f0 range; each f0 point
     # takes the nearest
     n_doppler_references = doppler_reference_count(
@@ -294,6 +280,34 @@ def subgrid_layout(
     doppler_references = f0[0] + reference_centres * (f0[-1] - f0[0])
     doppler_reference_idxs = np.argmin(
         np.abs(doppler_references[None, :] - f0[:, None]), axis=1
+    )
+
+    # each reference transforms only the bins its own f0 points' windows read, every
+    # reference the same count so they stack into one array
+    #
+    #   band:            [------------------------------------------------]
+    #   reference 0:       [== its f0 points' windows ==]
+    #   reference 1:                          [== its f0 points' windows ==]
+    #                      ^ transformed_start_idxs[0]
+    #                      |---- n_transformed_bins ----|
+    #
+    # a reference whose bins would run past the band starts lower; window_start_idxs
+    # is then counted from the f0 point's own reference's start
+    reference_window_start_idxs = [
+        window_start_idxs[doppler_reference_idxs == reference_idx]
+        for reference_idx in range(n_doppler_references)
+    ]
+    n_transformed_bins = n_window_bins + max(
+        int(starts.max() - starts.min()) for starts in reference_window_start_idxs
+    )
+    transformed_start_idxs = np.array(
+        [
+            min(int(starts.min()), n_band_bins - n_transformed_bins)
+            for starts in reference_window_start_idxs
+        ]
+    )
+    window_start_idxs = (
+        window_start_idxs - transformed_start_idxs[doppler_reference_idxs]
     )
 
     # sub-bin offsets on one fixed grid across a bin; each f0 point takes the nearest
@@ -337,7 +351,8 @@ def subgrid_layout(
     padded_period = np.pad(period, (0, period_batch_size - 1), mode="edge")
     return SubgridLayout(
         template_grid=template_grid,
-        transformed_bin_idxs=transformed_bin_idxs,
+        transformed_start_idxs=jnp.asarray(transformed_start_idxs),
+        n_transformed_bins=n_transformed_bins,
         window_start_idxs=jnp.asarray(window_start_idxs),
         doppler_references=jnp.asarray(doppler_references),
         doppler_reference_idxs=jnp.asarray(doppler_reference_idxs),

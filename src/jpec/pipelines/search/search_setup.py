@@ -142,9 +142,7 @@ def search_memory_gb(
         j_max = template_grid.j_max
         n_window_bins = template_grid.bin_offsets.shape[0]
         n_doppler_references = int(layout.doppler_references.size)
-        n_transformed_bins = (
-            layout.transformed_bin_idxs.stop - layout.transformed_bin_idxs.start
-        )
+        n_transformed_bins = layout.n_transformed_bins
         n_window_modulation_depths = layout.n_window_modulation_depths
         # the most harmonics any period batch transforms and matches
         n_batch_harmonics = max(batch.n_harmonics for batch in layout.period_batches)
@@ -168,11 +166,10 @@ def search_memory_gb(
             * n_transformed_bins
             * FLOAT32_BYTES
         )
-        # building the stack: every sky point's whole corrected band in flight, and
-        # the transformed bins as slices, expanded and stacked
+        # building the stack: one reference's whole corrected band in flight per sky
+        # point, and the transformed bins as returned, expanded and stacked
         doppler_correction_bytes = (
-            sky_batch_size * n_doppler_references * n_sfts * n_band_bins * FLOAT32_BYTES
-            + 3 * stack_bytes
+            sky_batch_size * n_sfts * n_band_bins * FLOAT32_BYTES + 3 * stack_bytes
         )
         # the float32 cosine and sine bases at every sky point, the batch's harmonics
         # twice, and the match's overlaps and S(phi_b)
@@ -231,9 +228,7 @@ def search_hours(
             * n_band_bins
             * rates["doppler_correction"]
         )
-        n_transformed_bins = (
-            layout.transformed_bin_idxs.stop - layout.transformed_bin_idxs.start
-        )
+        n_transformed_bins = layout.n_transformed_bins
         # every batch is a full run of periods, at its own harmonics
         n_batch_harmonics = sum(batch.n_harmonics for batch in layout.period_batches)
         n_batch_templates = (
@@ -384,9 +379,9 @@ def split_job_by_f0(
                     high = middle
                 else:
                     failing_high = middle
-        # the hours per Hz fall with the width until the next Doppler reference doubles
-        # the transform, so the cheapest job is that one or one whose f0 points span
-        # just under a whole number of references
+        # the hours per Hz fall with the width until the next Doppler reference adds
+        # a template window's bins to the transform, so the cheapest job is that one
+        # or one whose f0 points span just under a whole number of references
         if rates is not None:
             reference_counts = np.arange(
                 1, int((high - low + f0_overhang) / f0_width_per_reference) + 1
