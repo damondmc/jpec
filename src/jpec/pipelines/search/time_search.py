@@ -134,8 +134,12 @@ def run(args: argparse.Namespace) -> None:
         delta=jnp.asarray(bank.delta[:sky_batch_size]),
     )
 
+    n_templates = n_f0_points * period_batch_size * n_window_modulation_depths
     transform_seconds, match_seconds = [], []
-    transform_work, match_work = [], []
+    transform_work = []
+    # every match timed, at the batch's harmonics and at half of them: its seconds,
+    # its overlap multiply-adds and its orbital phases evaluated
+    match_fit_seconds, match_fit_work = [], []
     for batch in layout.period_batches[: args.n_period_batches_timed]:
 
         def transform() -> Complex[
@@ -160,13 +164,17 @@ def run(args: argparse.Namespace) -> None:
         batch_data_harmonics = transform()[0]
 
         # the match and the device-side cut to the loudest, as the search runs them
-        def match() -> tuple[
+        def match(
+            data_harmonics: Complex[
+                Array, "n_doppler_reference n_period n_harmonic n_transformed_bin"
+            ],
+        ) -> tuple[
             Float[Array, " n_loudest"],
             Int[Array, " n_loudest"],
             Int[Array, " n_loudest"],
         ]:
             max_statistic, phase_idxs = matched_filter_grid(
-                data_harmonics=batch_data_harmonics,
+                data_harmonics=data_harmonics,
                 template_harmonics=template_harmonics,
                 window_start_idxs=layout.window_start_idxs,
                 group_f0_idxs=layout.group_f0_idxs,
@@ -184,21 +192,31 @@ def run(args: argparse.Namespace) -> None:
                 n_loudest=min(setup.n_toplist, max_statistic.size),
             )
 
-        match_seconds.append(mean_seconds(match, repeats=args.repeats))
-        # multiply-adds of the transform at one sky point and reference, and of the
-        # match
+        match_seconds.append(
+            mean_seconds(match, batch_data_harmonics, repeats=args.repeats)
+        )
+        half_harmonics = max(batch.n_harmonics // 2, 1)
+        half_data_harmonics = batch_data_harmonics[:, :, :half_harmonics]
+        half_match_seconds = mean_seconds(
+            match, half_data_harmonics, repeats=args.repeats
+        )
+        for n_harmonics, seconds in [
+            (batch.n_harmonics, match_seconds[-1]),
+            (half_harmonics, half_match_seconds),
+        ]:
+            match_fit_seconds.append(seconds)
+            match_fit_work.append(
+                [
+                    n_templates * n_harmonics * n_window_bins,
+                    n_templates * template_grid.n_phi,
+                ]
+            )
+        # multiply-adds of the transform at one sky point and reference
         transform_work.append(
             period_batch_size
             * batch.n_harmonics
             * search_data.n_sfts
             * n_transformed_bins
-        )
-        match_work.append(
-            n_f0_points
-            * period_batch_size
-            * n_window_modulation_depths
-            * batch.n_harmonics
-            * n_window_bins
         )
 
     # seconds per call, and calls per sky point over every subgrid as this one
@@ -218,17 +236,26 @@ def run(args: argparse.Namespace) -> None:
     }
     sky_point_seconds = sum(seconds_per_sky_point.values())
 
+    # the match's seconds per overlap multiply-add and per orbital phase of a
+    # template, fitted to every match timed
+    (match_rate, phase_maximum_rate), *_ = np.linalg.lstsq(
+        np.array(match_fit_work, dtype=float),
+        np.array(match_fit_seconds),
+        rcond=None,
+    )
+
     # what jpec search-setup prices a job with: seconds per SFT bin of the Doppler
     # correction at one reference, per multiply-add of the transform at one sky point
-    # and reference, its share of the batch's basis included, and of the match, over
-    # the batches timed
+    # and reference, its share of the batch's basis included, over the batches timed,
+    # and the match's two rates
     rates = {
         "doppler_correction": stages["doppler correction"][0]
         / (search_data.n_sfts * search_data.n_band_bins),
         "data_harmonics": sum(transform_seconds)
         / (sky_batch_size * n_doppler_references)
         / sum(transform_work),
-        "match": sum(match_seconds) / sum(match_work),
+        "match": float(match_rate),
+        "phase_maximum": float(phase_maximum_rate),
     }
 
     run_logger.info(

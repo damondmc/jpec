@@ -160,18 +160,24 @@ def search_memory_gb(
             * COMPLEX64_BYTES
         )
         orbital_phase_bytes += layout.omega.size * n_sfts * FLOAT32_BYTES
-        # one sky point's corrected band, and the batch's transformed bins twice
-        corrected_bytes = (
-            n_doppler_references
+        # the batch of sky points' transformed bins, at every reference
+        stack_bytes = (
+            sky_batch_size
+            * n_doppler_references
             * n_sfts
-            * (n_band_bins + 2 * sky_batch_size * n_transformed_bins)
+            * n_transformed_bins
             * FLOAT32_BYTES
         )
-        # a float32 basis at every sky point and one more, as the GPU forms each
-        # point's cosine and sine products in turn, the batch's harmonics twice, and
-        # the match's overlaps and S(phi_b)
+        # building the stack: every sky point's whole corrected band in flight, and
+        # the transformed bins as slices, expanded and stacked
+        doppler_correction_bytes = (
+            sky_batch_size * n_doppler_references * n_sfts * n_band_bins * FLOAT32_BYTES
+            + 3 * stack_bytes
+        )
+        # the float32 cosine and sine bases at every sky point, the batch's harmonics
+        # twice, and the match's overlaps and S(phi_b)
         per_period_bytes = (
-            (sky_batch_size + 1) * n_batch_harmonics * n_sfts * FLOAT32_BYTES
+            2 * sky_batch_size * n_batch_harmonics * n_sfts * FLOAT32_BYTES
             + 2
             * sky_batch_size
             * n_doppler_references
@@ -187,9 +193,9 @@ def search_memory_gb(
             * template_grid.n_phi
             * FLOAT32_BYTES
         )
-        subgrid_bytes = max(
-            subgrid_bytes, corrected_bytes + layout.period_batch_size * per_period_bytes
-        )
+        # transforming: the stack twice, and a full run of periods
+        transform_bytes = 2 * stack_bytes + layout.period_batch_size * per_period_bytes
+        subgrid_bytes = max(subgrid_bytes, doppler_correction_bytes, transform_bytes)
     return (
         loaded_bytes + template_harmonics_bytes + orbital_phase_bytes + subgrid_bytes
     ) / GB
@@ -229,23 +235,28 @@ def search_hours(
             layout.transformed_bin_idxs.stop - layout.transformed_bin_idxs.start
         )
         # every batch is a full run of periods, at its own harmonics
-        n_period_harmonics = layout.period_batch_size * sum(
-            batch.n_harmonics for batch in layout.period_batches
+        n_batch_harmonics = sum(batch.n_harmonics for batch in layout.period_batches)
+        n_batch_templates = (
+            layout.period_batch_size
+            * layout.window_start_idxs.size
+            * layout.n_window_modulation_depths
         )
+        # the transform and the overlaps per period and harmonic
         transform_seconds = (
-            layout.doppler_references.size
+            layout.period_batch_size
+            * layout.doppler_references.size
             * n_sfts
             * n_transformed_bins
             * rates["data_harmonics"]
         )
-        match_seconds = (
-            layout.window_start_idxs.size
-            * layout.n_window_modulation_depths
-            * template_grid.bin_offsets.shape[0]
-            * rates["match"]
+        overlap_seconds = (
+            n_batch_templates * template_grid.bin_offsets.shape[0] * rates["match"]
         )
-        seconds_per_sky_point += n_period_harmonics * float(
-            transform_seconds + match_seconds
+        # S(phi_b) and its maximum per template, at every orbital phase
+        phase_seconds = n_batch_templates * template_grid.n_phi * rates["phase_maximum"]
+        seconds_per_sky_point += float(
+            n_batch_harmonics * (transform_seconds + overlap_seconds)
+            + len(layout.period_batches) * phase_seconds
         )
     return n_sky_points * seconds_per_sky_point / 3600.0
 
