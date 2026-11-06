@@ -167,11 +167,11 @@ def search_memory_gb(
             * (n_band_bins + 2 * sky_batch_size * n_transformed_bins)
             * FLOAT32_BYTES
         )
-        # one float32 basis at every sky point, as the GPU forms the cosine and the
-        # sine products in turn, the batch's harmonics twice, and the match's overlaps
-        # and S(phi_b)
+        # a float32 basis at every sky point and one more, as the GPU forms each
+        # point's cosine and sine products in turn, the batch's harmonics twice, and
+        # the match's overlaps and S(phi_b)
         per_period_bytes = (
-            sky_batch_size * n_batch_harmonics * n_sfts * FLOAT32_BYTES
+            (sky_batch_size + 1) * n_batch_harmonics * n_sfts * FLOAT32_BYTES
             + 2
             * sky_batch_size
             * n_doppler_references
