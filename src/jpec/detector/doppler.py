@@ -1,5 +1,6 @@
 """Toward a sky position: the Solar System Roemer delay, and the Doppler correction."""
 
+import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Complex, Float
 
@@ -48,7 +49,10 @@ def solar_roemer_delay(
     Returns:
         The delay at each SFT [s], a row per sky point.
     """
-    return sky_direction(alpha, delta).T @ position.T
+    direction = sky_direction(alpha, delta)
+    # full float32: a GPU's default rounds the inputs to TF32, off by up to 0.3 s
+    # on a 500 s delay
+    return jnp.matmul(direction.T, position.T, precision=jax.lax.Precision.HIGHEST)
 
 
 def shift_spectrum(
