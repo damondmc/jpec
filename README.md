@@ -186,3 +186,12 @@ loudest at phi_b = 2.29 rad; injected 2.30 rad
 [`examples/`](examples/) has a search over $(f_0, a_p, P)$ at a fixed sky position, on
 Gaussian noise with and without an injected source, and a search and an injection config
 for the `jpec` commands.
+
+## References
+
+jpec builds on the TwoSpect search:
+
+E. Goetz and K. Riles, "An all-sky search algorithm for continuous gravitational waves
+from spinning neutron stars in binary systems", Class. Quantum Grav. 28, 215006 (2011),
+[doi:10.1088/0264-9381/28/21/215006](https://doi.org/10.1088/0264-9381/28/21/215006),
+[arXiv:1103.1301](https://arxiv.org/abs/1103.1301).
