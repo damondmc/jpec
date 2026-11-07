@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from signals import Case, search_data_harmonics, search_template_harmonics
 
-from jpec.constant import ARC_PAD_BINS, DAY, PHASE_OVERSAMPLE
+from jpec.constant import ARC_PAD_BINS, DAY, THETA_OVERSAMPLE
 from jpec.detector.sft import SFTData
 from jpec.detector.site import Detector
 from jpec.injection.signal import (
@@ -17,7 +17,7 @@ from jpec.noise.floor import noise_floor
 from jpec.noise.gaussian import gaussian_noise_sft
 from jpec.params import Parameters
 from jpec.stat.matched_filter import max_over_phase
-from jpec.waveform.harmonics import harmonic_count, phase_sample_count
+from jpec.waveform.harmonics import harmonic_count, theta_sample_count
 from jpec.waveform.plane import amplitude_from_arc, arc_bin_offsets, plane_from_arc
 
 
@@ -155,7 +155,7 @@ def test_the_search_recovers_an_injection(timestamps, t_ref):
         statistic, _ = max_over_phase(
             data_harmonics=data_harmonics[: template_harmonics.shape[0]],
             template_harmonics=template_harmonics,
-            n_phi=phase_sample_count(j_max, oversample=PHASE_OVERSAMPLE),
+            n_phi=theta_sample_count(j_max, oversample=THETA_OVERSAMPLE),
         )
         return float(statistic)
 

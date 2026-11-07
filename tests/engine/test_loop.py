@@ -231,6 +231,7 @@ def small_search():
         n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
         period_batch_size=4,
         harmonic_fraction=search_loop_config.harmonic_fraction,
+        phase_mismatch=search_loop_config.phase_mismatch,
         modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
     )
     return search_data, harmonic_bank
@@ -318,6 +319,7 @@ def multi_reference_search(small_search):
         n_sub_bin_offsets=MULTI_REFERENCE_SUB_BIN_OFFSETS,
         period_batch_size=4,
         harmonic_fraction=search_loop_config.harmonic_fraction,
+        phase_mismatch=search_loop_config.phase_mismatch,
         modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
     )
     return search_data, multi_reference_bank

@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from signals import Case, harmonic_transform, orbit_offset
 
-from jpec.constant import ARC_PAD_BINS, DAY, PHASE_OVERSAMPLE
+from jpec.constant import ARC_PAD_BINS, DAY, THETA_OVERSAMPLE
 from jpec.stat.matched_filter import (
     data_harmonics,
     harmonic_overlap,
@@ -13,7 +13,7 @@ from jpec.stat.matched_filter import (
 )
 from jpec.waveform.harmonics import (
     harmonic_count,
-    phase_sample_count,
+    theta_sample_count,
 )
 from jpec.waveform.plane import (
     arc_bin_offsets,
@@ -153,7 +153,7 @@ def test_wrapped_phase_holds_the_highest_harmonic_in_float32():
 def test_det_stat_in_float32(case: Case):
     parameters = case.parameters
     j_max = harmonic_count(case.modulation_depth_bins)
-    n = phase_sample_count(j_max, oversample=PHASE_OVERSAMPLE)
+    n = theta_sample_count(j_max, oversample=THETA_OVERSAMPLE)
 
     def run(dtype):
         offsets = arc_bin_offsets(

@@ -106,6 +106,7 @@ def f0_interval_layouts(
             n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
             period_batch_size=search_loop_config.period_batch_size,
             harmonic_fraction=search_loop_config.harmonic_fraction,
+            phase_mismatch=search_loop_config.phase_mismatch,
         )
         for orbital_subgrid in tiling.orbital_subgrids(f0_low, f0_high)
     ]
@@ -187,7 +188,7 @@ def search_memory_gb(
             * COMPLEX64_BYTES
             + n_matched_f0_points
             * n_window_modulation_depths
-            * template_grid.n_phi
+            * layout.n_phi
             * FLOAT32_BYTES
         )
         # transforming: the stack twice, and a full run of periods
@@ -248,7 +249,7 @@ def search_hours(
             n_batch_templates * template_grid.bin_offsets.shape[0] * rates["match"]
         )
         # S(phi_b) and its maximum per template, at every orbital phase
-        phase_seconds = n_batch_templates * template_grid.n_phi * rates["phase_maximum"]
+        phase_seconds = n_batch_templates * layout.n_phi * rates["phase_maximum"]
         seconds_per_sky_point += float(
             n_batch_harmonics * (transform_seconds + overlap_seconds)
             + len(layout.period_batches) * phase_seconds

@@ -122,7 +122,7 @@ Match one template against a simulated signal in noise, over every orbital phase
 import jax.numpy as jnp
 import numpy as np
 
-from jpec.constant import ARC_PAD_BINS, DAY, PHASE_OVERSAMPLE
+from jpec.constant import ARC_PAD_BINS, DAY, THETA_OVERSAMPLE
 from jpec.params import Parameters
 from jpec.stat.matched_filter import (
     data_harmonics,
@@ -131,8 +131,8 @@ from jpec.stat.matched_filter import (
 )
 from jpec.waveform.harmonics import (
     harmonic_count,
-    phase_sample_count,
     template_harmonics,
+    theta_sample_count,
 )
 from jpec.waveform.plane import arc_bin_offsets, plane_from_arc
 from jpec.waveform.track import frequency_offset
@@ -158,11 +158,11 @@ sft_power = signal_power + 0.35 * signal_power.std() * noise
 
 # the template: its harmonics at the signal's modulation depth
 j_max = harmonic_count(modulation_depth_bins)
-n_phi = phase_sample_count(j_max, oversample=PHASE_OVERSAMPLE)
+n_theta = theta_sample_count(j_max, oversample=THETA_OVERSAMPLE)
 tau = template_harmonics(
     bin_offsets,
     modulation_depth_bins=modulation_depth_bins,
-    n_theta=n_phi,
+    n_theta=n_theta,
     j_max=j_max,
     window=window,
 )
@@ -171,9 +171,9 @@ tau = template_harmonics(
 phase = orbital_phase_mod_2pi(times, signal.omega)
 F = data_harmonics(sft_power, jnp.asarray(phase), j_max=j_max)
 
-# the matched filter, over every orbital phase
-S, phase_idx = max_over_phase(F, tau, n_phi=n_phi)
-phi_b = 2.0 * np.pi * int(phase_idx) / n_phi
+# the matched filter, over every orbital phase, read on the template's own phase grid
+S, phase_idx = max_over_phase(F, tau, n_phi=n_theta)
+phi_b = 2.0 * np.pi * int(phase_idx) / n_theta
 print(f"loudest at phi_b = {phi_b:.2f} rad; injected {signal.phi_b:.2f} rad")
 ```
 

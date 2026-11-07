@@ -9,7 +9,7 @@ from jaxtyping import Array, Bool, Float, Int
 
 from jpec.bank.template_bank import OrbitalTemplateGrid, TemplateBank
 from jpec.constant import V_MAX
-from jpec.waveform.harmonics import harmonic_count
+from jpec.waveform.harmonics import harmonic_count, phase_count, template_harmonics
 
 # the Doppler residual allowed, as a fraction of the residual the sub-bin template
 # harmonics leave
@@ -64,6 +64,8 @@ class SubgridLayout(NamedTuple):
             so each call has one shape; a batch shorter than that runs on into the
             periods after it, which are out of its box.
         n_window_modulation_depths: Modulation depths every batch is matched against.
+        n_phi: Orbital phases the statistic is read at, from phase_count() of the
+            deepest modulation depth's matched harmonics.
     """
 
     template_grid: OrbitalTemplateGrid
@@ -81,6 +83,7 @@ class SubgridLayout(NamedTuple):
     period_batches: list[PeriodBatch]
     period_batch_size: int
     n_window_modulation_depths: int
+    n_phi: int
 
 
 def split_periods(
@@ -239,6 +242,7 @@ def subgrid_layout(
     n_sub_bin_offsets: int,
     period_batch_size: int,
     harmonic_fraction: float,
+    phase_mismatch: float,
 ) -> SubgridLayout:
     """A subgrid's layout on one band: all the loop needs but data and harmonics.
 
@@ -249,6 +253,7 @@ def subgrid_layout(
         n_sub_bin_offsets: Sub-bin template offsets across one bin.
         period_batch_size: Trial periods per transform call.
         harmonic_fraction: Share of each modulation depth's harmonics matched.
+        phase_mismatch: Largest mismatch the orbital phase grid may leave.
 
     Returns:
         The subgrid with its f0 points placed on the band, their references and
@@ -346,6 +351,24 @@ def subgrid_layout(
         n_harmonics_per_depth,
         batch_size=period_batch_size,
     )
+    # the phase grid the deepest modulation depth needs, over the most harmonics any
+    # batch matches
+    n_matched_harmonics = max(batch.n_harmonics for batch in period_batches)
+    deepest_template_harmonics = np.asarray(
+        template_harmonics(
+            template_grid.bin_offsets,
+            modulation_depth_bins=float(
+                template_grid.orbital_subgrid.modulation_depth_bins[-1]
+            ),
+            n_theta=template_grid.n_theta,
+            j_max=template_grid.j_max,
+            window=template_grid.window,
+        )
+    )[:n_matched_harmonics]
+    n_phi = phase_count(
+        (np.abs(deepest_template_harmonics) ** 2).sum(axis=1),
+        phase_mismatch=phase_mismatch,
+    )
     # the last batch starts at most at the last period, so it reads
     # period_batch_size - 1 past it
     padded_period = np.pad(period, (0, period_batch_size - 1), mode="edge")
@@ -365,6 +388,7 @@ def subgrid_layout(
         period_batches=period_batches,
         period_batch_size=period_batch_size,
         n_window_modulation_depths=n_window_modulation_depths,
+        n_phi=n_phi,
     )
 
 
@@ -376,6 +400,7 @@ def subgrid_layouts(
     n_sub_bin_offsets: int,
     period_batch_size: int,
     harmonic_fraction: float,
+    phase_mismatch: float,
 ) -> list[SubgridLayout]:
     """Every subgrid of a bank laid out on one loaded band.
 
@@ -386,6 +411,7 @@ def subgrid_layouts(
         n_sub_bin_offsets: Sub-bin template offsets across one bin.
         period_batch_size: Trial periods per transform call.
         harmonic_fraction: Share of each modulation depth's harmonics matched.
+        phase_mismatch: Largest mismatch the orbital phase grid may leave.
 
     Returns:
         One per subgrid, in the bank's order.
@@ -398,6 +424,7 @@ def subgrid_layouts(
             n_sub_bin_offsets=n_sub_bin_offsets,
             period_batch_size=period_batch_size,
             harmonic_fraction=harmonic_fraction,
+            phase_mismatch=phase_mismatch,
         )
         for template_grid in bank.template_grids
     ]

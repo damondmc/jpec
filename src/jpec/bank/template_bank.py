@@ -11,13 +11,13 @@ from jaxtyping import Array, Complex, Float, Int
 from jpec.bank.lattice import OrbitalSubgrid
 from jpec.bank.metric import sky_metric
 from jpec.bank.tiling import LatticeTiling
-from jpec.constant import ARC_PAD_BINS, PHASE_OVERSAMPLE
+from jpec.constant import ARC_PAD_BINS, THETA_OVERSAMPLE
 from jpec.detector.doppler import sky_direction
 from jpec.params import Parameters, ap_from_modulation_depth_bins, omega_from_period
 from jpec.waveform.harmonics import (
     harmonic_count,
-    phase_sample_count,
     template_harmonics,
+    theta_sample_count,
 )
 from jpec.waveform.plane import arc_bin_offsets
 from jpec.waveform.window import Window
@@ -82,9 +82,9 @@ class OrbitalTemplateGrid(NamedTuple):
         return harmonic_count(float(self.orbital_subgrid.modulation_depth_bins[-1]))
 
     @property
-    def n_phi(self) -> int:
-        """Orbital phases the statistic is evaluated at."""
-        return phase_sample_count(self.j_max, oversample=PHASE_OVERSAMPLE)
+    def n_theta(self) -> int:
+        """Orbital phases a template is sampled at to build its harmonics."""
+        return theta_sample_count(self.j_max, oversample=THETA_OVERSAMPLE)
 
     @property
     def bin_offsets(self) -> Float[Array, " n_freq"]:
@@ -96,7 +96,7 @@ class OrbitalTemplateGrid(NamedTuple):
     def template_harmonics(
         self, *, sub_bin_offset: float, batch_size: int
     ) -> Complex[Array, "n_modulation_depth n_harmonic n_freq"]:
-        """`tau[j, k]` at every modulation depth on the phase grid the statistic uses.
+        """`tau[j, k]` at every modulation depth.
 
         Args:
             sub_bin_offset: Bins from the window's origin to the f0 points the
@@ -110,7 +110,7 @@ class OrbitalTemplateGrid(NamedTuple):
         return template_harmonics_at_depths(
             bin_offsets,
             jnp.asarray(self.orbital_subgrid.modulation_depth_bins),
-            n_theta=self.n_phi,
+            n_theta=self.n_theta,
             j_max=self.j_max,
             window=self.window,
             batch_size=batch_size,
@@ -194,6 +194,7 @@ class TemplateBank(NamedTuple):
         period_idx: int,
         modulation_depth_idx: int,
         phase_idx: int,
+        n_phi: int,
     ) -> Parameters:
         """The template the bank's indices point at.
 
@@ -203,7 +204,8 @@ class TemplateBank(NamedTuple):
             f0_idx: Index of the f0 point.
             period_idx: Index of the trial period.
             modulation_depth_idx: Index of the modulation depth.
-            phase_idx: Index of the orbital phase, of the subgrid's `n_phi`.
+            phase_idx: Index of the orbital phase, of `n_phi`.
+            n_phi: Orbital phases the statistic was read at.
 
         Returns:
             The template's parameters.
@@ -224,7 +226,7 @@ class TemplateBank(NamedTuple):
             f0=f0,
             ap=float(ap),
             period=period,
-            phi_b=2.0 * np.pi * phase_idx / template_grid.n_phi,
+            phi_b=2.0 * np.pi * phase_idx / n_phi,
             alpha=float(self.alpha[sky_idx]),
             delta=float(self.delta[sky_idx]),
         )

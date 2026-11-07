@@ -47,6 +47,7 @@ class LoudestTemplates(NamedTuple):
         period_idxs: Index of its trial period.
         modulation_depth_idxs: Index of its modulation depth.
         phase_idxs: Index of the orbital phase its maximum sits at.
+        n_phi: Orbital phases the statistic was read at.
     """
 
     subgrid_idx: int
@@ -56,6 +57,7 @@ class LoudestTemplates(NamedTuple):
     period_idxs: Int[np.ndarray, " n_loudest"]
     modulation_depth_idxs: Int[np.ndarray, " n_loudest"]
     phase_idxs: Int[np.ndarray, " n_loudest"]
+    n_phi: int
 
     def candidate(self, bank: TemplateBank, loudest_idx: int) -> Candidate:
         """One of the templates as a candidate.
@@ -76,6 +78,7 @@ class LoudestTemplates(NamedTuple):
                 period_idx=int(self.period_idxs[loudest_idx]),
                 modulation_depth_idx=int(self.modulation_depth_idxs[loudest_idx]),
                 phase_idx=int(self.phase_idxs[loudest_idx]),
+                n_phi=self.n_phi,
             ),
         )
 

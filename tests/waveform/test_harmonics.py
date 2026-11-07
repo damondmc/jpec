@@ -3,11 +3,11 @@ import numpy as np
 import pytest
 from signals import Case, search_template_harmonics
 
-from jpec.constant import ARC_PAD_BINS, PHASE_OVERSAMPLE
+from jpec.constant import ARC_PAD_BINS, THETA_OVERSAMPLE
 from jpec.waveform.harmonics import (
     harmonic_count,
-    phase_sample_count,
     template_harmonics,
+    theta_sample_count,
 )
 from jpec.waveform.plane import arc_bin_offsets, template_plane
 
@@ -18,7 +18,7 @@ def test_harmonic_count_is_at_least_one():
 
 @pytest.mark.parametrize("j_max", [1, 7, 28, 91, 351])
 def test_phase_samples_is_a_power_of_two_above_nyquist(j_max):
-    n = phase_sample_count(j_max, oversample=PHASE_OVERSAMPLE)
+    n = theta_sample_count(j_max, oversample=THETA_OVERSAMPLE)
     assert n > 2 * j_max
     assert n & (n - 1) == 0
 

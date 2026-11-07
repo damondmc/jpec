@@ -92,6 +92,8 @@ class SearchLoopConfig(BaseModel):
     n_sub_bin_offsets: int = Field(default=8, ge=1)
     # share of each modulation depth's harmonics matched
     harmonic_fraction: float = Field(default=1.0, gt=0.0, le=1.0)
+    # largest mismatch the orbital phase grid may leave
+    phase_mismatch: float = Field(default=0.01, gt=0.0, lt=1.0)
     # modulation depths whose templates are built at once
     modulation_depth_batch_size: int = Field(default=16, ge=1)
     # running-median window of the noise floor [bins], odd

@@ -2,11 +2,11 @@ import jax.numpy as jnp
 import pytest
 from signals import Case, harmonic_transform, orbit_offset
 
-from jpec.constant import ARC_PAD_BINS, PHASE_OVERSAMPLE
+from jpec.constant import ARC_PAD_BINS, THETA_OVERSAMPLE
 from jpec.waveform.harmonics import (
     harmonic_count,
-    phase_sample_count,
     template_harmonics,
+    theta_sample_count,
 )
 from jpec.waveform.plane import arc_bin_offsets, plane_from_arc
 
@@ -16,7 +16,7 @@ def setup(case: Case):
     """One template and one orbit of data, on a shared harmonic grid."""
     parameters = case.parameters
     j_max = harmonic_count(case.modulation_depth_bins)
-    n = phase_sample_count(j_max, oversample=PHASE_OVERSAMPLE)
+    n = theta_sample_count(j_max, oversample=THETA_OVERSAMPLE)
     offsets = arc_bin_offsets(case.modulation_depth_bins, pad_bins=ARC_PAD_BINS)
     times = jnp.arange(n) * (parameters.period / n)
     plane = plane_from_arc(

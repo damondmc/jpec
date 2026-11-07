@@ -257,6 +257,7 @@ class HarmonicBank:
         n_sub_bin_offsets: int,
         period_batch_size: int,
         harmonic_fraction: float,
+        phase_mismatch: float,
         modulation_depth_batch_size: int,
     ) -> None:
         """Lay a bank out on a band and build its template harmonics and phases.
@@ -269,6 +270,7 @@ class HarmonicBank:
             n_sub_bin_offsets: Sub-bin template offsets across one bin.
             period_batch_size: Trial periods per transform call.
             harmonic_fraction: Share of each modulation depth's harmonics matched.
+            phase_mismatch: Largest mismatch the orbital phase grid may leave.
             modulation_depth_batch_size: Modulation depths whose templates are built at
                 once.
         """
@@ -280,6 +282,7 @@ class HarmonicBank:
             n_sub_bin_offsets=n_sub_bin_offsets,
             period_batch_size=period_batch_size,
             harmonic_fraction=harmonic_fraction,
+            phase_mismatch=phase_mismatch,
         )
         self.template_harmonics = [
             layout.template_grid.template_harmonics_at_offsets(
@@ -341,6 +344,7 @@ def orbital_statistics(
             modulation_depth_idxs=batch.modulation_depth_start_idx
             + modulation_depth_offsets,
             phase_idxs=phase_idxs,
+            n_phi=layout.n_phi,
         )
 
     sky_idx_array = np.asarray(sky_idxs)
@@ -431,7 +435,7 @@ def orbital_statistics(
                     group_sub_bin_offset_idxs=layout.group_sub_bin_offset_idxs,
                     modulation_depth_start_idx=batch.modulation_depth_start_idx,
                     n_matched_modulation_depths=n_window_modulation_depths,
-                    n_phi=template_grid.n_phi,
+                    n_phi=layout.n_phi,
                     f0_batch_size=f0_batch_size,
                 )
                 loudest = loudest_in_box(

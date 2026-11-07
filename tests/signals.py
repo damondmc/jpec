@@ -6,14 +6,14 @@ from dataclasses import dataclass
 import jax.numpy as jnp
 import numpy as np
 
-from jpec.constant import ARC_PAD_BINS, DAY, PHASE_OVERSAMPLE
+from jpec.constant import ARC_PAD_BINS, DAY, THETA_OVERSAMPLE
 from jpec.detector.doppler import doppler_corrected_power, solar_roemer_delay
 from jpec.params import Parameters
 from jpec.stat.matched_filter import data_harmonics, orbital_phase_mod_2pi
 from jpec.waveform.harmonics import (
     harmonic_count,
-    phase_sample_count,
     template_harmonics,
+    theta_sample_count,
 )
 from jpec.waveform.plane import arc_bin_offsets
 from jpec.waveform.track import frequency_offset
@@ -90,7 +90,7 @@ def search_template_harmonics(modulation_depth_bins, window, *, bin_offsets=None
     return template_harmonics(
         bin_offsets,
         modulation_depth_bins=modulation_depth_bins,
-        n_theta=phase_sample_count(j_max, oversample=PHASE_OVERSAMPLE),
+        n_theta=theta_sample_count(j_max, oversample=THETA_OVERSAMPLE),
         j_max=j_max,
         window=window,
     )

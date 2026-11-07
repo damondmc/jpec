@@ -3,6 +3,7 @@
 import math
 
 import jax.numpy as jnp
+import numpy as np
 from jaxtyping import Array, Complex, Float
 
 from jpec.typing import Scalar
@@ -22,8 +23,8 @@ def harmonic_count(modulation_depth_bins: float) -> int:
     return max(math.ceil(2.0 * jnp.pi * modulation_depth_bins), 1)
 
 
-def phase_sample_count(j_max: int, *, oversample: int) -> int:
-    """How many orbital phases `theta` to sample to resolve `j_max` harmonics.
+def theta_sample_count(j_max: int, *, oversample: int) -> int:
+    """How many orbital phases `theta` to sample a template at for `j_max` harmonics.
 
     Nyquist needs more than `2*j_max`, but the cutoff is soft, so bare Nyquist
     aliases. Rounding up to a power of two is what the FFT wants.
@@ -36,6 +37,40 @@ def phase_sample_count(j_max: int, *, oversample: int) -> int:
         Number of phase samples.
     """
     return 1 << math.ceil(math.log2(oversample * j_max))
+
+
+def phase_count(
+    harmonic_power: Float[np.ndarray, " n_harmonic"], *, phase_mismatch: float
+) -> int:
+    """Orbital phases the statistic is read at, to hold the phase mismatch.
+
+    A template read `delta` from the signal's phase loses
+
+        mu_phi = 1 - sum_j P[j] cos(j delta) / sum_j P[j]
+        ~  j_rms^2 delta^2 / 2, j_rms^2 = sum_j j^2 P[j] / sum_j P[j]
+
+    and a grid of n points leaves `delta` at most `pi / n`, so
+
+        n >= pi j_rms / sqrt(2 mu_phi),  and n >= 2 n_harmonic + 2
+
+    for the inverse transform to hold every harmonic; rounded up to a power of 2.
+
+    Args:
+        harmonic_power: `P[j] = sum_k |tau[j, k]|^2` of the template, from harmonic 1.
+        phase_mismatch: Largest mismatch the phase grid may leave, `mu_phi`.
+
+    Returns:
+        Number of orbital phases.
+    """
+    j = np.arange(1, harmonic_power.size + 1)
+    j_rms = math.sqrt(float((j**2 * harmonic_power).sum() / harmonic_power.sum()))
+    # the phases the mismatch asks for, and the inverse transform's floor
+    n_phi_needed = max(
+        math.ceil(math.pi * j_rms / math.sqrt(2.0 * phase_mismatch)),
+        2 * harmonic_power.size + 2,
+    )
+    # the smallest power of 2 not below it
+    return 1 << (n_phi_needed - 1).bit_length()
 
 
 def template_harmonics(

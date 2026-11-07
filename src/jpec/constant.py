@@ -19,7 +19,7 @@ N_CURVATURE_POSITIONS = 200
 
 # bins a template keeps beyond its arc on each side, for the leakage
 ARC_PAD_BINS = 8.0
-# orbital phase samples per Nyquist pair: bare Nyquist aliases
-PHASE_OVERSAMPLE = 4
+# orbital phases a template is sampled at, per Nyquist pair: bare Nyquist aliases
+THETA_OVERSAMPLE = 4
 # slack beyond the Doppler shift and a template's half width
 SHIFT_MARGIN_BINS = 16

@@ -85,6 +85,7 @@ def run(args: argparse.Namespace) -> None:
         n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
         period_batch_size=search_loop_config.period_batch_size,
         harmonic_fraction=search_loop_config.harmonic_fraction,
+        phase_mismatch=search_loop_config.phase_mismatch,
     )
     template_grid = layout.template_grid
     template_harmonics = template_grid.template_harmonics_at_offsets(
@@ -181,7 +182,7 @@ def run(args: argparse.Namespace) -> None:
                 group_sub_bin_offset_idxs=layout.group_sub_bin_offset_idxs,
                 modulation_depth_start_idx=batch.modulation_depth_start_idx,
                 n_matched_modulation_depths=n_window_modulation_depths,
-                n_phi=template_grid.n_phi,
+                n_phi=layout.n_phi,
                 f0_batch_size=search_loop_config.f0_batch_size,
             )
             return loudest_in_box(
@@ -207,7 +208,7 @@ def run(args: argparse.Namespace) -> None:
             match_fit_work.append(
                 [
                     n_templates * n_harmonics * n_window_bins,
-                    n_templates * template_grid.n_phi,
+                    n_templates * layout.n_phi,
                 ]
             )
         # multiply-adds of the transform at one sky point and reference

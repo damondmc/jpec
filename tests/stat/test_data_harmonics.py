@@ -11,7 +11,7 @@ from signals import (
     search_template_harmonics,
 )
 
-from jpec.constant import ARC_PAD_BINS, PHASE_OVERSAMPLE
+from jpec.constant import ARC_PAD_BINS, THETA_OVERSAMPLE
 from jpec.detector.sft import SFTData
 from jpec.detector.site import Detector
 from jpec.noise.floor import noise_floor
@@ -21,7 +21,7 @@ from jpec.stat.matched_filter import (
     harmonic_overlap,
     statistic_over_phase,
 )
-from jpec.waveform.harmonics import harmonic_count, phase_sample_count
+from jpec.waveform.harmonics import harmonic_count, theta_sample_count
 from jpec.waveform.plane import arc_bin_offsets, plane_from_arc, template_plane
 from jpec.waveform.track import observed_frequency
 from jpec.waveform.window import Window, tukey_window
@@ -57,7 +57,7 @@ def test_gappy_harmonics_converge_with_more_sfts(case: Case):
     parameters = case.parameters
     j_max = harmonic_count(case.modulation_depth_bins)
     offsets = arc_bin_offsets(case.modulation_depth_bins, pad_bins=ARC_PAD_BINS)
-    n = phase_sample_count(j_max, oversample=PHASE_OVERSAMPLE)
+    n = theta_sample_count(j_max, oversample=THETA_OVERSAMPLE)
 
     grid = jnp.arange(n) * (parameters.period / n)
     clean = plane_harmonics(
@@ -171,7 +171,7 @@ def statistic_from_sft(sft: SFTData, case: Case, *, velocity: np.ndarray):
         template_harmonics=template_harmonics,
     )
     return statistic_over_phase(
-        coefficients, n_phi=phase_sample_count(j_max, oversample=PHASE_OVERSAMPLE)
+        coefficients, n_phi=theta_sample_count(j_max, oversample=THETA_OVERSAMPLE)
     )
 
 
