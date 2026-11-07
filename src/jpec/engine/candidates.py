@@ -17,10 +17,13 @@ class Candidate(NamedTuple):
     Attributes:
         statistic: Maximum of `S` over the orbital phase.
         parameters: The template, its `phi_b` where that maximum sits.
+        doppler_reference: Frequency the template's band was Doppler-corrected at
+            [Hz].
     """
 
     statistic: float
     parameters: Parameters
+    doppler_reference: float
 
     def to_dict(self) -> dict[str, float]:
         """Convert the candidate to a dictionary."""
@@ -32,6 +35,7 @@ class Candidate(NamedTuple):
             "alpha": float(self.parameters.alpha),
             "delta": float(self.parameters.delta),
             "S": self.statistic,
+            "doppler_reference": self.doppler_reference,
         }
 
 
@@ -47,6 +51,7 @@ class LoudestTemplates(NamedTuple):
         period_idxs: Index of its trial period.
         modulation_depth_idxs: Index of its modulation depth.
         phase_idxs: Index of the orbital phase its maximum sits at.
+        doppler_references: Frequency its band was Doppler-corrected at [Hz].
         n_phi: Orbital phases the statistic was read at.
     """
 
@@ -57,6 +62,7 @@ class LoudestTemplates(NamedTuple):
     period_idxs: Int[np.ndarray, " n_loudest"]
     modulation_depth_idxs: Int[np.ndarray, " n_loudest"]
     phase_idxs: Int[np.ndarray, " n_loudest"]
+    doppler_references: Float[np.ndarray, " n_loudest"]
     n_phi: int
 
     def candidate(self, bank: TemplateBank, loudest_idx: int) -> Candidate:
@@ -80,6 +86,7 @@ class LoudestTemplates(NamedTuple):
                 phase_idx=int(self.phase_idxs[loudest_idx]),
                 n_phi=self.n_phi,
             ),
+            doppler_reference=float(self.doppler_references[loudest_idx]),
         )
 
 

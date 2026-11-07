@@ -94,6 +94,8 @@ class SearchLoopConfig(BaseModel):
     harmonic_fraction: float = Field(default=1.0, gt=0.0, le=1.0)
     # largest mismatch the orbital phase grid may leave
     phase_mismatch: float = Field(default=0.01, gt=0.0, lt=1.0)
+    # largest mismatch an f0 point's offset from its Doppler reference may leave
+    doppler_mismatch: float = Field(default=1e-3, gt=0.0, lt=1.0)
     # modulation depths whose templates are built at once
     modulation_depth_batch_size: int = Field(default=16, ge=1)
     # running-median window of the noise floor [bins], odd

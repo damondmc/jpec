@@ -7,13 +7,11 @@ import jax.numpy as jnp
 import numpy as np
 from jaxtyping import Array, Bool, Float, Int
 
+from jpec.bank.metric import freq_bin_curvature
 from jpec.bank.template_bank import OrbitalTemplateGrid, TemplateBank
-from jpec.constant import V_MAX
+from jpec.constant import N_CURVATURE_POSITIONS, V_MAX
 from jpec.waveform.harmonics import harmonic_count, phase_count, template_harmonics
-
-# the Doppler residual allowed, as a fraction of the residual the sub-bin template
-# harmonics leave
-DOPPLER_TOLERANCE_FRACTION = 1.0 / 3.0
+from jpec.waveform.window import Window
 
 # a batch's harmonic count is rounded up to a multiple of this
 HARMONIC_COUNT_STEP = 32
@@ -192,46 +190,55 @@ def f0_groups(
     return group_f0_idxs, group_doppler_reference_idxs, group_sub_bin_offset_idxs
 
 
-def doppler_reference_f0_width(*, tsft: float, n_sub_bin_offsets: int) -> float:
+def doppler_reference_f0_width(
+    *, tsft: float, window: Window, doppler_mismatch: float
+) -> float:
     """The f0 span one Doppler reference serves.
 
-        sub_bin_residual = 1 / (2 n_sub_bin_offsets)  [bins]
-        tolerance = DOPPLER_TOLERANCE_FRACTION * sub_bin_residual
-        f0_width = 2 tolerance / (V_MAX tsft)
+    An f0 point `delta_f` from its reference is left a track error of
+    `delta_f (v . n_hat) tsft` bins, which for a template held fixed costs at most
+
+        mu_doppler = g_freq_bin (delta_f V_MAX tsft)^2
+
+    so the f0 points may lie up to
+
+        delta_f_max = sqrt(mu_doppler / g_freq_bin) / (V_MAX tsft)
+
+    from it, and a reference at the centre of its span serves
+
+        f0_width = 2 delta_f_max
 
     Args:
         tsft: SFT length [s].
-        n_sub_bin_offsets: Sub-bin template offsets built.
+        window: The window the SFTs were made with.
+        doppler_mismatch: Largest mismatch the offset from the reference may leave,
+            `mu_doppler`.
 
     Returns:
         The span [Hz], centred on the reference.
     """
-    # the nearest of n_sub_bin_offsets templates, 1 / n_sub_bin_offsets apart, is off
-    # by up to half that
-    sub_bin_residual = 1.0 / (2.0 * n_sub_bin_offsets)
-    tolerance = DOPPLER_TOLERANCE_FRACTION * sub_bin_residual
-    # the reference sits at the centre of its span, so an f0 point is at most half the
-    # span from it
-    return 2.0 * tolerance / (V_MAX * tsft)
+    g_freq_bin = freq_bin_curvature(window, n_positions=N_CURVATURE_POSITIONS)
+    return 2.0 * math.sqrt(doppler_mismatch / g_freq_bin) / (V_MAX * tsft)
 
 
 def doppler_reference_count(
-    f0_width: float, *, tsft: float, n_sub_bin_offsets: int
+    f0_width: float, *, tsft: float, window: Window, doppler_mismatch: float
 ) -> int:
-    """Doppler references enough to hold a subgrid's residual shift to the tolerance.
+    """Doppler references enough to hold a subgrid's offsets to the mismatch.
 
     Args:
         f0_width: Span of the subgrid's f0 points [Hz].
         tsft: SFT length [s].
-        n_sub_bin_offsets: Sub-bin template offsets built.
+        window: The window the SFTs were made with.
+        doppler_mismatch: Largest mismatch an offset from a reference may leave.
 
     Returns:
         The count, at least 1.
     """
     f0_width_per_reference = doppler_reference_f0_width(
-        tsft=tsft, n_sub_bin_offsets=n_sub_bin_offsets
+        tsft=tsft, window=window, doppler_mismatch=doppler_mismatch
     )
-    return max(1, int(np.ceil(f0_width / f0_width_per_reference)))
+    return max(1, math.ceil(f0_width / f0_width_per_reference))
 
 
 def subgrid_layout(
@@ -243,6 +250,7 @@ def subgrid_layout(
     period_batch_size: int,
     harmonic_fraction: float,
     phase_mismatch: float,
+    doppler_mismatch: float,
 ) -> SubgridLayout:
     """A subgrid's layout on one band: all the loop needs but data and harmonics.
 
@@ -254,6 +262,8 @@ def subgrid_layout(
         period_batch_size: Trial periods per transform call.
         harmonic_fraction: Share of each modulation depth's harmonics matched.
         phase_mismatch: Largest mismatch the orbital phase grid may leave.
+        doppler_mismatch: Largest mismatch an f0 point's offset from its Doppler
+            reference may leave.
 
     Returns:
         The subgrid with its f0 points placed on the band, their references and
@@ -279,7 +289,10 @@ def subgrid_layout(
     # Doppler references at the centres of equal pieces of the f0 range; each f0 point
     # takes the nearest
     n_doppler_references = doppler_reference_count(
-        float(f0[-1] - f0[0]), tsft=tsft, n_sub_bin_offsets=n_sub_bin_offsets
+        float(f0[-1] - f0[0]),
+        tsft=tsft,
+        window=template_grid.window,
+        doppler_mismatch=doppler_mismatch,
     )
     reference_centres = (np.arange(n_doppler_references) + 0.5) / n_doppler_references
     doppler_references = f0[0] + reference_centres * (f0[-1] - f0[0])
@@ -401,6 +414,7 @@ def subgrid_layouts(
     period_batch_size: int,
     harmonic_fraction: float,
     phase_mismatch: float,
+    doppler_mismatch: float,
 ) -> list[SubgridLayout]:
     """Every subgrid of a bank laid out on one loaded band.
 
@@ -412,6 +426,8 @@ def subgrid_layouts(
         period_batch_size: Trial periods per transform call.
         harmonic_fraction: Share of each modulation depth's harmonics matched.
         phase_mismatch: Largest mismatch the orbital phase grid may leave.
+        doppler_mismatch: Largest mismatch an f0 point's offset from its Doppler
+            reference may leave.
 
     Returns:
         One per subgrid, in the bank's order.
@@ -425,6 +441,7 @@ def subgrid_layouts(
             period_batch_size=period_batch_size,
             harmonic_fraction=harmonic_fraction,
             phase_mismatch=phase_mismatch,
+            doppler_mismatch=doppler_mismatch,
         )
         for template_grid in bank.template_grids
     ]

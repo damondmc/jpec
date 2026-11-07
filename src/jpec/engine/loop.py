@@ -258,6 +258,7 @@ class HarmonicBank:
         period_batch_size: int,
         harmonic_fraction: float,
         phase_mismatch: float,
+        doppler_mismatch: float,
         modulation_depth_batch_size: int,
     ) -> None:
         """Lay a bank out on a band and build its template harmonics and phases.
@@ -271,6 +272,8 @@ class HarmonicBank:
             period_batch_size: Trial periods per transform call.
             harmonic_fraction: Share of each modulation depth's harmonics matched.
             phase_mismatch: Largest mismatch the orbital phase grid may leave.
+            doppler_mismatch: Largest mismatch an f0 point's offset from its Doppler
+                reference may leave.
             modulation_depth_batch_size: Modulation depths whose templates are built at
                 once.
         """
@@ -283,6 +286,7 @@ class HarmonicBank:
             period_batch_size=period_batch_size,
             harmonic_fraction=harmonic_fraction,
             phase_mismatch=phase_mismatch,
+            doppler_mismatch=doppler_mismatch,
         )
         self.template_harmonics = [
             layout.template_grid.template_harmonics_at_offsets(
@@ -318,6 +322,11 @@ def orbital_statistics(
         One LoudestTemplates per (subgrid, period batch, sky point).
     """
     bank = harmonic_bank.bank
+    # each subgrid's f0 points' Doppler reference frequencies, on the host
+    f0_doppler_references = [
+        np.asarray(layout.doppler_references)[np.asarray(layout.doppler_reference_idxs)]
+        for layout in harmonic_bank.layouts
+    ]
 
     def fetched(
         subgrid_idx: int,
@@ -344,6 +353,7 @@ def orbital_statistics(
             modulation_depth_idxs=batch.modulation_depth_start_idx
             + modulation_depth_offsets,
             phase_idxs=phase_idxs,
+            doppler_references=f0_doppler_references[subgrid_idx][f0_idxs],
             n_phi=layout.n_phi,
         )
 

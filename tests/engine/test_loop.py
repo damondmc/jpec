@@ -27,9 +27,9 @@ from jpec.waveform.window import Window
 # the O4a start [GPS s], and the one sky point the small search is at [rad]
 RUN_START = 1368975618.0
 SKY_ALPHA, SKY_DELTA = 1.2, 0.3
-# sub-bin offsets fine enough that the small search's f0 range needs several Doppler
-# references
-MULTI_REFERENCE_SUB_BIN_OFFSETS = 1024
+# a Doppler mismatch small enough that the small search's f0 range needs several
+# Doppler references
+MULTI_REFERENCE_DOPPLER_MISMATCH = 1e-8
 
 N_DOPPLER_REFERENCES = 2
 N_PERIODS = 4
@@ -232,6 +232,7 @@ def small_search():
         period_batch_size=4,
         harmonic_fraction=search_loop_config.harmonic_fraction,
         phase_mismatch=search_loop_config.phase_mismatch,
+        doppler_mismatch=search_loop_config.doppler_mismatch,
         modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
     )
     return search_data, harmonic_bank
@@ -308,7 +309,7 @@ def test_harmonics_per_batch_leave_the_statistic_unchanged(small_search):
 
 @pytest.fixture(scope="module")
 def multi_reference_search(small_search):
-    """The small search with sub-bin offsets fine enough to need several references."""
+    """The small search with a Doppler mismatch small enough to need several refs."""
     search_data, harmonic_bank = small_search
     search_loop_config = SearchLoopConfig()
     multi_reference_bank = HarmonicBank(
@@ -316,10 +317,11 @@ def multi_reference_search(small_search):
         times=search_data.times,
         freq_low=search_data.freq_low,
         n_band_bins=search_data.n_band_bins,
-        n_sub_bin_offsets=MULTI_REFERENCE_SUB_BIN_OFFSETS,
+        n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
         period_batch_size=4,
         harmonic_fraction=search_loop_config.harmonic_fraction,
         phase_mismatch=search_loop_config.phase_mismatch,
+        doppler_mismatch=MULTI_REFERENCE_DOPPLER_MISMATCH,
         modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
     )
     return search_data, multi_reference_bank

@@ -107,6 +107,7 @@ def f0_interval_layouts(
             period_batch_size=search_loop_config.period_batch_size,
             harmonic_fraction=search_loop_config.harmonic_fraction,
             phase_mismatch=search_loop_config.phase_mismatch,
+            doppler_mismatch=search_loop_config.doppler_mismatch,
         )
         for orbital_subgrid in tiling.orbital_subgrids(f0_low, f0_high)
     ]
@@ -339,9 +340,11 @@ def split_job_by_f0(
     subgrid_f0_step = tiling.f0_step * BCC_SUBGRID_STEP
     # a subgrid's f0 points run up to two of its steps past the job's edges
     f0_overhang = 2.0 * subgrid_f0_step
-    # the f0 span one Doppler reference holds to the tolerance
+    # the f0 span one Doppler reference holds to the Doppler mismatch
     f0_width_per_reference = doppler_reference_f0_width(
-        tsft=tiling.tsft, n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets
+        tsft=tiling.tsft,
+        window=window,
+        doppler_mismatch=search_loop_config.doppler_mismatch,
     )
     f0_intervals: list[tuple[float, float]] = []
     low = f0_low

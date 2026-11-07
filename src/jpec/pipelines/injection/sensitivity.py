@@ -89,6 +89,7 @@ def measure_sensitivity_depth(
             period_batch_size=search_loop_config.period_batch_size,
             harmonic_fraction=search_loop_config.harmonic_fraction,
             phase_mismatch=search_loop_config.phase_mismatch,
+            doppler_mismatch=search_loop_config.doppler_mismatch,
             modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
         )
         for injection, band_data in zip(injections, source_data)
