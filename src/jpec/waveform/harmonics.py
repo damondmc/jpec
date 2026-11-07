@@ -53,7 +53,9 @@ def phase_count(
 
         n >= pi j_rms / sqrt(2 mu_phi),  and n >= 2 n_harmonic + 2
 
-    for the inverse transform to hold every harmonic; rounded up to a power of 2.
+    for the inverse transform to hold every harmonic. It is rounded up to the
+    smallest even 2^a 3^b 5^c 7^d, or to the next power of 2 when that size is above
+    1024 and above 0.8 of the power of 2, the sizes cuFFT is optimized for.
 
     Args:
         harmonic_power: `P[j] = sum_k |tau[j, k]|^2` of the template, from harmonic 1.
@@ -69,8 +71,21 @@ def phase_count(
         math.ceil(math.pi * j_rms / math.sqrt(2.0 * phase_mismatch)),
         2 * harmonic_power.size + 2,
     )
-    # the smallest power of 2 not below it
-    return 1 << (n_phi_needed - 1).bit_length()
+    # the smallest even product of 2, 3, 5 and 7 not below it; a power of 2 always
+    # reaches it
+    n_exponents = n_phi_needed.bit_length() + 1
+    sizes = (
+        2**twos * 3**threes * 5**fives * 7**sevens
+        for twos in range(1, n_exponents)
+        for threes in range(n_exponents)
+        for fives in range(n_exponents)
+        for sevens in range(n_exponents)
+    )
+    n_phi = min(size for size in sizes if size >= n_phi_needed)
+    next_power_2 = 1 << (n_phi_needed - 1).bit_length()
+    if n_phi > 1024 and n_phi > 0.8 * next_power_2:
+        return next_power_2
+    return n_phi
 
 
 def template_harmonics(
