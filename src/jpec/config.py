@@ -22,6 +22,30 @@ from jpec.waveform.window import Window
 ConfigT = TypeVar("ConfigT", bound=BaseModel)
 
 
+def _is_whole_multiple(span: float, width: float) -> bool:
+    """Whether `span` holds a whole number of `width`, one at least, to 1e-9 of it."""
+    n_widths = round(span / width)
+    return n_widths >= 1 and abs(n_widths * width - span) <= 1e-9 * span
+
+
+def _interval_edges(low: float, high: float, width: float) -> list[float]:
+    """Edges cutting `[low, high]` into intervals `width` wide, the ends exact.
+
+    Args:
+        low: Low end.
+        high: High end.
+        width: Width of each interval; `high - low` holds a whole number of them.
+
+    Returns:
+        The edges, low to high.
+    """
+    n_intervals = round((high - low) / width)
+    inner_edges = [
+        low + (high - low) * idx / n_intervals for idx in range(1, n_intervals)
+    ]
+    return [low, *inner_edges, high]
+
+
 class ParameterSpaceConfig(BaseModel):
     """The box in parameter space, each axis a `[low, high]` pair."""
 
@@ -113,13 +137,17 @@ class SearchLoopConfig(BaseModel):
 
 
 class ComputeConfig(BaseModel):
-    """What one job may hold and take, which cuts the box into jobs.
+    """How the box is cut into jobs, and the limits each job is checked against.
 
-    The rates come from a jpec time-search run.
+    The hours come from the rates of a jpec time-search run.
     """
 
     model_config = ConfigDict(extra="forbid")
 
+    # f0 width of each job [Hz]
+    job_f0_width: float = Field(default=1.0, gt=0.0)
+    # trial periods range (empty to over the whole range)
+    job_period_cuts: list[float] = Field(default_factory=list)
     memory_gb: float = Field(default=8.0, gt=0.0)
     hours: float = Field(default=24.0, gt=0.0)
 
@@ -133,9 +161,46 @@ class SearchJobConfig(BaseModel):
     template_bank: TemplateBankConfig = Field(default_factory=TemplateBankConfig)
     compute: ComputeConfig
     search_loop: SearchLoopConfig = Field(default_factory=SearchLoopConfig)
-    n_toplist: int = Field(default=1000, ge=1)
+    n_toplist: int = Field(default=10000, ge=1)
+    # f0 width each toplist covers [Hz]; a job keeps one toplist per width
+    toplist_f0_width: float = Field(default=0.1, gt=0.0)
     # absolute glob of the SFTs, as the search will find them
     sft_glob: str
+
+    def job_f0_edges(self) -> list[float]:
+        """Edges of the jobs' f0 intervals [Hz], low to high."""
+        f0_low, f0_high = self.parameter_space.f0
+        return _interval_edges(f0_low, f0_high, self.compute.job_f0_width)
+
+    def job_period_edges(self) -> list[float]:
+        """Edges of the jobs' period ranges [days], low to high."""
+        period_low, period_high = self.parameter_space.period
+        return [period_low, *self.compute.job_period_cuts, period_high]
+
+    @model_validator(mode="after")
+    def _jobs_tile_the_box(self) -> "SearchJobConfig":
+        f0_low, f0_high = self.parameter_space.f0
+        job_f0_width = self.compute.job_f0_width
+        if not _is_whole_multiple(f0_high - f0_low, job_f0_width):
+            raise ValueError(
+                f"parameter_space.f0 spans {f0_high - f0_low:g} Hz, not a whole "
+                f"number of compute.job_f0_width = {job_f0_width:g} Hz"
+            )
+        if not _is_whole_multiple(job_f0_width, self.toplist_f0_width):
+            raise ValueError(
+                f"compute.job_f0_width is {job_f0_width:g} Hz, not a whole number of "
+                f"toplist_f0_width = {self.toplist_f0_width:g} Hz"
+            )
+        period_edges = self.job_period_edges()
+        if self.compute.job_period_cuts and any(
+            low >= high for low, high in zip(period_edges, period_edges[1:])
+        ):
+            raise ValueError(
+                f"compute.job_period_cuts is {self.compute.job_period_cuts} and needs "
+                f"to rise strictly inside parameter_space.period "
+                f"{list(self.parameter_space.period)}"
+            )
+        return self
 
 
 class InjectionTrialConfig(BaseModel):
@@ -324,6 +389,9 @@ class JobSetup(BaseModel):
         job_idx: Index of the job in the setup.
         f0_low: Low edge of the f0 interval [Hz].
         f0_high: High edge [Hz].
+        period_low: Low edge of the period range [days].
+        period_high: High edge [days].
+        tiling_idx: Index into the setup's tilings of the lattice over that range.
         freq_low: Low edge of the band loaded [Hz].
         freq_high: High edge [Hz].
         files: The files holding the band, at least one per detector.
@@ -339,6 +407,9 @@ class JobSetup(BaseModel):
     job_idx: int
     f0_low: float
     f0_high: float
+    period_low: float
+    period_high: float
+    tiling_idx: int
     freq_low: float
     freq_high: float
     files: list[str]
@@ -354,22 +425,30 @@ class SearchSetup(BaseModel):
     Attributes:
         jpec: The jpec version the setup was made with.
         data: The SFTs searched.
-        tiling: LatticeTiling.to_dict() of the lattice.
+        tilings: LatticeTiling.to_dict() of the lattice over each period range.
         search_loop: How the search loop batches its work.
-        n_toplist: Templates each job keeps.
+        n_toplist: Templates each toplist keeps.
+        toplist_f0_width: f0 width each toplist covers [Hz].
         n_templates_total: Templates over every job.
-        jobs: The jobs, in f0 order.
+        jobs: The jobs, in f0 order, each f0 interval's period ranges low to high.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     jpec: str
     data: DataSetup
-    tiling: dict[str, Any]
+    tilings: list[dict[str, Any]]
     search_loop: SearchLoopConfig
     n_toplist: int
+    toplist_f0_width: float
     n_templates_total: int
     jobs: list[JobSetup]
+
+    def toplist_f0_edges(self, job_setup: JobSetup) -> list[float]:
+        """Edges of a job's toplists' f0 intervals [Hz], low to high."""
+        return _interval_edges(
+            job_setup.f0_low, job_setup.f0_high, self.toplist_f0_width
+        )
 
 
 class InjectionSetup(BaseModel):

@@ -133,6 +133,8 @@ def measure_sensitivity_depth(
                     ),
                     f0_batch_size=search_loop_config.f0_batch_size,
                     n_loudest=1,
+                    # one toplist over every f0 point
+                    toplist_f0_edges=np.array([-np.inf, np.inf]),
                 )
             )
         h0_values.append(h0)

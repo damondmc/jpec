@@ -41,9 +41,11 @@ jpec search-setup search.yaml --sft-metadata setup/sft_metadata.json --timing re
 jpec search --setup setup/search_setup.json --platform gpu
 ```
 
-The hours of a job come from a `time-search` result on the machine the jobs run on. On a new
-machine, make the setup without one, which cuts the jobs on memory alone, time its first job,
-and make the setup again with that timing:
+The config's `compute.job_f0_width` and `compute.job_period_cuts` cut the box into jobs, and
+the setup prices each one, listing any over `compute.memory_gb` or `compute.hours`. The hours
+come from a `time-search` result on the machine the jobs run on. On a new machine, make the
+setup without one, which prices the memory only, time its first job, and make the setup again
+with that timing:
 
 ```
 jpec search-setup search.yaml --sft-metadata setup/sft_metadata.json

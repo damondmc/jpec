@@ -87,6 +87,8 @@ def loudest_templates(
             ),
             f0_batch_size=search_loop_config.f0_batch_size,
             n_loudest=n_toplist,
+            # one toplist over every f0 point
+            toplist_f0_edges=np.array([-np.inf, np.inf]),
         )
         for loudest in loudest_per_grid:
             toplist.add_loudest(loudest, harmonic_bank.bank)

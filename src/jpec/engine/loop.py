@@ -201,17 +201,52 @@ def matched_filter_grid(
     return max_statistic, phase_idxs
 
 
+def f0_idxs_per_toplist(
+    f0: Float[np.ndarray, " n_f0"],
+    toplist_f0_edges: Float[np.ndarray, " n_toplist_edge"],
+) -> Int[np.ndarray, "n_toplist n_member"]:
+    """The f0 points each toplist keeps, padded to the fullest toplist with `n_f0`.
+
+    An f0 point below the first edge goes to the first toplist, one above the last
+    edge to the last.
+
+    Args:
+        f0: Frequency of each f0 point [Hz].
+        toplist_f0_edges: Edges of the toplists' f0 intervals [Hz], low to high.
+
+    Returns:
+        Each toplist's f0 points, in f0 order.
+    """
+    n_toplists = toplist_f0_edges.size - 1
+    toplist_idxs = np.clip(
+        np.searchsorted(toplist_f0_edges, f0, side="right") - 1, 0, n_toplists - 1
+    )
+    member_f0_idxs_per_toplist = [
+        np.flatnonzero(toplist_idxs == toplist_idx) for toplist_idx in range(n_toplists)
+    ]
+    n_members = max(
+        member_f0_idxs.size for member_f0_idxs in member_f0_idxs_per_toplist
+    )
+    padded_f0_idxs = np.full((n_toplists, n_members), f0.size)
+    for toplist_idx, member_f0_idxs in enumerate(member_f0_idxs_per_toplist):
+        padded_f0_idxs[toplist_idx, : member_f0_idxs.size] = member_f0_idxs
+    return padded_f0_idxs
+
+
 @partial(jax.jit, static_argnames="n_loudest")
 def loudest_in_box(
     max_statistic: Float[Array, "n_f0 n_period n_matched_modulation_depth"],
     phase_idxs: Int[Array, "n_f0 n_period n_matched_modulation_depth"],
     in_box: Bool[Array, "n_period n_matched_modulation_depth"],
+    toplist_f0_idxs: Int[Array, "n_toplist n_member"],
     *,
     n_loudest: int,
 ) -> tuple[
-    Float[Array, " n_loudest"], Int[Array, " n_loudest"], Int[Array, " n_loudest"]
+    Float[Array, "n_toplist n_kept"],
+    Int[Array, "n_toplist n_kept"],
+    Int[Array, "n_toplist n_kept"],
 ]:
-    """The loudest in-box templates of a grid, so only they leave the device.
+    """Each toplist's loudest in-box templates of a grid, so only they leave the device.
 
     Args:
         max_statistic: Maximum of `S` over the orbital phase at every template of
@@ -219,17 +254,40 @@ def loudest_in_box(
         phase_idxs: Index of the orbital phase each maximum sits at.
         in_box: Whether each (period, modulation depth) lies in the box, the same at
             every f0 point.
-        n_loudest: Templates kept, at most the grid's size.
+        toplist_f0_idxs: The f0 points each toplist keeps, padded with `n_f0`.
+        n_loudest: Templates kept per toplist; all of its f0 points' templates when
+            they are fewer.
 
     Returns:
-        Their statistic, loudest first and `-inf` past the in-box ones, their flat
-            index into the grid, and their phase index.
+        Per toplist, their statistic, loudest first and `-inf` past the in-box ones,
+            their flat index into the grid, and their phase index.
     """
+    n_f0, n_periods, n_modulation_depths = max_statistic.shape
+    n_templates_per_f0 = n_periods * n_modulation_depths
     # top_k ranks NaN above every number, so a NaN statistic is dropped with the
     # out-of-box ones
     is_kept = in_box[None] & ~jnp.isnan(max_statistic)
-    in_box_max_statistic = jnp.where(is_kept, max_statistic, -jnp.inf).ravel()
-    loudest_max_statistic, flat_idxs = jax.lax.top_k(in_box_max_statistic, n_loudest)
+    in_box_max_statistic = jnp.where(is_kept, max_statistic, -jnp.inf)
+    # each toplist's f0 points, a padding point scoring -inf
+    toplist_max_statistic = jnp.take(
+        in_box_max_statistic,
+        toplist_f0_idxs,
+        axis=0,
+        mode="fill",
+        fill_value=-jnp.inf,
+    ).reshape(toplist_f0_idxs.shape[0], -1)
+    loudest_max_statistic, member_flat_idxs = jax.lax.top_k(
+        toplist_max_statistic, min(n_loudest, toplist_max_statistic.shape[1])
+    )
+    f0_idxs = jnp.take_along_axis(
+        toplist_f0_idxs, member_flat_idxs // n_templates_per_f0, axis=1
+    )
+    # a padding point's index lies past the grid and is clipped onto its last
+    # template; its statistic is -inf
+    flat_idxs = jnp.minimum(
+        f0_idxs * n_templates_per_f0 + member_flat_idxs % n_templates_per_f0,
+        n_f0 * n_templates_per_f0 - 1,
+    )
     return loudest_max_statistic, flat_idxs, phase_idxs.ravel()[flat_idxs]
 
 
@@ -308,23 +366,30 @@ def orbital_statistics(
     sky_idxs: Sequence[int],
     f0_batch_size: int,
     n_loudest: int,
+    toplist_f0_edges: Float[np.ndarray, " n_toplist_edge"],
 ) -> Iterator[LoudestTemplates]:
-    """Every template at a batch of sky points scored, each grid's loudest kept.
+    """Every template at a batch of sky points scored, each toplist's loudest kept.
 
     Args:
         search_data: The band searched, the one the bank is laid out on.
         harmonic_bank: The bank's template harmonics, laid out on the band.
         sky_idxs: Indices of the sky points in the bank, transformed together.
         f0_batch_size: no. f0 points matched at once.
-        n_loudest: Templates kept of each grid, which caps what is copied to the host.
+        n_loudest: Templates kept of each grid per toplist.
+        toplist_f0_edges: Edges of the toplists' f0 intervals [Hz], low to high.
 
     Yields:
-        One LoudestTemplates per (subgrid, period batch, sky point).
+        One LoudestTemplates per (subgrid, period batch, sky point, toplist).
     """
     bank = harmonic_bank.bank
     # each subgrid's f0 points' Doppler reference frequencies, on the host
     f0_doppler_references = [
         np.asarray(layout.doppler_references)[np.asarray(layout.doppler_reference_idxs)]
+        for layout in harmonic_bank.layouts
+    ]
+    # each subgrid's f0 points per toplist
+    subgrid_toplist_f0_idxs = [
+        f0_idxs_per_toplist(layout.template_grid.orbital_subgrid.f0, toplist_f0_edges)
         for layout in harmonic_bank.layouts
     ]
 
@@ -334,7 +399,7 @@ def orbital_statistics(
         batch: PeriodBatch,
         sky_idx: int,
         loudest: tuple[Array, Array, Array],
-    ) -> LoudestTemplates:
+    ) -> Iterator[LoudestTemplates]:
         max_statistic, flat_idxs, phase_idxs = (np.asarray(array) for array in loudest)
         f0_idxs, period_offsets, modulation_depth_offsets = np.unravel_index(
             flat_idxs,
@@ -344,18 +409,22 @@ def orbital_statistics(
                 layout.n_window_modulation_depths,
             ),
         )
-        return LoudestTemplates(
-            subgrid_idx=subgrid_idx,
-            sky_idx=sky_idx,
-            max_statistic=max_statistic,
-            f0_idxs=f0_idxs,
-            period_idxs=batch.period_start_idx + period_offsets,
-            modulation_depth_idxs=batch.modulation_depth_start_idx
-            + modulation_depth_offsets,
-            phase_idxs=phase_idxs,
-            doppler_references=f0_doppler_references[subgrid_idx][f0_idxs],
-            n_phi=layout.n_phi,
-        )
+        for toplist_idx in range(max_statistic.shape[0]):
+            yield LoudestTemplates(
+                subgrid_idx=subgrid_idx,
+                sky_idx=sky_idx,
+                toplist_idx=toplist_idx,
+                max_statistic=max_statistic[toplist_idx],
+                f0_idxs=f0_idxs[toplist_idx],
+                period_idxs=batch.period_start_idx + period_offsets[toplist_idx],
+                modulation_depth_idxs=batch.modulation_depth_start_idx
+                + modulation_depth_offsets[toplist_idx],
+                phase_idxs=phase_idxs[toplist_idx],
+                doppler_references=f0_doppler_references[subgrid_idx][
+                    f0_idxs[toplist_idx]
+                ],
+                n_phi=layout.n_phi,
+            )
 
     sky_idx_array = np.asarray(sky_idxs)
     solar_roemer_delays = solar_roemer_delay(
@@ -380,12 +449,7 @@ def orbital_statistics(
         template_grid = layout.template_grid
         in_box = template_grid.orbital_subgrid.in_box
         n_window_modulation_depths = layout.n_window_modulation_depths
-        n_grid_loudest = min(
-            n_loudest,
-            layout.window_start_idxs.shape[0]
-            * layout.period_batch_size
-            * n_window_modulation_depths,
-        )
+        device_toplist_f0_idxs = jnp.asarray(subgrid_toplist_f0_idxs[subgrid_idx])
         corrected_sft_power = jnp.stack(
             [
                 doppler_corrected_power_per_reference(
@@ -452,13 +516,14 @@ def orbital_statistics(
                     max_statistic,
                     phase_idxs,
                     device_batch_in_box,
-                    n_loudest=n_grid_loudest,
+                    device_toplist_f0_idxs,
+                    n_loudest=n_loudest,
                 )
                 for array in loudest:
                     array.copy_to_host_async()
                 # the host reads the grid before while the device runs this one
                 if pending is not None:
-                    yield fetched(*pending)
+                    yield from fetched(*pending)
                 pending = (subgrid_idx, layout, batch, sky_idx, loudest)
     if pending is not None:
-        yield fetched(*pending)
+        yield from fetched(*pending)

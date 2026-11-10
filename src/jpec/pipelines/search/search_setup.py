@@ -1,4 +1,4 @@
-r"""Cut the search a config asks for into jobs that each fit the card.
+r"""Cut the search a config asks for into jobs, and price each one.
 
 Usage:
 
@@ -14,7 +14,6 @@ from pathlib import Path
 import numpy as np
 from jaxtyping import Float
 
-from jpec.bank.lattice import BCC_SUBGRID_STEP
 from jpec.bank.template_bank import OrbitalTemplateGrid
 from jpec.bank.tiling import LatticeTiling
 from jpec.config import (
@@ -27,21 +26,15 @@ from jpec.config import (
     read_config,
     read_json,
 )
-from jpec.constant import GB
+from jpec.constant import DAY, GB
 from jpec.detector.site import Observation, reference_epoch
 from jpec.engine.data import band_edges_for_f0
-from jpec.engine.layout import (
-    SubgridLayout,
-    doppler_reference_f0_width,
-    subgrid_layout,
-)
+from jpec.engine.layout import SubgridLayout, subgrid_layout
 from jpec.pipelines.monitor import RunLogger
 from jpec.waveform.window import Window
 
 COMPLEX64_BYTES = 8
 FLOAT32_BYTES = 4
-# halvings to find the widest f0 interval that fits
-N_BISECTIONS = 24
 
 
 def template_and_sky_point_counts(
@@ -258,169 +251,8 @@ def search_hours(
     return n_sky_points * seconds_per_sky_point / 3600.0
 
 
-def job_cost(
-    tiling: LatticeTiling,
-    velocity: Float[np.ndarray, "n_sft 3"],
-    f0_low: float,
-    f0_high: float,
-    *,
-    window: Window,
-    n_sfts: int,
-    search_loop_config: SearchLoopConfig,
-    rates: dict[str, float] | None,
-) -> tuple[float, float]:
-    """Giga-bytes a job over an f0 interval holds at its peak, and the hours it takes.
-
-    Args:
-        tiling: The tiling the templates are built on.
-        velocity: Detector velocity `v/c` at each SFT, every detector.
-        f0_low: Low edge of the interval [Hz].
-        f0_high: High edge [Hz].
-        window: The window the SFTs were made with.
-        n_sfts: SFTs over every detector.
-        search_loop_config: How the search loop batches its work.
-        rates: The `rates` of a jpec time-search result; None prices no hours.
-
-    Returns:
-        (Giga-bytes, hours), the hours 0 without rates.
-    """
-    layouts, n_band_bins = f0_interval_layouts(
-        tiling, f0_low, f0_high, window=window, search_loop_config=search_loop_config
-    )
-    gigabytes = search_memory_gb(
-        layouts,
-        n_band_bins=n_band_bins,
-        n_sfts=n_sfts,
-        sky_batch_size=search_loop_config.sky_batch_size,
-        f0_batch_size=search_loop_config.f0_batch_size,
-    )
-    if rates is None:
-        return gigabytes, 0.0
-    # the sky points at the interval's midpoint, as TemplateBank.over_f0_interval builds
-    alpha, _ = tiling.sky_points(velocity, f0=0.5 * (f0_low + f0_high))
-    job_hours = search_hours(
-        layouts,
-        n_band_bins=n_band_bins,
-        n_sky_points=int(alpha.size),
-        n_sfts=n_sfts,
-        rates=rates,
-    )
-    return gigabytes, job_hours
-
-
-def split_job_by_f0(
-    tiling: LatticeTiling,
-    velocity: Float[np.ndarray, "n_sft 3"],
-    *,
-    window: Window,
-    n_sfts: int,
-    memory_gb: float,
-    hours: float,
-    search_loop_config: SearchLoopConfig,
-    rates: dict[str, float] | None,
-) -> list[tuple[float, float]]:
-    """The f0 intervals, tiling the prior's f0 range, that each fit in `memory_gb`.
-
-    Each also fits in `hours` when the rates are known.
-
-    Args:
-        tiling: The tiling the templates are built on.
-        velocity: Detector velocity `v/c` at each SFT, every detector.
-        window: The window the SFTs were made with.
-        n_sfts: SFTs over every detector.
-        memory_gb: Giga-bytes one job may hold.
-        hours: Hours one job may take.
-        search_loop_config: How the search loop batches its work.
-        rates: The `rates` of a jpec time-search result; None splits on memory alone.
-
-    Returns:
-        `(f0_low, f0_high)` of each job, in order.
-    """
-    f0_low, f0_high = tiling.prior.f0
-    subgrid_f0_step = tiling.f0_step * BCC_SUBGRID_STEP
-    # a subgrid's f0 points run up to two of its steps past the job's edges
-    f0_overhang = 2.0 * subgrid_f0_step
-    # the f0 span one Doppler reference holds to the Doppler mismatch
-    f0_width_per_reference = doppler_reference_f0_width(
-        tsft=tiling.tsft,
-        window=window,
-        doppler_mismatch=search_loop_config.doppler_mismatch,
-    )
-    f0_intervals: list[tuple[float, float]] = []
-    low = f0_low
-    while low < f0_high - 1e-9:
-
-        def fits(high: float) -> bool:
-            # the job being cut, from low up to high, within both limits
-            gigabytes, job_hours = job_cost(
-                tiling,
-                velocity,
-                low,
-                high,
-                window=window,
-                n_sfts=n_sfts,
-                search_loop_config=search_loop_config,
-                rates=rates,
-            )
-            return gigabytes <= memory_gb and job_hours <= hours
-
-        # the widest interval that fits
-        if fits(f0_high):
-            high = f0_high
-        else:
-            if not fits(low + subgrid_f0_step):
-                limits = f"{memory_gb:.1f} GB"
-                if rates is not None:
-                    limits += f" or {hours:.1f} h"
-                raise SystemExit(
-                    f"one f0 step at {low:.3f} Hz already exceeds {limits}; "
-                    "raise compute.memory_gb or compute.hours"
-                )
-            high, failing_high = low + subgrid_f0_step, f0_high
-            for _ in range(N_BISECTIONS):
-                middle = 0.5 * (high + failing_high)
-                if fits(middle):
-                    high = middle
-                else:
-                    failing_high = middle
-        # the hours per Hz fall with the width until the next Doppler reference adds
-        # a template window's bins to the transform, so the cheapest job is that one
-        # or one whose f0 points span just under a whole number of references
-        if rates is not None:
-            reference_counts = np.arange(
-                1, int((high - low + f0_overhang) / f0_width_per_reference) + 1
-            )
-            reference_edges = (
-                low
-                + f0_width_per_reference * (1.0 - 1e-9) * reference_counts
-                - f0_overhang
-            )
-            candidate_f0_highs = [
-                high,
-                *reference_edges[reference_edges > low].tolist(),
-            ]
-            hours_per_hz = []
-            for candidate_f0_high in candidate_f0_highs:
-                _, job_hours = job_cost(
-                    tiling,
-                    velocity,
-                    low,
-                    candidate_f0_high,
-                    window=window,
-                    n_sfts=n_sfts,
-                    search_loop_config=search_loop_config,
-                    rates=rates,
-                )
-                hours_per_hz.append(job_hours / (candidate_f0_high - low))
-            high = candidate_f0_highs[int(np.argmin(hours_per_hz))]
-        f0_intervals.append((low, high))
-        low = high
-
-    return f0_intervals
-
-
 def run(args: argparse.Namespace) -> None:
-    """Split the config's f0 range into jobs and write the setup.
+    """Cut the config's box into jobs, price each one and write the setup.
 
     Args:
         args: The parsed flags.
@@ -441,86 +273,93 @@ def run(args: argparse.Namespace) -> None:
     observation = Observation(sft_metadata.timestamps, tsft=tsft, t_ref=t_ref)
     velocity = observation.velocity
 
-    tiling = LatticeTiling.from_metric(
-        config.parameter_space.prior(),
-        observation=observation,
-        mismatch=template_bank_config.mismatch,
-        n_ap_blocks=template_bank_config.n_ap_blocks,
-        window=window,
-    )
+    # one lattice per period range, each over the whole f0 range
+    prior = config.parameter_space.prior()
+    period_edges = config.job_period_edges()
+    period_ranges = list(zip(period_edges, period_edges[1:]))
+    tilings = [
+        LatticeTiling.from_metric(
+            prior._replace(period=(period_low * DAY, period_high * DAY)),
+            observation=observation,
+            mismatch=template_bank_config.mismatch,
+            n_ap_blocks=template_bank_config.n_ap_blocks,
+            window=window,
+        )
+        for period_low, period_high in period_ranges
+    ]
 
-    # cut the f0 range into jobs that each fit the memory, and the time when the rates
-    # are known
+    # the f0 range in jobs of job_f0_width, each over every period range
+    f0_edges = config.job_f0_edges()
+    n_f0_intervals = len(f0_edges) - 1
     timing = None if args.timing is None else json.loads(Path(args.timing).read_text())
     rates = None if timing is None else timing["rates"]
-    f0_intervals = split_job_by_f0(
-        tiling,
-        velocity,
-        window=window,
-        n_sfts=n_sfts,
-        memory_gb=compute.memory_gb,
-        hours=compute.hours,
-        search_loop_config=search_loop_config,
-        rates=rates,
+    run_logger.info(
+        f"{n_f0_intervals * len(period_ranges)} jobs: {n_f0_intervals} f0 intervals "
+        f"of {compute.job_f0_width:g} Hz x {len(period_ranges)} period ranges "
+        f"{period_edges} d"
     )
     if timing is None:
         run_logger.info(
-            f"{len(f0_intervals)} jobs under {compute.memory_gb:.1f} GB each; "
             "no timing given, so the hours are not priced: time the first job with "
             "jpec time-search and run this again with --timing"
         )
     else:
-        run_logger.info(
-            f"{len(f0_intervals)} jobs under {compute.memory_gb:.1f} GB "
-            f"and {compute.hours:.1f} h each, at the rates of {timing['host']}."
-        )
+        run_logger.info(f"Hours at the rates of {timing['host']}")
 
     # what each job searches, loads, holds and takes
     job_setups = []
-    for job_idx, (job_f0_low, job_f0_high) in enumerate(f0_intervals):
-        n_templates, n_sky_points = template_and_sky_point_counts(
-            tiling, velocity, job_f0_low, job_f0_high
-        )
-        freq_low, freq_high = band_edges_for_f0(
-            tiling.prior, job_f0_low, job_f0_high, tsft=tsft
-        )
-        layouts, n_band_bins = f0_interval_layouts(
-            tiling,
-            job_f0_low,
-            job_f0_high,
-            window=window,
-            search_loop_config=search_loop_config,
-        )
-        job_setups.append(
-            JobSetup(
-                job_idx=job_idx,
-                f0_low=job_f0_low,
-                f0_high=job_f0_high,
-                freq_low=float(freq_low),
-                freq_high=float(freq_high),
-                files=sft_metadata.files_covering(
-                    freq_low, freq_high, sft_glob=config.sft_glob
-                ),
-                n_sky_points=n_sky_points,
-                n_templates=n_templates,
-                memory_gb=search_memory_gb(
-                    layouts,
-                    n_band_bins=n_band_bins,
-                    n_sfts=n_sfts,
-                    sky_batch_size=search_loop_config.sky_batch_size,
-                    f0_batch_size=search_loop_config.f0_batch_size,
-                ),
-                hours=None
-                if rates is None
-                else search_hours(
+    for job_f0_low, job_f0_high in zip(f0_edges, f0_edges[1:]):
+        for tiling_idx, (tiling, (period_low, period_high)) in enumerate(
+            zip(tilings, period_ranges)
+        ):
+            n_templates, n_sky_points = template_and_sky_point_counts(
+                tiling, velocity, job_f0_low, job_f0_high
+            )
+            freq_low, freq_high = band_edges_for_f0(
+                tiling.prior, job_f0_low, job_f0_high, tsft=tsft
+            )
+            layouts, n_band_bins = f0_interval_layouts(
+                tiling,
+                job_f0_low,
+                job_f0_high,
+                window=window,
+                search_loop_config=search_loop_config,
+            )
+            memory_gb = search_memory_gb(
+                layouts,
+                n_band_bins=n_band_bins,
+                n_sfts=n_sfts,
+                sky_batch_size=search_loop_config.sky_batch_size,
+                f0_batch_size=search_loop_config.f0_batch_size,
+            )
+            hours = None
+            if rates is not None:
+                hours = search_hours(
                     layouts,
                     n_band_bins=n_band_bins,
                     n_sky_points=n_sky_points,
                     n_sfts=n_sfts,
                     rates=rates,
-                ),
+                )
+            job_setups.append(
+                JobSetup(
+                    job_idx=len(job_setups),
+                    f0_low=job_f0_low,
+                    f0_high=job_f0_high,
+                    period_low=period_low,
+                    period_high=period_high,
+                    tiling_idx=tiling_idx,
+                    freq_low=float(freq_low),
+                    freq_high=float(freq_high),
+                    files=sft_metadata.files_covering(
+                        freq_low, freq_high, sft_glob=config.sft_glob
+                    ),
+                    n_sky_points=n_sky_points,
+                    n_templates=n_templates,
+                    memory_gb=memory_gb,
+                    hours=hours,
+                )
             )
-        )
 
     n_templates_per_job = np.array(
         [job_setup.n_templates for job_setup in job_setups], dtype=float
@@ -531,12 +370,43 @@ def run(args: argparse.Namespace) -> None:
         f"Per-job templates: {n_templates_per_job.min():.3e} to "
         f"{n_templates_per_job.max():.3e}"
     )
+    memory_gb_per_job = np.array([job_setup.memory_gb for job_setup in job_setups])
+    run_logger.info(
+        f"Per-job memory: {memory_gb_per_job.min():.1f} to "
+        f"{memory_gb_per_job.max():.1f} GB"
+    )
     if rates is not None:
         hours_per_job = np.array([job_setup.hours for job_setup in job_setups])
         run_logger.info(
             f"Per-job hours: {hours_per_job.min():.1f} to {hours_per_job.max():.1f}"
         )
         run_logger.info(f"Total hours: {hours_per_job.sum():.1f}")
+        for (period_low, period_high), period_hours in zip(
+            period_ranges, hours_per_job.reshape(n_f0_intervals, -1).T
+        ):
+            run_logger.info(
+                f"  period {period_low:g}-{period_high:g} d: {period_hours.sum():.1f} h"
+            )
+
+    # the jobs over a limit
+    over_limit = [
+        job_setup
+        for job_setup in job_setups
+        if job_setup.memory_gb > compute.memory_gb
+        or (job_setup.hours is not None and job_setup.hours > compute.hours)
+    ]
+    if over_limit:
+        run_logger.info(
+            f"WARNING: {len(over_limit)} of {len(job_setups)} jobs exceed "
+            f"{compute.memory_gb:g} GB or {compute.hours:g} h:"
+        )
+        for job_setup in over_limit:
+            hours_text = "" if job_setup.hours is None else f", {job_setup.hours:.1f} h"
+            run_logger.info(
+                f"  job {job_setup.job_idx}: f0 {job_setup.f0_low:g}-"
+                f"{job_setup.f0_high:g} Hz, period {job_setup.period_low:g}-"
+                f"{job_setup.period_high:g} d, {job_setup.memory_gb:.1f} GB{hours_text}"
+            )
 
     setup = SearchSetup(
         jpec=importlib.metadata.version("jpec"),
@@ -548,9 +418,10 @@ def run(args: argparse.Namespace) -> None:
             window=window,
             t_ref=t_ref,
         ),
-        tiling=tiling.to_dict(),
+        tilings=[tiling.to_dict() for tiling in tilings],
         search_loop=search_loop_config,
         n_toplist=config.n_toplist,
+        toplist_f0_width=config.toplist_f0_width,
         n_templates_total=n_templates_total,
         jobs=job_setups,
     )
@@ -574,8 +445,8 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--timing",
         default=None,
-        help="jpec time-search result, the rates the jobs are priced at; without one "
-        "the jobs are cut on memory alone",
+        help="jpec time-search result, used to estimate each job's hours; without "
+        "it, only each job's memory is estimated",
     )
     parser.add_argument(
         "--output",

@@ -40,11 +40,12 @@ class Candidate(NamedTuple):
 
 
 class LoudestTemplates(NamedTuple):
-    """The loudest in-box templates of one f0 x period x modulation depth block.
+    """The loudest in-box templates of one toplist's f0 points in one grid.
 
     Attributes:
         subgrid_idx: Index of the subgrid in the bank.
         sky_idx: Index of the sky point in the bank.
+        toplist_idx: Index of the toplist whose f0 points they are.
         max_statistic: Maximum of `S` over the orbital phase, loudest first;
             `-inf` once the grid's in-box templates run out.
         f0_idxs: Index of each template's f0 point in the subgrid.
@@ -57,6 +58,7 @@ class LoudestTemplates(NamedTuple):
 
     subgrid_idx: int
     sky_idx: int
+    toplist_idx: int
     max_statistic: Float[np.ndarray, " n_loudest"]
     f0_idxs: Int[np.ndarray, " n_loudest"]
     period_idxs: Int[np.ndarray, " n_loudest"]

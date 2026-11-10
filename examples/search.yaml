@@ -1,17 +1,22 @@
 parameter_space:
-  f0: [204.0, 204.05]           # Hz, at the Solar System Barycenter; inside the band the SFTs cover
+  f0: [204.0, 205.0]            # Hz, at the Solar System Barycenter; inside the band the SFTs cover
   ap: [5.0, 15.0]              # light-seconds, the published O4a prior
   period: [7.0, 15.0]           # days, the published O4a prior
 
 template_bank:
-  mismatch: 0.4
+  mismatch: 0.5
   n_ap_blocks: 1                # ap blocks; each adds a full period grid, and so a full set of transforms
 
 compute:
-  memory_gb: 15.5               # what one job may hold; leave the card its own headroom here
-  hours: 96.0                   # what one job may take, at the rates of the jpec time-search run given to the setup
+  job_f0_width: 1.0             # Hz, f0 width of each job; the f0 range is a whole number of them
+  job_period_cuts: [8, 9, 11]   # days, where one job's period range ends and the next begins;
+                                # [] for one job over the whole period range
+  memory_gb: 40.0               # what one job may hold; a job over it is reported
+  hours: 96.0                   # what one job may take, at the rates of the jpec time-search run
+                                # given to the setup; a job over it is reported
 
-n_toplist: 100000               # loudest templates kept per job
+n_toplist: 10000                # loudest templates kept per toplist
+toplist_f0_width: 0.1           # Hz, f0 width of each toplist; a job keeps one per width
 
 search_loop:
   sky_batch_size: 8             # sky points per transform, which share its orbital basis
@@ -19,7 +24,10 @@ search_loop:
                                 # memory term, grows with it
   f0_batch_size: 32             # f0 points matched at once, which caps the S(phi_b) held
   n_sub_bin_offsets: 8          # template offsets across one bin; an f0 point takes the nearest
-  harmonic_fraction: 1.0        # share of each depth's harmonic_count matched; 0.6 loses 1e-3
+  harmonic_fraction: 0.6        # share of each depth's harmonic_count matched; 0.6 loses 1e-3
                                 # of a matched signal's S
+  phase_mismatch: 0.01          # largest mismatch the orbital phase grid leaves
+  doppler_mismatch: 0.001       # largest mismatch an f0 point's offset from its Doppler
+                                # reference leaves
 
 sft_glob: /path/to/sfts/*.sft   # the glob jpec check-sft was given, as the jobs will see it

@@ -299,19 +299,23 @@ class RunLogger:
         """
         self.info(f"Job {job_setup.job_idx} of {len(setup.jobs)} from {setup_path}")
         self.info(f"Search band: {job_setup.f0_low:.5f} to {job_setup.f0_high:.5f} Hz")
+        self.info(
+            f"Period range: {job_setup.period_low:g} to {job_setup.period_high:g} d"
+        )
         self.data_summary(search_data)
         self.info(
             f"Frequency bins of the first subgrid's deepest template: "
             f"{bank.template_grids[0].bin_offsets.shape[0]}"
         )
-        self.info(
-            f"Lattice: {setup.tiling['lattice']}, mismatch {setup.tiling['mismatch']}"
-        )
+        tiling = setup.tilings[job_setup.tiling_idx]
+        self.info(f"Lattice: {tiling['lattice']}, mismatch {tiling['mismatch']}")
         self.info(f"Sky points: {bank.alpha.size}")
         self.info(f"Templates: {bank.n_templates:.3e}")
         self.info(f"Doppler references per subgrid: {n_doppler_references_per_subgrid}")
         self.search_loop_summary(setup.search_loop)
-        self.info(f"Toplist: {setup.n_toplist}")
+        self.info(
+            f"Toplists: {setup.n_toplist} templates per {setup.toplist_f0_width:g} Hz"
+        )
 
     def injection_summary(
         self,

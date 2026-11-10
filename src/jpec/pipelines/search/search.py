@@ -9,6 +9,8 @@ Usage:
 import argparse
 import time
 
+import numpy as np
+
 from jpec.bank.template_bank import TemplateBank
 from jpec.bank.tiling import LatticeTiling
 from jpec.config import JobSetup, SearchSetup, read_json
@@ -24,7 +26,7 @@ def search_job(
     job_setup: JobSetup,
     args: argparse.Namespace,
 ) -> None:
-    """Search one job's f0 interval over the sky and save its toplist.
+    """Search one job's f0 interval and period range over the sky, save its toplists.
 
     Args:
         run_logger: The run's log and output.
@@ -44,9 +46,9 @@ def search_job(
         floor_batch_size=search_loop_config.floor_batch_size,
     )
 
-    # the bcc lattice's 2 subgrids over the sky lattice
+    # the bcc lattice's 2 subgrids over the sky lattice, on the job's period range
     bank = TemplateBank.over_f0_interval(
-        LatticeTiling.from_dict(setup.tiling),
+        LatticeTiling.from_dict(setup.tilings[job_setup.tiling_idx]),
         job_setup.f0_low,
         job_setup.f0_high,
         velocity=search_data.velocity,
@@ -77,7 +79,10 @@ def search_job(
         n_doppler_references_per_subgrid=n_doppler_references_per_subgrid,
     )
 
-    toplist = Toplist(setup.n_toplist)
+    # one toplist per toplist_f0_width of the job's f0 interval
+    toplist_f0_edges = np.asarray(setup.toplist_f0_edges(job_setup))
+    n_toplists = toplist_f0_edges.size - 1
+    toplists = [Toplist(setup.n_toplist) for _ in range(n_toplists)]
     run_logger.start_progress(
         bank, seconds=60.0 * args.progress_minutes, started=started
     )
@@ -92,14 +97,29 @@ def search_job(
             ),
             f0_batch_size=search_loop_config.f0_batch_size,
             n_loudest=setup.n_toplist,
+            toplist_f0_edges=toplist_f0_edges,
         )
         for loudest in loudest_per_grid:
             run_logger.progress(loudest.sky_idx, loudest.subgrid_idx)
-            toplist.add_loudest(loudest, bank)
+            toplists[loudest.toplist_idx].add_loudest(loudest, bank)
 
-    candidate_dicts = [candidate.to_dict() for candidate in toplist.descending()]
+    toplist_dicts = [
+        {
+            "f0_low": float(toplist_f0_low),
+            "f0_high": float(toplist_f0_high),
+            # loudest first
+            "candidates": [candidate.to_dict() for candidate in toplist.descending()],
+        }
+        for toplist, toplist_f0_low, toplist_f0_high in zip(
+            toplists, toplist_f0_edges, toplist_f0_edges[1:]
+        )
+    ]
     elapsed = time.perf_counter() - started
-    run_logger.info(f"Candidates kept: {len(candidate_dicts)} / {setup.n_toplist}.")
+    n_kept = sum(len(toplist.kept) for toplist in toplists)
+    run_logger.info(
+        f"Candidates kept: {n_kept} / {n_toplists * setup.n_toplist} in {n_toplists} "
+        "toplists."
+    )
     run_logger.info(f"Done: time used {elapsed:.1f} s")
     device_memory_gb = run_logger.device_memory_gb()
     if device_memory_gb is not None:
@@ -115,14 +135,16 @@ def search_job(
             "job_idx": job_setup.job_idx,
             "f0_low": job_setup.f0_low,
             "f0_high": job_setup.f0_high,
+            "period_low": job_setup.period_low,
+            "period_high": job_setup.period_high,
             "n_sky_points": n_sky_points,
             "t_ref": search_data.t_ref,
             "seconds": elapsed,
             "modelled_gb": job_setup.memory_gb,
             "n_doppler_references_per_subgrid": n_doppler_references_per_subgrid,
             "search_loop": search_loop_config.model_dump(),
-            # loudest first
-            "candidates": candidate_dicts,
+            # in f0 order
+            "toplists": toplist_dicts,
         },
     )
 

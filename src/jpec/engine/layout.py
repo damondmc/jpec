@@ -346,7 +346,7 @@ def subgrid_layout(
     period_batch_size = min(period_batch_size, period.size)
     # each depth's share of its harmonics, rounded up to the step and at most j_max
     n_kept_harmonics_per_depth = [
-        math.ceil(harmonic_fraction * harmonic_count(float(depth_bins)))
+        math.ceil(round(harmonic_fraction * harmonic_count(float(depth_bins)), 9))
         for depth_bins in template_grid.orbital_subgrid.modulation_depth_bins
     ]
     n_harmonics_per_depth = np.array(

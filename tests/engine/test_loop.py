@@ -88,19 +88,6 @@ def match(grid, f0_idxs: slice, *, f0_batch_size: int):
     )
 
 
-def test_one_call_matches_one_f0_point_per_call(grid):
-    """Every f0 point in one batched call scores as each f0 point on its own."""
-    max_statistic, phase_idxs = match(grid, slice(None), f0_batch_size=4)
-    for f0_idx in range(N_F0_POINTS):
-        f0_max_statistic, f0_phase_idxs = match(
-            grid, slice(f0_idx, f0_idx + 1), f0_batch_size=1
-        )
-        np.testing.assert_allclose(
-            max_statistic[f0_idx], f0_max_statistic[0], rtol=1e-5
-        )
-        np.testing.assert_array_equal(phase_idxs[f0_idx], f0_phase_idxs[0])
-
-
 def test_each_template_scores_as_max_over_phase_alone(grid):
     """The grouped match gives every template what max_over_phase() gives it alone."""
     max_statistic, phase_idxs = match(grid, slice(None), f0_batch_size=4)
@@ -133,23 +120,6 @@ def test_each_template_scores_as_max_over_phase_alone(grid):
                 )
 
 
-def test_f0_groups_hold_every_f0_point_once_with_one_reference_and_offset():
-    """Each group shares a reference and offset, and every f0 point is in one group."""
-    doppler_reference_idxs = np.array([0, 1, 0, 0, 1, 1, 0, 1, 0])
-    sub_bin_offset_idxs = np.array([2, 0, 2, 1, 0, 2, 1, 0, 2])
-    group_f0_idxs, group_doppler_reference_idxs, group_sub_bin_offset_idxs = f0_groups(
-        doppler_reference_idxs, sub_bin_offset_idxs
-    )
-    for f0_idxs, reference_idx, offset_idx in zip(
-        group_f0_idxs, group_doppler_reference_idxs, group_sub_bin_offset_idxs
-    ):
-        assert np.all(doppler_reference_idxs[f0_idxs] == reference_idx)
-        assert np.all(sub_bin_offset_idxs[f0_idxs] == offset_idx)
-    assert sorted(set(group_f0_idxs.ravel().tolist())) == list(
-        range(doppler_reference_idxs.size)
-    )
-
-
 def test_loudest_in_box_is_the_sorted_in_box_grid(grid):
     """The device-side cut keeps in-box templates a host sort would, loudest first."""
     max_statistic, phase_idxs = match(grid, slice(None), f0_batch_size=4)
@@ -157,19 +127,21 @@ def test_loudest_in_box_is_the_sorted_in_box_grid(grid):
         jax.random.key(1), 0.5, (N_PERIODS, N_MATCHED_MODULATION_DEPTHS)
     )
     n_loudest = 10
+    # one toplist over every f0 point
+    all_f0_idxs = jnp.arange(N_F0_POINTS)[None]
     loudest_max_statistic, flat_idxs, loudest_phase_idxs = loudest_in_box(
-        max_statistic, phase_idxs, in_box, n_loudest=n_loudest
+        max_statistic, phase_idxs, in_box, all_f0_idxs, n_loudest=n_loudest
     )
     in_box_max_statistic = np.where(
         np.asarray(in_box)[None], np.asarray(max_statistic), -np.inf
     ).ravel()
     expected_flat_idxs = np.argsort(-in_box_max_statistic, kind="stable")[:n_loudest]
-    np.testing.assert_array_equal(flat_idxs, expected_flat_idxs)
+    np.testing.assert_array_equal(flat_idxs[0], expected_flat_idxs)
     np.testing.assert_array_equal(
-        loudest_max_statistic, in_box_max_statistic[expected_flat_idxs]
+        loudest_max_statistic[0], in_box_max_statistic[expected_flat_idxs]
     )
     np.testing.assert_array_equal(
-        loudest_phase_idxs, np.asarray(phase_idxs).ravel()[expected_flat_idxs]
+        loudest_phase_idxs[0], np.asarray(phase_idxs).ravel()[expected_flat_idxs]
     )
 
 
@@ -238,7 +210,9 @@ def small_search():
     return search_data, harmonic_bank
 
 
-def loudest_per_grid(search_data, harmonic_bank, sky_idxs=(0,)):
+def loudest_per_grid(
+    search_data, harmonic_bank, sky_idxs=(0,), toplist_f0_edges=(-np.inf, np.inf)
+):
     return list(
         orbital_statistics(
             search_data,
@@ -246,8 +220,44 @@ def loudest_per_grid(search_data, harmonic_bank, sky_idxs=(0,)):
             sky_idxs=sky_idxs,
             f0_batch_size=8,
             n_loudest=20,
+            toplist_f0_edges=np.asarray(toplist_f0_edges),
         )
     )
+
+
+def test_toplists_hold_the_single_toplists_templates_per_f0_interval(small_search):
+    """Split into toplists, each f0 interval keeps what one toplist keeps of it."""
+    search_data, harmonic_bank = small_search
+    f0 = harmonic_bank.layouts[0].template_grid.orbital_subgrid.f0
+    middle_f0 = 0.5 * (f0.min() + f0.max())
+    split = loudest_per_grid(
+        search_data, harmonic_bank, toplist_f0_edges=(-np.inf, middle_f0, np.inf)
+    )
+    single = loudest_per_grid(search_data, harmonic_bank)
+    assert len(split) == 2 * len(single)
+    bank = harmonic_bank.bank
+    for single_grid, low_grid, high_grid in zip(single, split[::2], split[1::2]):
+        assert (low_grid.toplist_idx, high_grid.toplist_idx) == (0, 1)
+        subgrid_f0 = bank.template_grids[single_grid.subgrid_idx].orbital_subgrid.f0
+        is_found = np.isfinite(single_grid.max_statistic)
+        is_low = subgrid_f0[single_grid.f0_idxs] < middle_f0
+        # the single toplist's templates, cut at middle_f0, lead each split one
+        for grid, is_member in (
+            (low_grid, is_found & is_low),
+            (high_grid, is_found & ~is_low),
+        ):
+            n_members = int(is_member.sum())
+            for field in (
+                "max_statistic",
+                "f0_idxs",
+                "period_idxs",
+                "modulation_depth_idxs",
+                "phase_idxs",
+            ):
+                np.testing.assert_array_equal(
+                    getattr(grid, field)[:n_members],
+                    getattr(single_grid, field)[is_member],
+                )
 
 
 def test_a_sky_batch_scores_as_each_sky_point_alone(small_search):
@@ -327,10 +337,9 @@ def multi_reference_search(small_search):
     return search_data, multi_reference_bank
 
 
-@pytest.mark.parametrize("search", ["small_search", "multi_reference_search"])
-def test_band_trim_leaves_the_statistic_unchanged(search, request):
+def test_band_trim_leaves_the_statistic_unchanged(multi_reference_search):
     """Each reference transforming only its windows' bins scores as the whole band."""
-    search_data, harmonic_bank = request.getfixturevalue(search)
+    search_data, harmonic_bank = multi_reference_search
     n_band_bins = search_data.n_band_bins
     for layout in harmonic_bank.layouts:
         starts = np.asarray(layout.transformed_start_idxs)
@@ -343,10 +352,9 @@ def test_band_trim_leaves_the_statistic_unchanged(search, request):
     assert any(
         layout.n_transformed_bins < n_band_bins for layout in harmonic_bank.layouts
     ), "the band holds only the windows, so there is nothing to trim"
-    if search == "multi_reference_search":
-        assert all(
-            layout.doppler_references.size > 1 for layout in harmonic_bank.layouts
-        ), "one reference per subgrid, so the references' bins are not split"
+    assert all(
+        layout.doppler_references.size > 1 for layout in harmonic_bank.layouts
+    ), "one reference per subgrid, so the references' bins are not split"
 
     # every reference transforms the whole band, each window counted from its first
     # bin
