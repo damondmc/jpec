@@ -18,7 +18,7 @@ from jpec.bank.tiling import LatticeTiling
 from jpec.config import InjectionSetup, read_json
 from jpec.constant import DAY
 from jpec.engine.data import SearchData
-from jpec.engine.loop import HarmonicBank, orbital_statistics
+from jpec.engine.loop import HarmonicBank, top_templates_at_sky_points
 from jpec.injection.population import draw_injections
 from jpec.injection.signal import simulated_source
 from jpec.pipelines.monitor import RunLogger
@@ -109,7 +109,7 @@ def measure_sensitivity_depth(
 
     def search_injections_at(h0: float) -> None:
         # noise + h0 x signal around every source, its floor taken before the injection,
-        # then the search loop over its bank, only the loudest template of each grid
+        # then the search loop over its bank, only the loudest template of each match
         # kept
         loudest = np.zeros(len(sources))
         for source_idx, (source, band_data, harmonic_bank) in enumerate(
@@ -123,16 +123,16 @@ def measure_sensitivity_depth(
             n_sky_points = int(harmonic_bank.bank.alpha.size)
             sky_batch_size = search_loop_config.sky_batch_size
             loudest[source_idx] = max(
-                float(grid_loudest.max_statistic[0])
+                float(top.max_statistic[0])
                 for sky_start_idx in range(0, n_sky_points, sky_batch_size)
-                for grid_loudest in orbital_statistics(
+                for top in top_templates_at_sky_points(
                     injected_data,
                     harmonic_bank,
                     sky_idxs=range(
                         sky_start_idx, min(sky_start_idx + sky_batch_size, n_sky_points)
                     ),
                     f0_batch_size=search_loop_config.f0_batch_size,
-                    n_loudest=1,
+                    n_top=1,
                     # one toplist over every f0 point
                     toplist_f0_edges=np.array([-np.inf, np.inf]),
                 )

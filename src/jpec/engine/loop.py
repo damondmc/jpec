@@ -11,7 +11,7 @@ from jaxtyping import Array, Bool, Complex, Float, Int
 
 from jpec.bank.template_bank import TemplateBank
 from jpec.detector.doppler import doppler_corrected_power, solar_roemer_delay
-from jpec.engine.candidates import LoudestTemplates
+from jpec.engine.candidates import TopTemplates
 from jpec.engine.data import SearchData
 from jpec.engine.layout import (
     SubgridLayout,
@@ -208,20 +208,20 @@ def matched_filter_grid(
     return max_statistic, phase_idxs
 
 
-@partial(jax.jit, static_argnames="n_loudest")
-def loudest_in_box(
+@partial(jax.jit, static_argnames="n_top")
+def top_k_templates(
     max_statistic: Float[Array, "n_f0 n_period n_matched_modulation_depth"],
     phase_idxs: Int[Array, "n_f0 n_period n_matched_modulation_depth"],
     in_box: Bool[Array, "n_period n_matched_modulation_depth"],
     toplist_f0_idxs: Int[Array, "n_toplist n_member"],
     *,
-    n_loudest: int,
+    n_top: int,
 ) -> tuple[
     Float[Array, "n_toplist n_kept"],
     Int[Array, "n_toplist n_kept"],
     Int[Array, "n_toplist n_kept"],
 ]:
-    """Each toplist's loudest in-box templates of a grid.
+    """Each toplist's top in-box templates of a grid.
 
     Args:
         max_statistic: Maximum of `S` over the orbital phase at every template of
@@ -230,7 +230,7 @@ def loudest_in_box(
         in_box: Whether each (period, modulation depth) lies in the box, the same at
             every f0 point.
         toplist_f0_idxs: The f0 points each toplist covers.
-        n_loudest: Templates kept per toplist; all of its f0 points' templates when
+        n_top: Templates kept per toplist; all of its f0 points' templates when
             they are fewer.
 
     Returns:
@@ -251,8 +251,8 @@ def loudest_in_box(
         mode="fill",
         fill_value=-jnp.inf,
     ).reshape(toplist_f0_idxs.shape[0], -1)
-    loudest_max_statistic, member_flat_idxs = jax.lax.top_k(
-        toplist_max_statistic, min(n_loudest, toplist_max_statistic.shape[1])
+    top_max_statistic, member_flat_idxs = jax.lax.top_k(
+        toplist_max_statistic, min(n_top, toplist_max_statistic.shape[1])
     )
     f0_idxs = jnp.take_along_axis(
         toplist_f0_idxs, member_flat_idxs // n_templates_per_f0, axis=1
@@ -263,7 +263,7 @@ def loudest_in_box(
         f0_idxs * n_templates_per_f0 + member_flat_idxs % n_templates_per_f0,
         n_f0 * n_templates_per_f0 - 1,
     )
-    return loudest_max_statistic, flat_idxs, phase_idxs.ravel()[flat_idxs]
+    return top_max_statistic, flat_idxs, phase_idxs.ravel()[flat_idxs]
 
 
 class HarmonicSubgrid(NamedTuple):
@@ -366,8 +366,8 @@ class HarmonicBank:
             self.subgrids.append(subgrid)
 
 
-def loudest_templates(
-    loudest: tuple[
+def top_templates(
+    top_k: tuple[
         Float[Array, "n_toplist n_kept"],
         Int[Array, "n_toplist n_kept"],
         Int[Array, "n_toplist n_kept"],
@@ -376,29 +376,29 @@ def loudest_templates(
     template_batch: TemplateBatch,
     subgrid_idx: int,
     sky_idx: int,
-) -> Iterator[LoudestTemplates]:
-    """The loudest templates inside the parameter space, toplist by toplist.
+) -> Iterator[TopTemplates]:
+    """The top templates inside the parameter space, toplist by toplist.
 
     Args:
-        loudest: The statistic, flat grid index and phase index loudest_in_box()
+        top_k: The statistic, flat grid index and phase index top_k_templates()
             returns.
-        subgrid: The subgrid the grid belongs to.
-        template_batch: The template batch the grid was matched over.
+        subgrid: The subgrid the templates belong to.
+        template_batch: The template batch they were matched over.
         subgrid_idx: Index of the subgrid in the bank.
         sky_idx: Index of the sky point in the bank.
 
     Yields:
-        One LoudestTemplates per toplist.
+        One TopTemplates per toplist.
     """
     layout = subgrid.layout
     n_f0 = layout.template_grid.orbital_subgrid.f0.size
-    max_statistic, flat_idxs, phase_idxs = (np.asarray(array) for array in loudest)
+    max_statistic, flat_idxs, phase_idxs = (np.asarray(array) for array in top_k)
     f0_idxs, period_offsets, modulation_depth_offsets = np.unravel_index(
         flat_idxs,
         (n_f0, layout.period_batch_size, layout.n_window_modulation_depths),
     )
     for toplist_idx in range(max_statistic.shape[0]):
-        yield LoudestTemplates(
+        yield TopTemplates(
             subgrid_idx=subgrid_idx,
             sky_idx=sky_idx,
             toplist_idx=toplist_idx,
@@ -413,27 +413,27 @@ def loudest_templates(
         )
 
 
-def orbital_statistics(
+def top_templates_at_sky_points(
     search_data: SearchData,
     harmonic_bank: HarmonicBank,
     *,
     sky_idxs: Sequence[int],
     f0_batch_size: int,
-    n_loudest: int,
+    n_top: int,
     toplist_f0_edges: Float[np.ndarray, " n_toplist + 1"],
-) -> Iterator[LoudestTemplates]:
-    """Every template at a batch of sky points scored, each toplist's loudest kept.
+) -> Iterator[TopTemplates]:
+    """Every template at a batch of sky points scored, each toplist's top kept.
 
     Args:
         search_data: The band searched, the one the bank is laid out on.
         harmonic_bank: The bank's template harmonics, laid out on the band.
         sky_idxs: Indices of the sky points in the bank, transformed together.
         f0_batch_size: f0 points matched at once.
-        n_loudest: Templates kept of each grid per toplist.
+        n_top: Templates kept per toplist from each match.
         toplist_f0_edges: Edges of the toplists' f0 intervals [Hz], low to high.
 
     Yields:
-        One LoudestTemplates per (subgrid, template batch, sky point, toplist).
+        One TopTemplates per (subgrid, template batch, sky point, toplist).
     """
     bank = harmonic_bank.bank
     sky_idx_array = np.asarray(sky_idxs)
@@ -507,20 +507,20 @@ def orbital_statistics(
                     n_phi=layout.n_phi,
                     f0_batch_size=f0_batch_size,
                 )
-                loudest = loudest_in_box(
+                top_k = top_k_templates(
                     max_statistic,
                     phase_idxs,
                     in_box,
                     toplist_f0_idxs,
-                    n_loudest=n_loudest,
+                    n_top=n_top,
                 )
-                for array in loudest:
+                for array in top_k:
                     array.copy_to_host_async()
                 if previous_match is not None:
                     # work on the host while the GPU keeps working on this match
-                    yield from loudest_templates(*previous_match)
+                    yield from top_templates(*previous_match)
                 previous_match = (
-                    loudest,
+                    top_k,
                     subgrid,
                     template_batch,
                     subgrid_idx,
@@ -528,4 +528,4 @@ def orbital_statistics(
                 )
     # the last match
     if previous_match is not None:
-        yield from loudest_templates(*previous_match)
+        yield from top_templates(*previous_match)

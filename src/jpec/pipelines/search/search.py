@@ -16,7 +16,7 @@ from jpec.bank.tiling import LatticeTiling
 from jpec.config import JobSetup, SearchSetup, read_json
 from jpec.engine.candidates import Toplist
 from jpec.engine.data import SearchData
-from jpec.engine.loop import HarmonicBank, orbital_statistics
+from jpec.engine.loop import HarmonicBank, top_templates_at_sky_points
 from jpec.pipelines.monitor import RunLogger
 
 
@@ -90,19 +90,18 @@ def search_job(
     n_sky_points = int(bank.alpha.size)
     sky_batch_size = search_loop_config.sky_batch_size
     for sky_start_idx in range(0, n_sky_points, sky_batch_size):
-        loudest_per_grid = orbital_statistics(
+        for top in top_templates_at_sky_points(
             search_data,
             harmonic_bank,
             sky_idxs=range(
                 sky_start_idx, min(sky_start_idx + sky_batch_size, n_sky_points)
             ),
             f0_batch_size=search_loop_config.f0_batch_size,
-            n_loudest=setup.n_toplist,
+            n_top=setup.n_toplist,
             toplist_f0_edges=toplist_f0_edges,
-        )
-        for loudest in loudest_per_grid:
-            run_logger.progress(loudest.sky_idx, loudest.subgrid_idx)
-            toplists[loudest.toplist_idx].add_loudest(loudest, bank)
+        ):
+            run_logger.progress(top.sky_idx, top.subgrid_idx)
+            toplists[top.toplist_idx].add_top(top, bank)
 
     toplist_dicts = [
         {

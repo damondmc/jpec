@@ -14,9 +14,9 @@ from jpec.engine.data import SearchData, band_edges_for_f0
 from jpec.engine.layout import f0_groups
 from jpec.engine.loop import (
     HarmonicBank,
-    loudest_in_box,
     matched_filter_grid,
-    orbital_statistics,
+    top_k_templates,
+    top_templates_at_sky_points,
 )
 from jpec.noise.floor import noise_floor
 from jpec.noise.gaussian import gaussian_noise_sft
@@ -120,28 +120,28 @@ def test_each_template_scores_as_max_over_phase_alone(grid):
                 )
 
 
-def test_loudest_in_box_is_the_sorted_in_box_grid(grid):
+def test_top_k_templates_is_the_sorted_in_box_grid(grid):
     """The device-side cut keeps in-box templates a host sort would, loudest first."""
     max_statistic, phase_idxs = match(grid, slice(None), f0_batch_size=4)
     in_box = jax.random.bernoulli(
         jax.random.key(1), 0.5, (N_PERIODS, N_MATCHED_MODULATION_DEPTHS)
     )
-    n_loudest = 10
+    n_top = 10
     # one toplist over every f0 point
     all_f0_idxs = jnp.arange(N_F0_POINTS)[None]
-    loudest_max_statistic, flat_idxs, loudest_phase_idxs = loudest_in_box(
-        max_statistic, phase_idxs, in_box, all_f0_idxs, n_loudest=n_loudest
+    top_max_statistic, flat_idxs, top_phase_idxs = top_k_templates(
+        max_statistic, phase_idxs, in_box, all_f0_idxs, n_top=n_top
     )
     in_box_max_statistic = np.where(
         np.asarray(in_box)[None], np.asarray(max_statistic), -np.inf
     ).ravel()
-    expected_flat_idxs = np.argsort(-in_box_max_statistic, kind="stable")[:n_loudest]
+    expected_flat_idxs = np.argsort(-in_box_max_statistic, kind="stable")[:n_top]
     np.testing.assert_array_equal(flat_idxs[0], expected_flat_idxs)
     np.testing.assert_array_equal(
-        loudest_max_statistic[0], in_box_max_statistic[expected_flat_idxs]
+        top_max_statistic[0], in_box_max_statistic[expected_flat_idxs]
     )
     np.testing.assert_array_equal(
-        loudest_phase_idxs[0], np.asarray(phase_idxs).ravel()[expected_flat_idxs]
+        top_phase_idxs[0], np.asarray(phase_idxs).ravel()[expected_flat_idxs]
     )
 
 
@@ -210,16 +210,16 @@ def small_search():
     return search_data, harmonic_bank
 
 
-def loudest_per_grid(
+def top_template_list(
     search_data, harmonic_bank, sky_idxs=(0,), toplist_f0_edges=(-np.inf, np.inf)
 ):
     return list(
-        orbital_statistics(
+        top_templates_at_sky_points(
             search_data,
             harmonic_bank,
             sky_idxs=sky_idxs,
             f0_batch_size=8,
-            n_loudest=20,
+            n_top=20,
             toplist_f0_edges=np.asarray(toplist_f0_edges),
         )
     )
@@ -230,10 +230,10 @@ def test_toplists_hold_the_single_toplists_templates_per_f0_interval(small_searc
     search_data, harmonic_bank = small_search
     f0 = harmonic_bank.subgrids[0].layout.template_grid.orbital_subgrid.f0
     middle_f0 = 0.5 * (f0.min() + f0.max())
-    split = loudest_per_grid(
+    split = top_template_list(
         search_data, harmonic_bank, toplist_f0_edges=(-np.inf, middle_f0, np.inf)
     )
-    single = loudest_per_grid(search_data, harmonic_bank)
+    single = top_template_list(search_data, harmonic_bank)
     assert len(split) == 2 * len(single)
     bank = harmonic_bank.bank
     for single_grid, low_grid, high_grid in zip(single, split[::2], split[1::2]):
@@ -269,9 +269,9 @@ def test_a_sky_batch_scores_as_each_sky_point_alone(small_search):
         alpha=SKY_ALPHA + np.array([0.0, 0.05, 0.1]),
         delta=SKY_DELTA + np.array([0.0, -0.05, 0.05]),
     )
-    batched = loudest_per_grid(search_data, three_sky_bank, sky_idxs=range(3))
+    batched = top_template_list(search_data, three_sky_bank, sky_idxs=range(3))
     for sky_idx in range(3):
-        alone = loudest_per_grid(search_data, three_sky_bank, sky_idxs=[sky_idx])
+        alone = top_template_list(search_data, three_sky_bank, sky_idxs=[sky_idx])
         batched_at_sky = [grid for grid in batched if grid.sky_idx == sky_idx]
         assert len(batched_at_sky) == len(alone)
         for batched_grid, alone_grid in zip(batched_at_sky, alone):
@@ -307,8 +307,8 @@ def test_harmonics_per_batch_leave_the_statistic_unchanged(small_search):
         )
         for subgrid in harmonic_bank.subgrids
     ]
-    per_batch = loudest_per_grid(search_data, harmonic_bank)
-    full = loudest_per_grid(search_data, full_bank)
+    per_batch = top_template_list(search_data, harmonic_bank)
+    full = top_template_list(search_data, full_bank)
     assert len(per_batch) == len(full)
     for per_batch_grid, full_grid in zip(per_batch, full):
         np.testing.assert_allclose(
@@ -378,8 +378,8 @@ def test_band_trim_leaves_the_statistic_unchanged(multi_reference_search):
         )
         for subgrid in harmonic_bank.subgrids
     ]
-    trimmed = loudest_per_grid(search_data, harmonic_bank)
-    untrimmed = loudest_per_grid(search_data, untrimmed_bank)
+    trimmed = top_template_list(search_data, harmonic_bank)
+    untrimmed = top_template_list(search_data, untrimmed_bank)
     assert len(trimmed) == len(untrimmed)
     for trimmed_grid, untrimmed_grid in zip(trimmed, untrimmed):
         np.testing.assert_allclose(

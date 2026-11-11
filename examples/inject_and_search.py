@@ -19,7 +19,7 @@ from jpec.constant import DAY
 from jpec.detector.site import Detector, Observation, reference_epoch
 from jpec.engine.candidates import Candidate, Toplist
 from jpec.engine.data import SearchData, band_edges_for_f0
-from jpec.engine.loop import HarmonicBank, orbital_statistics
+from jpec.engine.loop import HarmonicBank, top_templates_at_sky_points
 from jpec.injection.signal import Injection, Orientation, simulated_source
 from jpec.noise.floor import noise_floor
 from jpec.noise.gaussian import gaussian_noise_series_sft
@@ -58,7 +58,7 @@ MISMATCH = 0.4
 FIGURE = Path(__file__).with_name("inject_and_search.png")
 
 
-def loudest_templates(
+def loudest_candidates(
     search_data: SearchData,
     harmonic_bank: HarmonicBank,
     search_loop_config: SearchLoopConfig,
@@ -79,19 +79,18 @@ def loudest_templates(
     n_sky_points = int(harmonic_bank.bank.alpha.size)
     sky_batch_size = search_loop_config.sky_batch_size
     for sky_start_idx in range(0, n_sky_points, sky_batch_size):
-        loudest_per_grid = orbital_statistics(
+        for top in top_templates_at_sky_points(
             search_data,
             harmonic_bank,
             sky_idxs=range(
                 sky_start_idx, min(sky_start_idx + sky_batch_size, n_sky_points)
             ),
             f0_batch_size=search_loop_config.f0_batch_size,
-            n_loudest=n_toplist,
+            n_top=n_toplist,
             # one toplist over every f0 point
             toplist_f0_edges=np.array([-np.inf, np.inf]),
-        )
-        for loudest in loudest_per_grid:
-            toplist.add_loudest(loudest, harmonic_bank.bank)
+        ):
+            toplist.add_top(top, harmonic_bank.bank)
     return toplist.descending()
 
 
@@ -174,10 +173,10 @@ def main() -> None:
 
     # every template kept, in noise alone and with the injection
     sigma_s = float(null_sigma(noise_data.n_sfts, power_variance=1.0))
-    noise_candidates = loudest_templates(
+    noise_candidates = loudest_candidates(
         noise_data, harmonic_bank, search_loop_config, bank.n_templates
     )
-    signal_candidates = loudest_templates(
+    signal_candidates = loudest_candidates(
         signal_data, harmonic_bank, search_loop_config, bank.n_templates
     )
     loudest = signal_candidates[0]

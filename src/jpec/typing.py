@@ -21,7 +21,7 @@ length-one array.
 #   n_sub_bin_offset  sub-bin offsets a bank's templates are built at
 #   n_f0        f0 points of a bank
 #   n_period    trial orbital periods of a bank
-#   n_loudest   templates of a grid kept on the device, loudest first
+#   n_top       templates of a grid kept on the device, loudest first
 #   n_doppler_reference  frequencies a band is Doppler-corrected at, shared by
 #                        the f0 points near each
 #   n_band      frequency bins of the loaded band

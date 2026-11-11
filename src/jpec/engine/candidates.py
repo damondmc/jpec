@@ -39,15 +39,15 @@ class Candidate(NamedTuple):
         }
 
 
-class LoudestTemplates(NamedTuple):
-    """The loudest in-box templates of one toplist's f0 points in one grid.
+class TopTemplates(NamedTuple):
+    """The top in-box templates of one toplist's f0 points in one match.
 
     Attributes:
         subgrid_idx: Index of the subgrid in the bank.
         sky_idx: Index of the sky point in the bank.
         toplist_idx: Index of the toplist whose f0 points they are.
         max_statistic: Maximum of `S` over the orbital phase, loudest first;
-            `-inf` once the grid's in-box templates run out.
+            `-inf` once the in-box templates run out.
         f0_idxs: Index of each template's f0 point in the subgrid.
         period_idxs: Index of its trial period.
         modulation_depth_idxs: Index of its modulation depth.
@@ -59,36 +59,36 @@ class LoudestTemplates(NamedTuple):
     subgrid_idx: int
     sky_idx: int
     toplist_idx: int
-    max_statistic: Float[np.ndarray, " n_loudest"]
-    f0_idxs: Int[np.ndarray, " n_loudest"]
-    period_idxs: Int[np.ndarray, " n_loudest"]
-    modulation_depth_idxs: Int[np.ndarray, " n_loudest"]
-    phase_idxs: Int[np.ndarray, " n_loudest"]
-    doppler_references: Float[np.ndarray, " n_loudest"]
+    max_statistic: Float[np.ndarray, " n_top"]
+    f0_idxs: Int[np.ndarray, " n_top"]
+    period_idxs: Int[np.ndarray, " n_top"]
+    modulation_depth_idxs: Int[np.ndarray, " n_top"]
+    phase_idxs: Int[np.ndarray, " n_top"]
+    doppler_references: Float[np.ndarray, " n_top"]
     n_phi: int
 
-    def candidate(self, bank: TemplateBank, loudest_idx: int) -> Candidate:
+    def candidate(self, bank: TemplateBank, rank: int) -> Candidate:
         """One of the templates as a candidate.
 
         Args:
             bank: The bank the templates were scored on.
-            loudest_idx: Rank of the template, 0 for the loudest.
+            rank: Rank of the template, 0 for the loudest.
 
         Returns:
             The template's statistic and parameters.
         """
         return Candidate(
-            statistic=float(self.max_statistic[loudest_idx]),
+            statistic=float(self.max_statistic[rank]),
             parameters=bank.parameters(
                 subgrid_idx=self.subgrid_idx,
                 sky_idx=self.sky_idx,
-                f0_idx=int(self.f0_idxs[loudest_idx]),
-                period_idx=int(self.period_idxs[loudest_idx]),
-                modulation_depth_idx=int(self.modulation_depth_idxs[loudest_idx]),
-                phase_idx=int(self.phase_idxs[loudest_idx]),
+                f0_idx=int(self.f0_idxs[rank]),
+                period_idx=int(self.period_idxs[rank]),
+                modulation_depth_idx=int(self.modulation_depth_idxs[rank]),
+                phase_idx=int(self.phase_idxs[rank]),
                 n_phi=self.n_phi,
             ),
-            doppler_reference=float(self.doppler_references[loudest_idx]),
+            doppler_reference=float(self.doppler_references[rank]),
         )
 
 
@@ -118,19 +118,19 @@ class Toplist:
         elif candidate.statistic > self.kept[0].statistic:
             heapq.heappushpop(self.kept, candidate)
 
-    def add_loudest(self, loudest: LoudestTemplates, bank: TemplateBank) -> None:
-        """Keep every one of a grid's loudest templates that beats the lowest kept.
+    def add_top(self, top: TopTemplates, bank: TemplateBank) -> None:
+        """Keep every one of the top templates that beats the lowest kept.
 
         Args:
-            loudest: The grid's loudest templates, loudest first.
+            top: The top templates, loudest first.
             bank: The bank they were scored on.
         """
-        for loudest_idx, statistic in enumerate(loudest.max_statistic.tolist()):
+        for rank, statistic in enumerate(top.max_statistic.tolist()):
             # loudest first, so once one fails to beat the lowest kept every later
             # one does
             if statistic <= self.lowest_kept_statistic:
                 break
-            self.add(loudest.candidate(bank, loudest_idx))
+            self.add(top.candidate(bank, rank))
 
     def descending(self) -> list[Candidate]:
         """What it kept, loudest first."""

@@ -25,8 +25,8 @@ from jpec.engine.layout import f0_idxs_per_toplist, subgrid_layout
 from jpec.engine.loop import (
     data_harmonics_per_sky_point,
     doppler_corrected_power_per_reference,
-    loudest_in_box,
     matched_filter_grid,
+    top_k_templates,
 )
 from jpec.pipelines.monitor import RunLogger
 from jpec.stat.matched_filter import barycenter_orbital_phase, orbital_phase_mod_2pi
@@ -171,7 +171,7 @@ def run(args: argparse.Namespace) -> None:
         transform_seconds.append(mean_seconds(transform, repeats=args.repeats))
         batch_data_harmonics = transform()[0]
 
-        # the match and the device-side cut to the loudest, as the search runs them
+        # the match and the device-side cut to the top k, as the search runs them
         def match(
             data_harmonics: Complex[
                 Array, "n_doppler_reference n_period n_harmonic n_transformed_bin"
@@ -193,12 +193,12 @@ def run(args: argparse.Namespace) -> None:
                 n_phi=layout.n_phi,
                 f0_batch_size=search_loop_config.f0_batch_size,
             )
-            return loudest_in_box(
+            return top_k_templates(
                 max_statistic,
                 phase_idxs,
                 in_box,
                 toplist_f0_idxs,
-                n_loudest=setup.n_toplist,
+                n_top=setup.n_toplist,
             )
 
         match_seconds.append(
