@@ -18,14 +18,14 @@ HARMONIC_COUNT_STEP = 32
 
 
 class TemplateBatch(NamedTuple):
-    """Trial periods and the modulation-depth window holding their in-box templates.
+    """Trial periods and the modulation-depth window holding their in-range templates.
 
     Attributes:
         period_start_idx: First trial period of the run.
         period_stop_idx: One past its last.
         modulation_depth_start_idx: First modulation depth of the window.
         n_harmonics: Harmonics the batch is transformed and matched with, the ones
-            its deepest in-box template needs.
+            its deepest in-range template needs.
     """
 
     period_start_idx: int
@@ -57,7 +57,7 @@ class SubgridLayout(NamedTuple):
         omega: Orbital angular frequency of each trial period [rad/s], on the host
             in float64, the last repeated `period_batch_size - 1` times so every
             batch reads a full run.
-        template_batches: The template batches that hold an in-box template.
+        template_batches: The template batches that hold an in-range template.
         period_batch_size: Trial periods every batch is transformed and matched over,
             so each call has one shape; a batch shorter than that runs on into the
             periods after it, which are out of its box.
@@ -85,7 +85,7 @@ class SubgridLayout(NamedTuple):
 
 
 def split_periods(
-    in_box: Bool[np.ndarray, "n_period n_modulation_depth"],
+    ap_in_range: Bool[np.ndarray, "n_period n_modulation_depth"],
     ap_block_idxs: Int[np.ndarray, " n_period"],
     n_harmonics_per_depth: Int[np.ndarray, " n_modulation_depth"],
     batch_size: int,
@@ -95,16 +95,16 @@ def split_periods(
     The windows share one width.
 
     Args:
-        in_box: Whether each (period, modulation depth) lies in its ap block.
+        ap_in_range: Whether each (period, modulation depth) lies in its ap block.
         ap_block_idxs: The ap block each period belongs to, ap block after ap block.
         n_harmonics_per_depth: Harmonics each modulation depth's templates need.
         batch_size: Trial periods per transform call.
 
     Returns:
-        The batches that hold an in-box template, and the modulation depths every one
+        The batches that hold an in-range template, and the modulation depths every one
             of them is matched against.
     """
-    n_periods, n_modulation_depths = in_box.shape
+    n_periods, n_modulation_depths = ap_in_range.shape
     # a batch across two ap blocks would need both their windows, and widen
     # every batch's
     # the period index each ap block starts at, where ap_block_idxs changes
@@ -121,14 +121,14 @@ def split_periods(
         # the block's periods, batch_size at a time; the last batch may be shorter
         for period_start_idx in range(blk_start_idx, blk_stop_idx, batch_size):
             period_stop_idx = min(period_start_idx + batch_size, blk_stop_idx)
-            in_box_idxs = np.flatnonzero(
-                in_box[period_start_idx:period_stop_idx].any(axis=0)
+            depth_idxs = np.flatnonzero(
+                ap_in_range[period_start_idx:period_stop_idx].any(axis=0)
             )
             # periods past the box, as an injection bank's edge has
-            if in_box_idxs.size == 0:
+            if depth_idxs.size == 0:
                 continue
-            start_idx, stop_idx = int(in_box_idxs[0]), int(in_box_idxs[-1]) + 1
-            n_harmonics = int(n_harmonics_per_depth[in_box_idxs].max())
+            start_idx, stop_idx = int(depth_idxs[0]), int(depth_idxs[-1]) + 1
+            n_harmonics = int(n_harmonics_per_depth[depth_idxs].max())
             template_batches.append(
                 TemplateBatch(period_start_idx, period_stop_idx, start_idx, n_harmonics)
             )
@@ -221,10 +221,10 @@ def f0_idxs_per_toplist(
     return padded_f0_idxs
 
 
-def batch_in_box(
+def batch_ap_in_range(
     layout: SubgridLayout, batch: TemplateBatch
 ) -> Bool[np.ndarray, "n_period n_matched_modulation_depth"]:
-    """Whether each (period, modulation depth) of a batch's window lies in the box.
+    """Whether each (period, modulation depth) of a batch's window has ap in range.
 
     A batch shorter than `period_batch_size` runs on into the periods after it, which
     are out.
@@ -242,12 +242,12 @@ def batch_in_box(
     depth_start = batch.modulation_depth_start_idx
     depth_stop = depth_start + layout.n_window_modulation_depths
     n_depths = layout.n_window_modulation_depths
-    in_box = np.zeros((layout.period_batch_size, n_depths), dtype=bool)
-    in_box[:n_periods] = layout.template_grid.orbital_subgrid.in_box[
+    ap_in_range = np.zeros((layout.period_batch_size, n_depths), dtype=bool)
+    ap_in_range[:n_periods] = layout.template_grid.orbital_subgrid.ap_in_range[
         period_start:period_stop,
         depth_start:depth_stop,
     ]
-    return in_box
+    return ap_in_range
 
 
 def doppler_reference_f0_width(
@@ -419,7 +419,7 @@ def subgrid_layout(
         ]
     )
     template_batches, n_window_modulation_depths = split_periods(
-        template_grid.orbital_subgrid.in_box,
+        template_grid.orbital_subgrid.ap_in_range,
         template_grid.orbital_subgrid.ap_block_idxs,
         n_harmonics_per_depth,
         batch_size=period_batch_size,

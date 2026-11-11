@@ -120,25 +120,25 @@ def test_each_template_scores_as_max_over_phase_alone(grid):
                 )
 
 
-def test_top_k_templates_is_the_sorted_in_box_grid(grid):
-    """The device-side cut keeps in-box templates a host sort would, loudest first."""
+def test_top_k_templates_is_the_sorted_ap_in_range_grid(grid):
+    """The device-side cut keeps in-range templates a host sort would, loudest first."""
     max_statistic, phase_idxs = match(grid, slice(None), f0_batch_size=4)
-    in_box = jax.random.bernoulli(
+    ap_in_range = jax.random.bernoulli(
         jax.random.key(1), 0.5, (N_PERIODS, N_MATCHED_MODULATION_DEPTHS)
     )
     n_top = 10
     # one toplist over every f0 point
     all_f0_idxs = jnp.arange(N_F0_POINTS)[None]
     top_max_statistic, flat_idxs, top_phase_idxs = top_k_templates(
-        max_statistic, phase_idxs, in_box, all_f0_idxs, n_top=n_top
+        max_statistic, phase_idxs, ap_in_range, all_f0_idxs, n_top=n_top
     )
-    in_box_max_statistic = np.where(
-        np.asarray(in_box)[None], np.asarray(max_statistic), -np.inf
+    ap_in_range_max_statistic = np.where(
+        np.asarray(ap_in_range)[None], np.asarray(max_statistic), -np.inf
     ).ravel()
-    expected_flat_idxs = np.argsort(-in_box_max_statistic, kind="stable")[:n_top]
+    expected_flat_idxs = np.argsort(-ap_in_range_max_statistic, kind="stable")[:n_top]
     np.testing.assert_array_equal(flat_idxs[0], expected_flat_idxs)
     np.testing.assert_array_equal(
-        top_max_statistic[0], in_box_max_statistic[expected_flat_idxs]
+        top_max_statistic[0], ap_in_range_max_statistic[expected_flat_idxs]
     )
     np.testing.assert_array_equal(
         top_phase_idxs[0], np.asarray(phase_idxs).ravel()[expected_flat_idxs]

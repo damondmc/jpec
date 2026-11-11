@@ -110,8 +110,8 @@ def test_templates_stay_inside_the_seam_margin(tiling: LatticeTiling):
             ap.shape,
         )
         excess = np.maximum(np.maximum(ap_low - ap, ap - ap_high), 0.0)[
-            orbital_subgrid.in_box
+            orbital_subgrid.ap_in_range
         ]
-        assert orbital_subgrid.in_box.any()
-        worst = max(worst, float(np.max(excess / step_ap[orbital_subgrid.in_box])))
+        assert orbital_subgrid.ap_in_range.any()
+        worst = max(worst, float(np.max(excess / step_ap[orbital_subgrid.ap_in_range])))
     assert worst <= 1.0

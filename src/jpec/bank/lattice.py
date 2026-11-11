@@ -48,19 +48,19 @@ class OrbitalSubgrid(NamedTuple):
         modulation_depth_bins: The modulation depths [bins], one grid for every period.
         period: Every trial period [s], ap block after ap block.
         ap_block_idxs: The ap block each period belongs to.
-        in_box: Whether the template's ap lies in its ap block's range.
+        ap_in_range: Whether the template's ap lies in its ap block's range.
     """
 
     f0: Float[np.ndarray, " n_f0"]
     modulation_depth_bins: Float[np.ndarray, " n_modulation_depth"]
     period: Float[np.ndarray, " n_period"]
     ap_block_idxs: Int[np.ndarray, " n_period"]
-    in_box: Bool[np.ndarray, "n_period n_modulation_depth"]
+    ap_in_range: Bool[np.ndarray, "n_period n_modulation_depth"]
 
     @property
     def n_templates_per_sky_point(self) -> int:
         """Templates in the box at one sky point."""
-        return int(self.f0.size * self.in_box.sum())
+        return int(self.f0.size * self.ap_in_range.sum())
 
 
 class ApBlock(NamedTuple):
@@ -155,7 +155,7 @@ def orbital_subgrid(
         offset=offset,
     )
 
-    periods, ap_block_idxs, in_box = [], [], []
+    periods, ap_block_idxs, ap_in_range = [], [], []
     for ap_block_idx, ap_block in enumerate(ap_blocks):
         # the cubic omega^2 step scales as 1 / f0 from where it was measured
         omega2_step = BCC_SUBGRID_STEP * ap_block.omega2_step * f0_reference / f0_centre
@@ -183,7 +183,7 @@ def orbital_subgrid(
         )
         periods.append(2.0 * np.pi / omega)
         ap_block_idxs.append(np.full(omega.size, ap_block_idx))
-        in_box.append(
+        ap_in_range.append(
             (ap >= ap_block.ap_low - ap_margin) & (ap <= ap_block.ap_high + ap_margin)
         )
     return OrbitalSubgrid(
@@ -191,7 +191,7 @@ def orbital_subgrid(
         modulation_depth_bins=modulation_depth_bins,
         period=np.concatenate(periods),
         ap_block_idxs=np.concatenate(ap_block_idxs),
-        in_box=np.concatenate(in_box),
+        ap_in_range=np.concatenate(ap_in_range),
     )
 
 

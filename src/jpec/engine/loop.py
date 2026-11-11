@@ -16,7 +16,7 @@ from jpec.engine.data import SearchData
 from jpec.engine.layout import (
     SubgridLayout,
     TemplateBatch,
-    batch_in_box,
+    batch_ap_in_range,
     f0_idxs_per_toplist,
     subgrid_layouts,
 )
@@ -212,7 +212,7 @@ def matched_filter_grid(
 def top_k_templates(
     max_statistic: Float[Array, "n_f0 n_period n_matched_modulation_depth"],
     phase_idxs: Int[Array, "n_f0 n_period n_matched_modulation_depth"],
-    in_box: Bool[Array, "n_period n_matched_modulation_depth"],
+    ap_in_range: Bool[Array, "n_period n_matched_modulation_depth"],
     toplist_f0_idxs: Int[Array, "n_toplist n_member"],
     *,
     n_top: int,
@@ -221,31 +221,31 @@ def top_k_templates(
     Int[Array, "n_toplist n_kept"],
     Int[Array, "n_toplist n_kept"],
 ]:
-    """Each toplist's top in-box templates of a grid.
+    """Each toplist's top in-range templates of a grid.
 
     Args:
         max_statistic: Maximum of `S` over the orbital phase at every template of
             the grid.
         phase_idxs: Index of the orbital phase each maximum sits at.
-        in_box: Whether each (period, modulation depth) lies in the box, the same at
-            every f0 point.
+        ap_in_range: Whether each (period, modulation depth) has ap in range, the
+            same at every f0 point.
         toplist_f0_idxs: The f0 points each toplist covers.
         n_top: Templates kept per toplist; all of its f0 points' templates when
             they are fewer.
 
     Returns:
-        Per toplist, their statistic, loudest first and `-inf` past the in-box ones,
+        Per toplist, their statistic, loudest first and `-inf` past the in-range ones,
             their flat index into the grid, and their phase index.
     """
     n_f0, n_periods, n_modulation_depths = max_statistic.shape
     n_templates_per_f0 = n_periods * n_modulation_depths
     # top_k ranks NaN above every number, so a NaN statistic is dropped with the
     # out-of-box ones
-    is_kept = in_box[None] & ~jnp.isnan(max_statistic)
-    in_box_max_statistic = jnp.where(is_kept, max_statistic, -jnp.inf)
+    is_kept = ap_in_range[None] & ~jnp.isnan(max_statistic)
+    ap_in_range_max_statistic = jnp.where(is_kept, max_statistic, -jnp.inf)
     # each toplist's f0 points, a padding point scoring -inf
     toplist_max_statistic = jnp.take(
-        in_box_max_statistic,
+        ap_in_range_max_statistic,
         toplist_f0_idxs,
         axis=0,
         mode="fill",
@@ -277,7 +277,8 @@ class HarmonicSubgrid(NamedTuple):
         omega: `layout.omega`, on the device.
         f0_doppler_references: Frequency each f0 point's band is Doppler-corrected at
             [Hz], on the host.
-        in_box_per_batch: batch_in_box() of each template batch, on the device.
+        ap_in_range_per_batch: batch_ap_in_range() of each template batch, on the
+            device.
     """
 
     layout: SubgridLayout
@@ -287,7 +288,7 @@ class HarmonicSubgrid(NamedTuple):
     orbital_phase: Float[Array, "n_period n_sft"]
     omega: Float[Array, " n_period"]
     f0_doppler_references: Float[np.ndarray, " n_f0"]
-    in_box_per_batch: list[Bool[Array, "n_period n_matched_modulation_depth"]]
+    ap_in_range_per_batch: list[Bool[Array, "n_period n_matched_modulation_depth"]]
 
 
 class HarmonicBank:
@@ -350,8 +351,8 @@ class HarmonicBank:
             f0_doppler_ref = np.asarray(layout.doppler_references)[
                 np.asarray(layout.doppler_reference_idxs)
             ]
-            in_box_per_batch = [
-                jnp.asarray(batch_in_box(layout, template_batch))
+            ap_in_range_per_batch = [
+                jnp.asarray(batch_ap_in_range(layout, template_batch))
                 for template_batch in layout.template_batches
             ]
             subgrid = HarmonicSubgrid(
@@ -360,7 +361,7 @@ class HarmonicBank:
                 orbital_phase=phase,
                 omega=jnp.asarray(layout.omega),
                 f0_doppler_references=f0_doppler_ref,
-                in_box_per_batch=in_box_per_batch,
+                ap_in_range_per_batch=ap_in_range_per_batch,
             )
 
             self.subgrids.append(subgrid)
@@ -468,8 +469,8 @@ def top_templates_at_sky_points(
                 for sky_idx in sky_idxs
             ]
         )
-        for template_batch, in_box in zip(
-            layout.template_batches, subgrid.in_box_per_batch, strict=True
+        for template_batch, ap_in_range in zip(
+            layout.template_batches, subgrid.ap_in_range_per_batch, strict=True
         ):
             batch_orbital_phase = jax.lax.dynamic_slice_in_dim(
                 subgrid.orbital_phase,
@@ -510,7 +511,7 @@ def top_templates_at_sky_points(
                 top_k = top_k_templates(
                     max_statistic,
                     phase_idxs,
-                    in_box,
+                    ap_in_range,
                     toplist_f0_idxs,
                     n_top=n_top,
                 )

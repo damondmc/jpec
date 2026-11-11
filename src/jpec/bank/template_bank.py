@@ -285,7 +285,7 @@ class TemplateBank(NamedTuple):
             n_steps: Lattice steps each side of the source, per orbital axis.
 
         Returns:
-            The bank, each subgrid's `in_box` as the search has it.
+            The bank, each subgrid's `ap_in_range` as the search has it.
         """
         # the sky lattice points nearest the source in mismatch, not in angle: near the
         # ecliptic a cell is many times taller in latitude than it is wide
@@ -338,7 +338,7 @@ class TemplateBank(NamedTuple):
                 ],
                 period=orbital_subgrid.period[period_idxs],
                 ap_block_idxs=orbital_subgrid.ap_block_idxs[period_idxs],
-                in_box=orbital_subgrid.in_box[
+                ap_in_range=orbital_subgrid.ap_in_range[
                     np.ix_(period_idxs, modulation_depth_idxs)
                 ],
             )

@@ -40,14 +40,14 @@ class Candidate(NamedTuple):
 
 
 class TopTemplates(NamedTuple):
-    """The top in-box templates of one toplist's f0 points in one match.
+    """The top in-range templates of one toplist's f0 points in one match.
 
     Attributes:
         subgrid_idx: Index of the subgrid in the bank.
         sky_idx: Index of the sky point in the bank.
         toplist_idx: Index of the toplist whose f0 points they are.
         max_statistic: Maximum of `S` over the orbital phase, loudest first;
-            `-inf` once the in-box templates run out.
+            `-inf` once the in-range templates run out.
         f0_idxs: Index of each template's f0 point in the subgrid.
         period_idxs: Index of its trial period.
         modulation_depth_idxs: Index of its modulation depth.

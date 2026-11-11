@@ -72,7 +72,7 @@ def test_sky_lattice_covers_the_sphere_within_the_mismatch():
 
 
 def test_orbital_lattice_covers_band_edges_blocks_and_faces_within_the_budget():
-    """Any point of two neighbouring f0 bands has an in-box template in budget.
+    """Any point of two neighbouring f0 bands has an in-range template in budget.
 
     The budget is that of the three orbital axes. In cubic steps a template `u`
     away costs `4 mu_axis |u|^2`, so the budget `3 mu_axis` is `|u|^2 <= 3/4`. The
@@ -98,7 +98,7 @@ def test_orbital_lattice_covers_band_edges_blocks_and_faces_within_the_budget():
     bands = ((F0, F0 + 0.01), (F0 + 0.01, F0 + 0.02))
     f0_reference = bands[1][1]
 
-    # every in-box template of both bands and both subgrids, in
+    # every in-range template of both bands and both subgrids, in
     # (f0, modulation depth, omega^2)
     lattice = []
     for band in bands:
@@ -116,7 +116,9 @@ def test_orbital_lattice_covers_band_edges_blocks_and_faces_within_the_budget():
                 tsft=TSFT,
                 offset=offset,
             )
-            period_idxs, modulation_depth_idxs = np.nonzero(band_orbital_subgrid.in_box)
+            period_idxs, modulation_depth_idxs = np.nonzero(
+                band_orbital_subgrid.ap_in_range
+            )
             pairs = np.column_stack(
                 [
                     band_orbital_subgrid.modulation_depth_bins[modulation_depth_idxs],

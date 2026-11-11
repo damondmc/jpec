@@ -111,7 +111,7 @@ def run(args: argparse.Namespace) -> None:
     sky_batch_size = min(search_loop_config.sky_batch_size, int(bank.alpha.size))
     n_subgrids = len(bank.template_grids)
     n_period_batches = len(layout.template_batches)
-    in_box = jnp.ones((period_batch_size, n_window_modulation_depths), dtype=bool)
+    ap_in_range = jnp.ones((period_batch_size, n_window_modulation_depths), dtype=bool)
 
     def doppler_correction(
         sky_idx: int,
@@ -196,7 +196,7 @@ def run(args: argparse.Namespace) -> None:
             return top_k_templates(
                 max_statistic,
                 phase_idxs,
-                in_box,
+                ap_in_range,
                 toplist_f0_idxs,
                 n_top=setup.n_toplist,
             )
