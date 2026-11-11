@@ -68,7 +68,8 @@ def search_job(
         modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
     )
     n_doppler_references_per_subgrid = [
-        int(layout.doppler_references.size) for layout in harmonic_bank.layouts
+        int(subgrid.layout.doppler_references.size)
+        for subgrid in harmonic_bank.subgrids
     ]
     run_logger.search_summary(
         setup,

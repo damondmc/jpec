@@ -140,7 +140,7 @@ def search_memory_gb(
         n_transformed_bins = layout.n_transformed_bins
         n_window_modulation_depths = layout.n_window_modulation_depths
         # the most harmonics any period batch transforms and matches
-        n_batch_harmonics = max(batch.n_harmonics for batch in layout.period_batches)
+        n_batch_harmonics = max(batch.n_harmonics for batch in layout.template_batches)
         n_groups, n_members = layout.group_f0_idxs.shape
         n_matched_f0_points = min(n_groups, max(f0_batch_size // n_members, 1)) * (
             n_members
@@ -225,7 +225,7 @@ def search_hours(
         )
         n_transformed_bins = layout.n_transformed_bins
         # every batch is a full run of periods, at its own harmonics
-        n_batch_harmonics = sum(batch.n_harmonics for batch in layout.period_batches)
+        n_batch_harmonics = sum(batch.n_harmonics for batch in layout.template_batches)
         n_batch_templates = (
             layout.period_batch_size
             * layout.window_start_idxs.size
@@ -246,7 +246,7 @@ def search_hours(
         phase_seconds = n_batch_templates * layout.n_phi * rates["phase_maximum"]
         seconds_per_sky_point += float(
             n_batch_harmonics * (transform_seconds + overlap_seconds)
-            + len(layout.period_batches) * phase_seconds
+            + len(layout.template_batches) * phase_seconds
         )
     return n_sky_points * seconds_per_sky_point / 3600.0
 

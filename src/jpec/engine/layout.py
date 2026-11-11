@@ -17,7 +17,7 @@ from jpec.waveform.window import Window
 HARMONIC_COUNT_STEP = 32
 
 
-class PeriodBatch(NamedTuple):
+class TemplateBatch(NamedTuple):
     """Trial periods and the modulation-depth window holding their in-box templates.
 
     Attributes:
@@ -57,7 +57,7 @@ class SubgridLayout(NamedTuple):
         omega: Orbital angular frequency of each trial period [rad/s], on the host
             in float64, the last repeated `period_batch_size - 1` times so every
             batch reads a full run.
-        period_batches: The period batches that hold an in-box template.
+        template_batches: The template batches that hold an in-box template.
         period_batch_size: Trial periods every batch is transformed and matched over,
             so each call has one shape; a batch shorter than that runs on into the
             periods after it, which are out of its box.
@@ -78,7 +78,7 @@ class SubgridLayout(NamedTuple):
     group_doppler_reference_idxs: Int[Array, " n_group"]
     group_sub_bin_offset_idxs: Int[Array, " n_group"]
     omega: Float[np.ndarray, " n_period"]
-    period_batches: list[PeriodBatch]
+    template_batches: list[TemplateBatch]
     period_batch_size: int
     n_window_modulation_depths: int
     n_phi: int
@@ -89,7 +89,7 @@ def split_periods(
     ap_block_idxs: Int[np.ndarray, " n_period"],
     n_harmonics_per_depth: Int[np.ndarray, " n_modulation_depth"],
     batch_size: int,
-) -> tuple[list[PeriodBatch], int]:
+) -> tuple[list[TemplateBatch], int]:
     """Periods of one ap block, `batch_size` at a time, with a modulation-depth window.
 
     The windows share one width.
@@ -113,7 +113,7 @@ def split_periods(
     )
     # one past each ap block's last period: the next block's first, then n_periods
     blk_stop_idxs = np.append(blk_start_idxs[1:], n_periods)
-    period_batches = []
+    template_batches = []
     n_window_modulation_depths = 0
     for blk_start_idx, blk_stop_idx in zip(
         blk_start_idxs.tolist(), blk_stop_idxs.tolist()
@@ -129,8 +129,8 @@ def split_periods(
                 continue
             start_idx, stop_idx = int(in_box_idxs[0]), int(in_box_idxs[-1]) + 1
             n_harmonics = int(n_harmonics_per_depth[in_box_idxs].max())
-            period_batches.append(
-                PeriodBatch(period_start_idx, period_stop_idx, start_idx, n_harmonics)
+            template_batches.append(
+                TemplateBatch(period_start_idx, period_stop_idx, start_idx, n_harmonics)
             )
             n_window_modulation_depths = max(
                 n_window_modulation_depths, stop_idx - start_idx
@@ -144,7 +144,7 @@ def split_periods(
                 batch.modulation_depth_start_idx, max_start_idx
             )
         )
-        for batch in period_batches
+        for batch in template_batches
     ], n_window_modulation_depths
 
 
@@ -188,6 +188,66 @@ def f0_groups(
     )
     group_sub_bin_offset_idxs = np.array([offset_idx for _, offset_idx in group_keys])
     return group_f0_idxs, group_doppler_reference_idxs, group_sub_bin_offset_idxs
+
+
+def f0_idxs_per_toplist(
+    f0: Float[np.ndarray, " n_f0"],
+    toplist_f0_edges: Float[np.ndarray, " n_toplist_edge"],
+) -> Int[np.ndarray, "n_toplist n_member"]:
+    """Return the f0 idxs belonging to each subband toplist.
+
+    f0 outside the edges goes to the first or last toplist.
+
+    Args:
+        f0: Frequency of each f0 point [Hz].
+        toplist_f0_edges: Edges of the toplists' f0 intervals [Hz], low to high.
+
+    Returns:
+        Index of each toplist's f0 points, in f0 order, padded with `n_f0`.
+    """
+    n_toplists = toplist_f0_edges.size - 1
+    # i-th f0 goes to toplist[toplist_idxs[i]].
+    toplist_idxs = np.clip(
+        np.searchsorted(toplist_f0_edges, f0, side="right") - 1, 0, n_toplists - 1
+    )
+    # group the f0 idxs by each subband toplist
+    grouped_f0_idxs = [
+        np.flatnonzero(toplist_idxs == toplist_idx) for toplist_idx in range(n_toplists)
+    ]
+    n_members = max(f0_idxs.size for f0_idxs in grouped_f0_idxs)
+    padded_f0_idxs = np.full((n_toplists, n_members), f0.size)
+    for toplist_idx, f0_idxs in enumerate(grouped_f0_idxs):
+        padded_f0_idxs[toplist_idx, : f0_idxs.size] = f0_idxs
+    return padded_f0_idxs
+
+
+def batch_in_box(
+    layout: SubgridLayout, batch: TemplateBatch
+) -> Bool[np.ndarray, "n_period n_matched_modulation_depth"]:
+    """Whether each (period, modulation depth) of a batch's window lies in the box.
+
+    A batch shorter than `period_batch_size` runs on into the periods after it, which
+    are out.
+
+    Args:
+        layout: The subgrid's layout.
+        batch: One of its template batches.
+
+    Returns:
+        The mask over the batch's full run of periods and its window's depths.
+    """
+    period_start, period_stop = batch.period_start_idx, batch.period_stop_idx
+    n_periods = period_stop - period_start
+
+    depth_start = batch.modulation_depth_start_idx
+    depth_stop = depth_start + layout.n_window_modulation_depths
+    n_depths = layout.n_window_modulation_depths
+    in_box = np.zeros((layout.period_batch_size, n_depths), dtype=bool)
+    in_box[:n_periods] = layout.template_grid.orbital_subgrid.in_box[
+        period_start:period_stop,
+        depth_start:depth_stop,
+    ]
+    return in_box
 
 
 def doppler_reference_f0_width(
@@ -358,16 +418,16 @@ def subgrid_layout(
             for n_kept in n_kept_harmonics_per_depth
         ]
     )
-    period_batches, n_window_modulation_depths = split_periods(
+    template_batches, n_window_modulation_depths = split_periods(
         template_grid.orbital_subgrid.in_box,
         template_grid.orbital_subgrid.ap_block_idxs,
         n_harmonics_per_depth,
         batch_size=period_batch_size,
     )
-    # the phase grid the deepest modulation depth needs, over the most harmonics any
-    # batch matches
-    n_matched_harmonics = max(batch.n_harmonics for batch in period_batches)
-    deepest_template_harmonics = np.asarray(
+    # largest no. of matched harmonic modes over all batches
+    n_harmonics = max(batch.n_harmonics for batch in template_batches)
+    # template harmonics at the deepest modulation depth, up to n_harmonics
+    templates = np.asarray(
         template_harmonics(
             template_grid.bin_offsets,
             modulation_depth_bins=float(
@@ -377,13 +437,12 @@ def subgrid_layout(
             j_max=template_grid.j_max,
             window=template_grid.window,
         )
-    )[:n_matched_harmonics]
+    )[:n_harmonics]
     n_phi = phase_count(
-        (np.abs(deepest_template_harmonics) ** 2).sum(axis=1),
+        (np.abs(templates) ** 2).sum(axis=1),
         phase_mismatch=phase_mismatch,
     )
-    # the last batch starts at most at the last period, so it reads
-    # period_batch_size - 1 past it
+    # add padding so the last few periods can be passed with the same batch size
     padded_period = np.pad(period, (0, period_batch_size - 1), mode="edge")
     return SubgridLayout(
         template_grid=template_grid,
@@ -398,7 +457,7 @@ def subgrid_layout(
         group_doppler_reference_idxs=jnp.asarray(group_doppler_reference_idxs),
         group_sub_bin_offset_idxs=jnp.asarray(group_sub_bin_offset_idxs),
         omega=2.0 * np.pi / padded_period,
-        period_batches=period_batches,
+        template_batches=template_batches,
         period_batch_size=period_batch_size,
         n_window_modulation_depths=n_window_modulation_depths,
         n_phi=n_phi,

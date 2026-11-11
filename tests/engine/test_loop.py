@@ -228,7 +228,7 @@ def loudest_per_grid(
 def test_toplists_hold_the_single_toplists_templates_per_f0_interval(small_search):
     """Split into toplists, each f0 interval keeps what one toplist keeps of it."""
     search_data, harmonic_bank = small_search
-    f0 = harmonic_bank.layouts[0].template_grid.orbital_subgrid.f0
+    f0 = harmonic_bank.subgrids[0].layout.template_grid.orbital_subgrid.f0
     middle_f0 = 0.5 * (f0.min() + f0.max())
     split = loudest_per_grid(
         search_data, harmonic_bank, toplist_f0_edges=(-np.inf, middle_f0, np.inf)
@@ -288,21 +288,24 @@ def test_a_sky_batch_scores_as_each_sky_point_alone(small_search):
 def test_harmonics_per_batch_leave_the_statistic_unchanged(small_search):
     """Each batch at its own harmonics scores as every batch at the subgrid's j_max."""
     search_data, harmonic_bank = small_search
+    layouts = [subgrid.layout for subgrid in harmonic_bank.subgrids]
     assert any(
         batch.n_harmonics < layout.template_grid.j_max
-        for layout in harmonic_bank.layouts
-        for batch in layout.period_batches
+        for layout in layouts
+        for batch in layout.template_batches
     ), "every batch needs j_max, so there is nothing to cut"
 
     full_bank = copy.copy(harmonic_bank)
-    full_bank.layouts = [
-        layout._replace(
-            period_batches=[
-                batch._replace(n_harmonics=layout.template_grid.j_max)
-                for batch in layout.period_batches
-            ]
+    full_bank.subgrids = [
+        subgrid._replace(
+            layout=subgrid.layout._replace(
+                template_batches=[
+                    batch._replace(n_harmonics=subgrid.layout.template_grid.j_max)
+                    for batch in subgrid.layout.template_batches
+                ]
+            )
         )
-        for layout in harmonic_bank.layouts
+        for subgrid in harmonic_bank.subgrids
     ]
     per_batch = loudest_per_grid(search_data, harmonic_bank)
     full = loudest_per_grid(search_data, full_bank)
@@ -341,7 +344,8 @@ def test_band_trim_leaves_the_statistic_unchanged(multi_reference_search):
     """Each reference transforming only its windows' bins scores as the whole band."""
     search_data, harmonic_bank = multi_reference_search
     n_band_bins = search_data.n_band_bins
-    for layout in harmonic_bank.layouts:
+    layouts = [subgrid.layout for subgrid in harmonic_bank.subgrids]
+    for layout in layouts:
         starts = np.asarray(layout.transformed_start_idxs)
         windows = np.asarray(layout.window_start_idxs)
         n_window_bins = layout.template_grid.bin_offsets.shape[0]
@@ -349,24 +353,30 @@ def test_band_trim_leaves_the_statistic_unchanged(multi_reference_search):
         assert (starts + layout.n_transformed_bins <= n_band_bins).all()
         assert (windows >= 0).all()
         assert (windows + n_window_bins <= layout.n_transformed_bins).all()
-    assert any(
-        layout.n_transformed_bins < n_band_bins for layout in harmonic_bank.layouts
-    ), "the band holds only the windows, so there is nothing to trim"
-    assert all(
-        layout.doppler_references.size > 1 for layout in harmonic_bank.layouts
-    ), "one reference per subgrid, so the references' bins are not split"
+    assert any(layout.n_transformed_bins < n_band_bins for layout in layouts), (
+        "the band holds only the windows, so there is nothing to trim"
+    )
+    assert all(layout.doppler_references.size > 1 for layout in layouts), (
+        "one reference per subgrid, so the references' bins are not split"
+    )
 
     # every reference transforms the whole band, each window counted from its first
     # bin
     untrimmed_bank = copy.copy(harmonic_bank)
-    untrimmed_bank.layouts = [
-        layout._replace(
-            transformed_start_idxs=jnp.zeros_like(layout.transformed_start_idxs),
-            n_transformed_bins=n_band_bins,
-            window_start_idxs=layout.window_start_idxs
-            + layout.transformed_start_idxs[layout.doppler_reference_idxs],
+    untrimmed_bank.subgrids = [
+        subgrid._replace(
+            layout=subgrid.layout._replace(
+                transformed_start_idxs=jnp.zeros_like(
+                    subgrid.layout.transformed_start_idxs
+                ),
+                n_transformed_bins=n_band_bins,
+                window_start_idxs=subgrid.layout.window_start_idxs
+                + subgrid.layout.transformed_start_idxs[
+                    subgrid.layout.doppler_reference_idxs
+                ],
+            )
         )
-        for layout in harmonic_bank.layouts
+        for subgrid in harmonic_bank.subgrids
     ]
     trimmed = loudest_per_grid(search_data, harmonic_bank)
     untrimmed = loudest_per_grid(search_data, untrimmed_bank)

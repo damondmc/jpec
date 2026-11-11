@@ -21,11 +21,10 @@ from jpec.bank.tiling import LatticeTiling
 from jpec.config import SearchSetup, read_json
 from jpec.detector.doppler import solar_roemer_delay
 from jpec.engine.data import SearchData
-from jpec.engine.layout import subgrid_layout
+from jpec.engine.layout import f0_idxs_per_toplist, subgrid_layout
 from jpec.engine.loop import (
     data_harmonics_per_sky_point,
     doppler_corrected_power_per_reference,
-    f0_idxs_per_toplist,
     loudest_in_box,
     matched_filter_grid,
 )
@@ -91,7 +90,7 @@ def run(args: argparse.Namespace) -> None:
     )
     template_grid = layout.template_grid
     # the job's toplists over the subgrid's f0 points, as the search keeps them
-    device_toplist_f0_idxs = jnp.asarray(
+    toplist_f0_idxs = jnp.asarray(
         f0_idxs_per_toplist(
             template_grid.orbital_subgrid.f0,
             np.asarray(setup.toplist_f0_edges(job_setup)),
@@ -111,7 +110,7 @@ def run(args: argparse.Namespace) -> None:
     # the bank's first sky points, as many as one transform takes
     sky_batch_size = min(search_loop_config.sky_batch_size, int(bank.alpha.size))
     n_subgrids = len(bank.template_grids)
-    n_period_batches = len(layout.period_batches)
+    n_period_batches = len(layout.template_batches)
     in_box = jnp.ones((period_batch_size, n_window_modulation_depths), dtype=bool)
 
     def doppler_correction(
@@ -149,7 +148,7 @@ def run(args: argparse.Namespace) -> None:
     # every match timed, at the batch's harmonics and at half of them: its seconds,
     # its overlap multiply-adds and its orbital phases evaluated
     match_fit_seconds, match_fit_work = [], []
-    for batch in layout.period_batches[: args.n_period_batches_timed]:
+    for batch in layout.template_batches[: args.n_period_batches_timed]:
 
         def transform() -> Complex[
             Array, "n_sky n_doppler_reference n_period n_harmonic n_transformed_bin"
@@ -198,7 +197,7 @@ def run(args: argparse.Namespace) -> None:
                 max_statistic,
                 phase_idxs,
                 in_box,
-                device_toplist_f0_idxs,
+                toplist_f0_idxs,
                 n_loudest=setup.n_toplist,
             )
 
