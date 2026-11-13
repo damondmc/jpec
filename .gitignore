@@ -16,6 +16,7 @@ data/
 results/
 setup/
 notebooks/
+jobs/
 # run files, kept with the run, not in the package
 pipelines/*
 !pipelines/fetch_sfts.sh
