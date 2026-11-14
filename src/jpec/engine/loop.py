@@ -131,6 +131,8 @@ def doppler_corrected_power_per_reference(
             start_idx=transformed_start_idx,
             n_bins=n_transformed_bins,
         )
+        # the expected power is subtracted so the weights do not spread the floor and
+        # steady lines from j = 0 into the harmonics matched
         return sft_weights[:, None] * (corrected_power - expected_power)
 
     # one reference's transforms in memory at a time
@@ -139,16 +141,16 @@ def doppler_corrected_power_per_reference(
 
 @partial(jax.jit, static_argnames="j_max")
 def data_harmonics_per_sky_point(
-    corrected_sft_power: Float[Array, "n_sky n_doppler_reference n_sft n_freq"],
+    weighted_excess_power: Float[Array, "n_sky n_doppler_reference n_sft n_freq"],
     orbital_phase: Float[Array, "n_sky n_period n_sft"],
     *,
     j_max: int,
 ) -> Complex[Array, "n_sky n_doppler_reference n_period n_harmonic n_freq"]:
-    """data_harmonics() of the corrected power at each sky point and reference.
+    """data_harmonics() of the weighted excess power at each sky point and reference.
 
     Args:
-        corrected_sft_power: The Doppler-corrected power at each sky point and
-            reference.
+        weighted_excess_power: doppler_corrected_power_per_reference() at each sky
+            point.
         orbital_phase: barycenter_orbital_phase() at each sky point, SFT and trial
             period of a batch [rad].
         j_max: Highest harmonic to keep.
@@ -157,7 +159,7 @@ def data_harmonics_per_sky_point(
         `F[j, k]` at each sky point, reference and trial period.
     """
     per_reference = jax.vmap(partial(data_harmonics, j_max=j_max), in_axes=(0, None))
-    return jax.vmap(per_reference)(corrected_sft_power, orbital_phase)
+    return jax.vmap(per_reference)(weighted_excess_power, orbital_phase)
 
 
 @partial(
@@ -520,7 +522,7 @@ def top_templates_at_sky_points(
             )
         )
         # Doppler correction at every sky point
-        corrected_sft_power = jnp.stack(
+        weighted_excess_power = jnp.stack(
             [
                 doppler_corrected_power_per_reference(
                     sft_time_series=search_data.sft_time_series,
@@ -559,7 +561,7 @@ def top_templates_at_sky_points(
             )
             # F[j, k] at every sky point and reference
             batch_data_harmonics = data_harmonics_per_sky_point(
-                corrected_sft_power,
+                weighted_excess_power,
                 batch_barycenter_orbital_phase,
                 j_max=template_batch.n_harmonics,
             )

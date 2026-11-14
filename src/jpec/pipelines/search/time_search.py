@@ -136,10 +136,10 @@ def run(args: argparse.Namespace) -> None:
         )
 
     doppler_seconds = mean_seconds(doppler_correction, 0, repeats=args.repeats)
-    corrected_sft_power = jnp.stack(
+    weighted_excess_power = jnp.stack(
         [doppler_correction(sky_idx) for sky_idx in range(sky_batch_size)]
     )
-    n_transformed_bins = int(corrected_sft_power.shape[-1])
+    n_transformed_bins = int(weighted_excess_power.shape[-1])
 
     orbital_phases = jnp.asarray(orbital_phase_mod_2pi(search_data.times, layout.omega))
     omega = jnp.asarray(layout.omega)
@@ -170,7 +170,7 @@ def run(args: argparse.Namespace) -> None:
                 batch_orbital_phase, batch_omega, solar_roemer_delays
             )
             return data_harmonics_per_sky_point(
-                corrected_sft_power,
+                weighted_excess_power,
                 batch_barycenter_orbital_phase,
                 j_max=batch.n_harmonics,
             )
