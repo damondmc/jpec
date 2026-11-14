@@ -26,6 +26,7 @@ from jpec.engine.loop import (
     data_harmonics_per_sky_point,
     doppler_corrected_power_per_reference,
     matched_filter_grid,
+    sft_weights_at_sky_point,
     top_k_templates,
 )
 from jpec.pipelines.monitor import RunLogger
@@ -126,6 +127,12 @@ def run(args: argparse.Namespace) -> None:
             tsft=search_data.tsft,
             alpha=float(bank.alpha[sky_idx]),
             delta=float(bank.delta[sky_idx]),
+            sft_weights=sft_weights_at_sky_point(
+                search_data,
+                alpha=float(bank.alpha[sky_idx]),
+                delta=float(bank.delta[sky_idx]),
+            ),
+            mean_power=search_data.mean_power,
         )
 
     doppler_seconds = mean_seconds(doppler_correction, 0, repeats=args.repeats)

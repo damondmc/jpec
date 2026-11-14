@@ -2,7 +2,7 @@
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, Complex, Float
+from jaxtyping import Array, Complex, Float, Int
 
 from jpec.typing import Scalar
 
@@ -121,7 +121,65 @@ def doppler_corrected_power(
     for detector_time_series, detector_floor, detector_velocity in zip(
         sft_time_series, floor, velocity_per_detector
     ):
-        shift = doppler_reference * (detector_velocity @ direction) * tsft
+        # full float32, not a GPU's TF32
+        v_dot_n = jnp.matmul(
+            detector_velocity, direction, precision=jax.lax.Precision.HIGHEST
+        )
+        shift = doppler_reference * v_dot_n * tsft
         corrected = shift_spectrum(detector_time_series, shift=shift)
         planes.append(2.0 * jnp.abs(corrected) ** 2 / detector_floor)
+    return jnp.concatenate(planes)
+
+
+def doppler_corrected_mean_power(
+    mean_power: list[Float[Array, " n_band"]],
+    *,
+    velocity_per_detector: list[Float[Array, "n_sft 3"]],
+    tsft: float,
+    alpha: Scalar,
+    delta: Scalar,
+    doppler_reference: Scalar,
+    start_idx: Int[Array, ""],
+    n_bins: int,
+) -> Float[Array, "n_sft n_transformed_bin"]:
+    """The power a time-averaged spectrum leaves in each Doppler-corrected SFT.
+
+        expected[n, k] = mean_power[start_idx + k + shift[n]]
+
+    which is the mean power read at frequency bin `k`, after moving by SFT `n`'s
+    Doppler shift.
+
+    Args:
+        mean_power: Normalized power averaged over the SFTs, per detector, in the
+            detector frame.
+        velocity_per_detector: Detector velocity `v/c` at each SFT, per detector.
+        tsft: SFT length [s].
+        alpha: Right ascension [rad].
+        delta: Declination [rad].
+        doppler_reference: Frequency the Doppler shift is taken at [Hz].
+        start_idx: First band bin returned.
+        n_bins: Number of bins returned, from `start_idx` on.
+
+    Returns:
+        `expected`, a row per SFT, the detectors concatenated, and a column per bin,
+        `n_bins` of them from `start_idx`.
+    """
+    direction = sky_direction(alpha, delta)
+    planes = []
+    for detector_mean_power, detector_velocity in zip(
+        mean_power, velocity_per_detector, strict=True
+    ):
+        band_bin_idxs = jnp.arange(detector_mean_power.shape[0])
+        bin_idxs = start_idx + jnp.arange(n_bins)
+        v_dot_n = jnp.matmul(
+            detector_velocity, direction, precision=jax.lax.Precision.HIGHEST
+        )
+        shift = doppler_reference * v_dot_n * tsft
+        # fractional bins of the detector-frame spectrum each corrected bin reads
+        shifted_bins = bin_idxs[None, :] + shift[:, None]
+        planes.append(
+            jnp.interp(
+                shifted_bins.ravel(), band_bin_idxs, detector_mean_power
+            ).reshape(shifted_bins.shape)
+        )
     return jnp.concatenate(planes)

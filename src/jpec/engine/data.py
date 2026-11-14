@@ -145,6 +145,24 @@ class SearchData:
         """The inverse transform the Doppler correction shifts, per detector."""
         return [jnp.fft.ifft(jnp.asarray(sft.sft_data), axis=-1) for sft in self.sfts]
 
+    @cached_property
+    def mean_power(self) -> list[Float[Array, " n_band"]]:
+        """Floor-normalized power averaged over the SFTs, per detector."""
+        return [
+            jnp.mean(jnp.asarray(sft.sft_power) / floor_per_detector, axis=0)
+            for sft, floor_per_detector in zip(self.sfts, self.floor, strict=True)
+        ]
+
+    @cached_property
+    def sft_noise_level(self) -> Float[np.ndarray, " n_sft"]:
+        """Each SFT's floor averaged over the frequency band, detectors concatenated."""
+        return np.concatenate(
+            [
+                np.asarray(jnp.mean(floor_per_detector, axis=1))
+                for floor_per_detector in self.floor
+            ]
+        )
+
     @property
     def tsft(self) -> float:
         """SFT length [s]."""

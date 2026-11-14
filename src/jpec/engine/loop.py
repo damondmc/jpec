@@ -10,7 +10,11 @@ import numpy as np
 from jaxtyping import Array, Bool, Complex, Float, Int
 
 from jpec.bank.template_bank import TemplateBank
-from jpec.detector.doppler import doppler_corrected_power, solar_roemer_delay
+from jpec.detector.doppler import (
+    doppler_corrected_mean_power,
+    doppler_corrected_power,
+    solar_roemer_delay,
+)
 from jpec.engine.candidates import TopTemplates
 from jpec.engine.data import SearchData
 from jpec.engine.layout import (
@@ -28,6 +32,38 @@ from jpec.stat.matched_filter import (
 )
 
 
+def sft_weights_at_sky_point(
+    search_data: SearchData, *, alpha: float, delta: float
+) -> Float[Array, " n_sft"]:
+    """The weight each SFT takes toward a sky position, of unit mean square.
+
+        w[n] = (F_plus[n]^2 + F_cross[n]^2) / noise_level[n]
+
+    the share of a signal's power the SFT is expected to hold, over
+    `sqrt(<w^2>_n)`.
+
+    Args:
+        search_data: The band searched.
+        alpha: Right ascension [rad].
+        delta: Declination [rad].
+
+    Returns:
+        The weight per SFT, the detectors concatenated, in the floor's dtype.
+    """
+    antenna_power = np.concatenate(
+        [
+            sft.detector.antenna_power(
+                sft.timestamps_midpoints, alpha=alpha, delta=delta
+            )
+            for sft in search_data.sfts
+        ]
+    )
+    weights = antenna_power / search_data.sft_noise_level
+    return jnp.asarray(
+        weights / np.sqrt(np.mean(weights**2)), dtype=search_data.floor[0].dtype
+    )
+
+
 @partial(jax.jit, static_argnames="n_transformed_bins")
 def doppler_corrected_power_per_reference(
     sft_time_series: list[Complex[Array, "n_sft n_band"]],
@@ -40,8 +76,15 @@ def doppler_corrected_power_per_reference(
     tsft: float,
     alpha: float,
     delta: float,
+    sft_weights: Float[Array, " n_sft"],
+    mean_power: list[Float[Array, " n_band"]],
 ) -> Float[Array, "n_doppler_reference n_sft n_transformed_bin"]:
     """The band corrected toward one sky position at every Doppler reference in turn.
+
+    Each SFT's power less the power expected from its detector's time-averaged
+    spectrum is multiplied by the SFT's weight:
+
+        sft_weights[n] (power[n, k] - expected[n, k])
 
     Args:
         sft_time_series: Inverse transform of the band, per detector.
@@ -53,9 +96,13 @@ def doppler_corrected_power_per_reference(
         tsft: SFT length [s].
         alpha: Right ascension [rad].
         delta: Declination [rad].
+        sft_weights: Weight of each SFT toward the sky position, the detectors
+            concatenated.
+        mean_power: Normalized power averaged over the SFTs, per detector, in the
+            detector frame.
 
     Returns:
-        doppler_corrected_power() at each Doppler reference, over the bins it keeps.
+        The weighted power at each Doppler reference, over the bins it keeps.
     """
 
     def at_reference(
@@ -71,9 +118,20 @@ def doppler_corrected_power_per_reference(
             delta=delta,
             doppler_reference=doppler_reference,
         )
-        return jax.lax.dynamic_slice_in_dim(
+        corrected_power = jax.lax.dynamic_slice_in_dim(
             corrected_power, transformed_start_idx, n_transformed_bins, axis=-1
         )
+        expected_power = doppler_corrected_mean_power(
+            mean_power,
+            velocity_per_detector=velocity_per_detector,
+            tsft=tsft,
+            alpha=alpha,
+            delta=delta,
+            doppler_reference=doppler_reference,
+            start_idx=transformed_start_idx,
+            n_bins=n_transformed_bins,
+        )
+        return sft_weights[:, None] * (corrected_power - expected_power)
 
     # one reference's transforms in memory at a time
     return jax.lax.map(at_reference, (doppler_references, transformed_start_idxs))
@@ -443,6 +501,15 @@ def top_templates_at_sky_points(
         alpha=jnp.asarray(bank.alpha[sky_idx_array]),
         delta=jnp.asarray(bank.delta[sky_idx_array]),
     )
+    # each sky point's SFT weights, the same for every subgrid
+    weights_per_sky_point = [
+        sft_weights_at_sky_point(
+            search_data,
+            alpha=float(bank.alpha[sky_idx]),
+            delta=float(bank.delta[sky_idx]),
+        )
+        for sky_idx in sky_idxs
+    ]
     previous_match = None
     for subgrid_idx, subgrid in enumerate(harmonic_bank.subgrids):
         layout = subgrid.layout
@@ -465,8 +532,12 @@ def top_templates_at_sky_points(
                     tsft=search_data.tsft,
                     alpha=float(bank.alpha[sky_idx]),
                     delta=float(bank.delta[sky_idx]),
+                    sft_weights=sky_point_weights,
+                    mean_power=search_data.mean_power,
                 )
-                for sky_idx in sky_idxs
+                for sky_idx, sky_point_weights in zip(
+                    sky_idxs, weights_per_sky_point, strict=True
+                )
             ]
         )
         for template_batch, ap_in_range in zip(

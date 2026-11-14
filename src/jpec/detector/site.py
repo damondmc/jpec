@@ -49,6 +49,28 @@ def _detector_states(
     return velocity, position
 
 
+@cache
+def _sidereal_times(timestamps: bytes) -> Float[np.ndarray, " n_time"]:
+    """Greenwich mean sidereal time per timestamp, keyed on the timestamps' bytes.
+
+    Args:
+        timestamps: Absolute GPS times [s], as the bytes of a float64 array.
+
+    Returns:
+        The sidereal time in `[0, 2 pi)` [rad], read-only.
+    """
+    gps_times = np.frombuffer(timestamps, dtype=np.float64)
+    sidereal_times = np.array(
+        [
+            lal.GreenwichMeanSiderealTime(lal.LIGOTimeGPS(float(time)))
+            for time in gps_times
+        ]
+    )
+    sidereal_times = np.mod(sidereal_times, 2.0 * np.pi)
+    sidereal_times.flags.writeable = False
+    return sidereal_times
+
+
 class Detector:
     """One interferometer: where it sits and how it moves."""
 
@@ -126,6 +148,48 @@ class Detector:
                 self.site.response, alpha, delta, psi, gmst
             )
         return f_plus, f_cross
+
+    def antenna_power(
+        self, gps_times: Float[np.ndarray, " n_time"], *, alpha: float, delta: float
+    ) -> Float[np.ndarray, " n_time"]:
+        """`F_+^2 + F_x^2` at each time, which does not depend on polarization angle.
+
+        Follows Anderson, Brady, Creighton and Flanagan, Phys. Rev. D 63, 042003
+        (2001), arXiv:gr-qc/0008066, Appendix B, which lal.ComputeDetAMResponse()
+        computes. Here we set the polarization angle to zero. The wave-frame axes in
+        Earth-fixed coordinates, with `h = gmst - alpha` the hour angle, are
+
+            X = (-sin h, -cos h, 0),  Y = (-cos h sin delta, sin h sin delta, cos delta)
+
+            F_+ = X.D.X - Y.D.Y,  F_x = 2 X.D.Y
+
+        Args:
+            gps_times: Absolute GPS times [s].
+            alpha: Right ascension [rad].
+            delta: Declination [rad].
+
+        Returns:
+            `F_+^2 + F_x^2` per time, in `[0, 1]`.
+        """
+        sidereal_times = _sidereal_times(
+            np.ascontiguousarray(gps_times, dtype=np.float64).tobytes()
+        )
+        hour_angle = sidereal_times - alpha
+        sin_h, cos_h = np.sin(hour_angle), np.cos(hour_angle)
+        x = np.stack([-sin_h, -cos_h, np.zeros_like(sin_h)], axis=1)
+        y = np.stack(
+            [
+                -cos_h * np.sin(delta),
+                sin_h * np.sin(delta),
+                np.full_like(sin_h, np.cos(delta)),
+            ],
+            axis=1,
+        )
+        response = np.asarray(self.site.response, dtype=np.float64)
+        response_x, response_y = x @ response, y @ response
+        f_plus = np.sum(response_x * x, axis=1) - np.sum(response_y * y, axis=1)
+        f_cross = 2.0 * np.sum(response_x * y, axis=1)
+        return f_plus**2 + f_cross**2
 
 
 def reference_epoch(timestamps: Mapping[str, ArrayLike], *, tsft: float) -> float:
