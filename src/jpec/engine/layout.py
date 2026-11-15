@@ -292,7 +292,7 @@ def doppler_reference_f0_width(
 def doppler_reference_count(
     f0_width: float, *, tsft: float, window: Window, doppler_mismatch: float
 ) -> int:
-    """Doppler references enough to hold a subgrid's offsets to the mismatch.
+    """Number of Doppler references needed to hold a subgrid's offsets to the mismatch.
 
     Args:
         f0_width: Span of the subgrid's f0 points [Hz].

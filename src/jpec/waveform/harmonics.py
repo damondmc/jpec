@@ -42,7 +42,7 @@ def theta_sample_count(j_max: int, *, oversample: int) -> int:
 def phase_count(
     harmonic_power: Float[np.ndarray, " n_harmonic"], *, phase_mismatch: float
 ) -> int:
-    """Orbital phases the statistic is read at, to hold the phase mismatch.
+    """Number of orbital phases the statistic is read at, to hold the phase mismatch.
 
     A template read `delta` from the signal's phase loses
 
