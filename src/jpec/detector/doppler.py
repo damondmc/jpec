@@ -147,7 +147,7 @@ def doppler_corrected_mean_power(
         expected[n, k] = mean_power[start_idx + k + shift[n]]
 
     which is the mean power read at frequency bin `k`, after moving by SFT `n`'s
-    Doppler shift.
+    Doppler shift in bins, `shift[n] = doppler_reference * (v[n] . n_hat) * tsft`.
 
     Args:
         mean_power: Normalized power averaged over the SFTs, per detector, in the

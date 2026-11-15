@@ -161,7 +161,7 @@ class Detector:
 
             X = (-sin h, -cos h, 0),  Y = (-cos h sin delta, sin h sin delta, cos delta)
 
-            F_+ = X.D.X - Y.D.Y,  F_x = 2 X.D.Y
+            F_+ = X.D.X - Y.D.Y,  F_x = 2 X.D.Y, `D` is the detector's response tensor.
 
         Args:
             gps_times: Absolute GPS times [s].
