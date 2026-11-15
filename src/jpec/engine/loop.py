@@ -65,7 +65,7 @@ def sft_weights_at_sky_point(
 
 
 @partial(jax.jit, static_argnames="n_transformed_bins")
-def doppler_corrected_power_per_reference(
+def weighted_excess_power_per_reference(
     sft_time_series: list[Complex[Array, "n_sft n_band"]],
     floor: list[Float[Array, "n_sft n_band"]],
     velocity_per_detector: list[Float[Array, "n_sft 3"]],
@@ -149,7 +149,7 @@ def data_harmonics_per_sky_point(
     """data_harmonics() of the weighted excess power at each sky point and reference.
 
     Args:
-        weighted_excess_power: doppler_corrected_power_per_reference() at each sky
+        weighted_excess_power: weighted_excess_power_per_reference() at each sky
             point.
         orbital_phase: barycenter_orbital_phase() at each sky point, SFT and trial
             period of a batch [rad].
@@ -524,7 +524,7 @@ def top_templates_at_sky_points(
         # Doppler correction at every sky point
         weighted_excess_power = jnp.stack(
             [
-                doppler_corrected_power_per_reference(
+                weighted_excess_power_per_reference(
                     sft_time_series=search_data.sft_time_series,
                     floor=search_data.floor,
                     velocity_per_detector=search_data.velocity_per_detector,

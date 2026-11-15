@@ -24,10 +24,10 @@ from jpec.engine.data import SearchData
 from jpec.engine.layout import f0_idxs_per_toplist, subgrid_layout
 from jpec.engine.loop import (
     data_harmonics_per_sky_point,
-    doppler_corrected_power_per_reference,
     matched_filter_grid,
     sft_weights_at_sky_point,
     top_k_templates,
+    weighted_excess_power_per_reference,
 )
 from jpec.pipelines.monitor import RunLogger
 from jpec.stat.matched_filter import barycenter_orbital_phase, orbital_phase_mod_2pi
@@ -117,7 +117,7 @@ def run(args: argparse.Namespace) -> None:
     def doppler_correction(
         sky_idx: int,
     ) -> Float[Array, "n_doppler_reference n_sft n_transformed_bin"]:
-        return doppler_corrected_power_per_reference(
+        return weighted_excess_power_per_reference(
             search_data.sft_time_series,
             search_data.floor,
             search_data.velocity_per_detector,
