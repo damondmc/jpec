@@ -92,7 +92,7 @@ def weighted_excess_power_per_reference(
         velocity_per_detector: Detector velocity `v/c` at each SFT, per detector.
         doppler_references: Frequencies the Doppler shift is taken at [Hz].
         transformed_start_idxs: First band bin each reference keeps.
-        n_transformed_bins: Bins each reference keeps from its first.
+        n_transformed_bins: Number of bins each reference keeps from its first.
         tsft: SFT length [s].
         alpha: Right ascension [rad].
         delta: Declination [rad].
@@ -198,11 +198,11 @@ def matched_filter_grid(
             reads.
         group_sub_bin_offset_idxs: Which of `template_harmonics` each group takes.
         modulation_depth_start_idx: First modulation depth matched.
-        n_matched_modulation_depths: Modulation depths matched, from
+        n_matched_modulation_depths: Number of modulation depths matched, from
             `modulation_depth_start_idx` on.
-        n_phi: Orbital phases the statistic is evaluated at.
-        f0_batch_size: f0 points matched at once, in whole groups and at least one,
-            which caps the memory held.
+        n_phi: Number of orbital phases the statistic is evaluated at.
+        f0_batch_size: Number of f0 points matched at once, in whole groups and at
+            least one, which caps the memory held.
 
     Returns:
         The maximum of `S` over the orbital phase and the phase index it sits at,
@@ -290,8 +290,8 @@ def top_k_templates(
         ap_in_range: Whether each (period, modulation depth) has ap in range, the
             same at every f0 point.
         toplist_f0_idxs: The f0 points each toplist covers.
-        n_top: Templates kept per toplist; all of its f0 points' templates when
-            they are fewer.
+        n_top: Number of templates kept per toplist; all of its f0 points' templates
+            when they are fewer.
 
     Returns:
         Per toplist, their statistic, loudest first and `-inf` past the in-range ones,
@@ -381,15 +381,15 @@ class HarmonicBank:
             bank: The bank.
             times: SFT midpoints from the epoch `phi_b` is quoted at [s].
             freq_low: First frequency of the band [Hz].
-            n_band_bins: Bins the band holds.
-            n_sub_bin_offsets: Sub-bin template offsets across one bin.
-            period_batch_size: Trial periods per transform call.
+            n_band_bins: Number of bins the band holds.
+            n_sub_bin_offsets: Number of sub-bin template offsets across one bin.
+            period_batch_size: Number of trial periods per transform call.
             harmonic_fraction: Share of each modulation depth's harmonics matched.
             phase_mismatch: Largest mismatch the orbital phase grid may leave.
             doppler_mismatch: Largest mismatch an f0 point's offset from its Doppler
                 reference may leave.
-            modulation_depth_batch_size: Modulation depths whose templates are built at
-                once.
+            modulation_depth_batch_size: Number of modulation depths whose templates
+                are built at once.
         """
         self.bank = bank
         layouts = subgrid_layouts(
@@ -489,8 +489,8 @@ def top_templates_at_sky_points(
         search_data: The band searched, the one the bank is laid out on.
         harmonic_bank: The bank's template harmonics, laid out on the band.
         sky_idxs: Indices of the sky points in the bank, transformed together.
-        f0_batch_size: f0 points matched at once.
-        n_top: Templates kept per toplist from each match.
+        f0_batch_size: Number of f0 points matched at once.
+        n_top: Number of templates kept per toplist from each match.
         toplist_f0_edges: Edges of the toplists' f0 intervals [Hz], low to high.
 
     Yields:

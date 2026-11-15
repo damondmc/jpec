@@ -119,10 +119,10 @@ def search_memory_gb(
 
     Args:
         layouts: Its subgrids laid out on the band.
-        n_band_bins: Bins of the band.
-        n_sfts: SFTs over every detector.
-        sky_batch_size: Sky points per transform.
-        f0_batch_size: f0 points matched at once.
+        n_band_bins: Number of bins of the band.
+        n_sfts: Number of SFTs over every detector.
+        sky_batch_size: Number of sky points per transform.
+        f0_batch_size: Number of f0 points matched at once.
 
     Returns:
         Peak giga-bytes the search holds.
@@ -205,9 +205,9 @@ def search_hours(
 
     Args:
         layouts: Its subgrids laid out on the band.
-        n_band_bins: Bins of the band.
-        n_sky_points: Sky points searched.
-        n_sfts: SFTs over every detector.
+        n_band_bins: Number of bins of the band.
+        n_sky_points: Number of sky points searched.
+        n_sfts: Number of SFTs over every detector.
         rates: The `rates` of a jpec time-search result.
 
     Returns:

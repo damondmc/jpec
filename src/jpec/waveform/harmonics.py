@@ -104,7 +104,7 @@ def template_harmonics(
     Args:
         bin_offsets: Bin centres, as offsets from f0 [bins].
         modulation_depth_bins: Half-width of the frequency arc [bins].
-        n_theta: Orbital phases sampled, uniform over `[0, 2*pi)`; more than
+        n_theta: Number of orbital phases sampled, uniform over `[0, 2*pi)`; more than
             `2*j_max`.
         j_max: Highest harmonic kept.
         window: The window the SFTs were made with.

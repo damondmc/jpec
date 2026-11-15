@@ -24,7 +24,7 @@ def draw_injections(
         cos_iota: Interval of the cosine of the inclination.
         psi: Interval of the polarization angle [rad].
         key: PRNG key.
-        n_injections: Sources drawn.
+        n_injections: Number of sources drawn.
 
     Returns:
         The sources, in the order they were drawn.

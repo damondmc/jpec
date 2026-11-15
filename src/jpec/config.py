@@ -320,7 +320,7 @@ class SFTMetadata(BaseModel):
 
     @property
     def n_sfts(self) -> int:
-        """SFTs over every detector."""
+        """Number of SFTs over every detector."""
         return sum(
             len(self.timestamps[detector_name]) for detector_name in self.detectors
         )
@@ -366,7 +366,7 @@ class DataSetup(BaseModel):
     Attributes:
         sft_glob: Glob of the SFT files, as the run will find them.
         detectors: The detectors, in the order the timestamps are concatenated.
-        n_sfts: SFTs over every detector.
+        n_sfts: Number of SFTs over every detector.
         tsft: SFT length [s].
         window: The window they were made with.
         t_ref: Epoch `phi_b` is quoted at, absolute GPS [s].
@@ -395,8 +395,8 @@ class JobSetup(BaseModel):
         freq_low: Low edge of the band loaded [Hz].
         freq_high: High edge [Hz].
         files: The files holding the band, at least one per detector.
-        n_sky_points: Sky points of the job's bank.
-        n_templates: Templates of the job's bank.
+        n_sky_points: Number of sky points of the job's bank.
+        n_templates: Number of templates of the job's bank.
         memory_gb: Peak giga-bytes the job holds.
         hours: Hours the job takes at the timing's rates; None when the setup was made
             without one.
@@ -427,9 +427,9 @@ class SearchSetup(BaseModel):
         data: The SFTs searched.
         tilings: LatticeTiling.to_dict() of the lattice over each period range.
         search_loop: How the search loop batches its work.
-        n_toplist: Templates each toplist keeps.
+        n_toplist: Number of templates each toplist keeps.
         toplist_f0_width: f0 width each toplist covers [Hz].
-        n_templates_total: Templates over every job.
+        n_templates_total: Number of templates over every job.
         jobs: The jobs, in f0 order, each f0 interval's period ranges low to high.
     """
 

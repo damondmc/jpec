@@ -83,7 +83,7 @@ class SearchData:
             freq_low: Low edge of the band [Hz].
             freq_high: High edge of the band [Hz].
             floor_width: Bins of the running median the floor is taken over.
-            floor_batch_size: SFTs whose floor is taken at once.
+            floor_batch_size: Number of SFTs whose floor is taken at once.
 
         Returns:
             The band, ready to search.
@@ -175,12 +175,12 @@ class SearchData:
 
     @property
     def n_sfts(self) -> int:
-        """SFTs over every detector."""
+        """Number of SFTs over every detector."""
         return int(sum(sft.n_sfts for sft in self.sfts))
 
     @property
     def n_band_bins(self) -> int:
-        """Frequency bins loaded."""
+        """Number of frequency bins loaded."""
         return self.sfts[0].sft_data.shape[1]
 
     @property

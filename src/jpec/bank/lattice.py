@@ -59,7 +59,7 @@ class OrbitalSubgrid(NamedTuple):
 
     @property
     def n_templates_per_sky_point(self) -> int:
-        """Templates in the box at one sky point."""
+        """Number of templates in the box at one sky point."""
         return int(self.f0.size * self.ap_in_range.sum())
 
 

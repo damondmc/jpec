@@ -62,7 +62,7 @@ def noise_floor(
     Args:
         sft_power: Observed power plane.
         width: Running-median window in bins, odd.
-        batch_size: SFTs whose windows are sorted at once; memory is
+        batch_size: Number of SFTs whose windows are sorted at once; memory is
             `batch_size * n_band_bins * width`.
 
     Returns:

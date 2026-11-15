@@ -38,10 +38,11 @@ def template_harmonics_at_depths(
     Args:
         bin_offsets: Bin centres, as offsets from f0 [bins].
         modulation_depth_bins: The modulation depths [bins].
-        n_theta: Orbital phases sampled.
+        n_theta: Number of orbital phases sampled.
         j_max: Highest harmonic kept.
         window: The window the SFTs were made with.
-        batch_size: Modulation depths built at once, which caps the planes held.
+        batch_size: Number of modulation depths built at once, which caps the planes
+            held.
 
     Returns:
         `tau[j, k]` for every modulation depth, in their order.
@@ -83,7 +84,7 @@ class OrbitalTemplateGrid(NamedTuple):
 
     @property
     def n_theta(self) -> int:
-        """Orbital phases a template is sampled at to build its harmonics."""
+        """Number of orbital phases a template is sampled at for its harmonics."""
         return theta_sample_count(self.j_max, oversample=THETA_OVERSAMPLE)
 
     @property
@@ -101,7 +102,7 @@ class OrbitalTemplateGrid(NamedTuple):
         Args:
             sub_bin_offset: Bins from the window's origin to the f0 points the
                 templates serve.
-            batch_size: Modulation depths built at once.
+            batch_size: Number of modulation depths built at once.
 
         Returns:
             `tau[j, k]` for every modulation depth of the subgrid.
@@ -127,7 +128,7 @@ class OrbitalTemplateGrid(NamedTuple):
         Args:
             sub_bin_offsets: Bins from the window's origin to the f0 points each
                 stack serves.
-            batch_size: Modulation depths built at once.
+            batch_size: Number of modulation depths built at once.
 
         Returns:
             template_harmonics() at each offset, in their order.
@@ -152,7 +153,7 @@ def idxs_around(
     Args:
         values: One axis of a subgrid, increasing.
         value: The point searched around.
-        n_steps: Points kept each side.
+        n_steps: Number of points kept each side.
 
     Returns:
         The indices, increasing.
@@ -178,7 +179,7 @@ class TemplateBank(NamedTuple):
 
     @property
     def n_templates(self) -> int:
-        """Templates in the box, over every subgrid and the job's sky points."""
+        """Number of templates in the box, over subgrids and the job's sky points."""
         n_templates_per_sky_point = sum(
             template_grid.orbital_subgrid.n_templates_per_sky_point
             for template_grid in self.template_grids
@@ -205,7 +206,7 @@ class TemplateBank(NamedTuple):
             period_idx: Index of the trial period.
             modulation_depth_idx: Index of the modulation depth.
             phase_idx: Index of the orbital phase, of `n_phi`.
-            n_phi: Orbital phases the statistic was read at.
+            n_phi: Number of orbital phases the statistic was read at.
 
         Returns:
             The template's parameters.
@@ -281,8 +282,8 @@ class TemplateBank(NamedTuple):
             point: The parameters searched around.
             velocity: Detector velocity `v/c` at each SFT, every detector.
             window: The window the SFTs were made with.
-            n_sky_neighbours: Sky lattice points searched around the source.
-            n_steps: Lattice steps each side of the source, per orbital axis.
+            n_sky_neighbours: Number of sky lattice points searched around the source.
+            n_steps: Number of lattice steps each side of the source, per orbital axis.
 
         Returns:
             The bank, each subgrid's `ap_in_range` as the search has it.

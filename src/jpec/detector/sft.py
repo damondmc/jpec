@@ -56,7 +56,7 @@ class SFTData:
 
     @property
     def n_sfts(self) -> int:
-        """SFTs this detector contributed."""
+        """Number of SFTs this detector contributed."""
         return self.timestamps.size
 
     @property
@@ -239,7 +239,7 @@ def load_sft_data(
         window: The window the SFTs were made with, used too when a file records none.
         tsft: SFT length [s].
         detectors: The detectors, in order.
-        n_sfts: SFTs over every detector.
+        n_sfts: Number of SFTs over every detector.
 
     Returns:
         One SFTData per detector on the same frequency bins, at `STRAIN_UNIT`.

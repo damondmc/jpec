@@ -53,7 +53,7 @@ class TopTemplates(NamedTuple):
         modulation_depth_idxs: Index of its modulation depth.
         phase_idxs: Index of the orbital phase its maximum sits at.
         doppler_references: Frequency its band was Doppler-corrected at [Hz].
-        n_phi: Orbital phases the statistic was read at.
+        n_phi: Number of orbital phases the statistic was read at.
     """
 
     subgrid_idx: int

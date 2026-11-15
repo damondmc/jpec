@@ -116,7 +116,7 @@ def statistic_over_phase(
 
     Args:
         coefficients: `c[j]` starting with 1st harmonic.
-        n_phi: Orbital phases to evaluate, more than `2*len(coefficients)`.
+        n_phi: Number of orbital phases to evaluate, more than `2*len(coefficients)`.
 
     Returns:
         Statistic at `phi_b = 2 pi m / n_phi`, `m = 0..n_phi-1`.
@@ -137,7 +137,7 @@ def max_over_phase(
     Args:
         data_harmonics: `F[j, k]`, starting with 1st harmonic.
         template_harmonics: `tau[j, k]` on the same grid.
-        n_phi: Orbital phases to evaluate, more than twice the harmonics kept.
+        n_phi: Number of orbital phases to evaluate, more than twice the harmonics kept.
 
     Returns:
         The maximum of `S(phi_b)` and the index `m` of `phi_b = 2 pi m / n_phi` it

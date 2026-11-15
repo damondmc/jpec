@@ -23,7 +23,7 @@ def freq_bin_curvature(window: Window, *, n_positions: int) -> float:
 
     Args:
         window: The window the SFTs were made with.
-        n_positions: Fractional positions averaged over.
+        n_positions: Number of fractional positions averaged over.
 
     Returns:
         `g_freq_bin` [1 / frequency bins^2].

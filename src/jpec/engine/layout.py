@@ -24,8 +24,8 @@ class TemplateBatch(NamedTuple):
         period_start_idx: First trial period of the run.
         period_stop_idx: One past its last.
         modulation_depth_start_idx: First modulation depth of the window.
-        n_harmonics: Harmonics the batch is transformed and matched with, the ones
-            its deepest in-range template needs.
+        n_harmonics: Number of harmonics the batch is transformed and matched with,
+            the ones its deepest in-range template needs.
     """
 
     period_start_idx: int
@@ -40,8 +40,8 @@ class SubgridLayout(NamedTuple):
     Attributes:
         template_grid: The subgrid's orbital template grid.
         transformed_start_idxs: First band bin each Doppler reference transforms.
-        n_transformed_bins: Bins every reference transforms from its first, enough
-            for the template windows of all its f0 points.
+        n_transformed_bins: Number of bins every reference transforms from its first,
+            enough for the template windows of all its f0 points.
         window_start_idxs: First bin of each f0 point's template window, counted from
             its reference's transformed start.
         doppler_references: Frequency each corrected band is Doppler-corrected at
@@ -58,12 +58,13 @@ class SubgridLayout(NamedTuple):
             in float64, the last repeated `period_batch_size - 1` times so every
             batch reads a full run.
         template_batches: The template batches that hold an in-range template.
-        period_batch_size: Trial periods every batch is transformed and matched over,
-            so each call has one shape; a batch shorter than that runs on into the
-            periods after it, which are out of its box.
-        n_window_modulation_depths: Modulation depths every batch is matched against.
-        n_phi: Orbital phases the statistic is read at, from phase_count() of the
-            deepest modulation depth's matched harmonics.
+        period_batch_size: Number of trial periods every batch is transformed and
+            matched over, so each call has one shape; a batch shorter than that runs
+            on into the periods after it, which are out of its box.
+        n_window_modulation_depths: Number of modulation depths every batch is matched
+            against.
+        n_phi: Number of orbital phases the statistic is read at, from phase_count()
+            of the deepest modulation depth's matched harmonics.
     """
 
     template_grid: OrbitalTemplateGrid
@@ -97,8 +98,9 @@ def split_periods(
     Args:
         ap_in_range: Whether each (period, modulation depth) lies in its ap block.
         ap_block_idxs: The ap block each period belongs to, ap block after ap block.
-        n_harmonics_per_depth: Harmonics each modulation depth's templates need.
-        batch_size: Trial periods per transform call.
+        n_harmonics_per_depth: Number of harmonics each modulation depth's templates
+            need.
+        batch_size: Number of trial periods per transform call.
 
     Returns:
         The batches that hold an in-range template, and the modulation depths every one
@@ -317,9 +319,9 @@ def subgrid_layout(
     Args:
         template_grid: The subgrid's orbital template grid.
         freq_low: First frequency of the loaded band [Hz].
-        n_band_bins: Bins the loaded band holds.
-        n_sub_bin_offsets: Sub-bin template offsets across one bin.
-        period_batch_size: Trial periods per transform call.
+        n_band_bins: Number of bins the loaded band holds.
+        n_sub_bin_offsets: Number of sub-bin template offsets across one bin.
+        period_batch_size: Number of trial periods per transform call.
         harmonic_fraction: Share of each modulation depth's harmonics matched.
         phase_mismatch: Largest mismatch the orbital phase grid may leave.
         doppler_mismatch: Largest mismatch an f0 point's offset from its Doppler
@@ -480,9 +482,9 @@ def subgrid_layouts(
     Args:
         bank: The bank.
         freq_low: First frequency of the loaded band [Hz].
-        n_band_bins: Bins the loaded band holds.
-        n_sub_bin_offsets: Sub-bin template offsets across one bin.
-        period_batch_size: Trial periods per transform call.
+        n_band_bins: Number of bins the loaded band holds.
+        n_sub_bin_offsets: Number of sub-bin template offsets across one bin.
+        period_batch_size: Number of trial periods per transform call.
         harmonic_fraction: Share of each modulation depth's harmonics matched.
         phase_mismatch: Largest mismatch the orbital phase grid may leave.
         doppler_mismatch: Largest mismatch an f0 point's offset from its Doppler

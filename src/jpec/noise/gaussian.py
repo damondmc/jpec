@@ -34,7 +34,7 @@ def gaussian_noise_series_sft(
         detector: The interferometer the SFTs belong to.
         key: PRNG key.
         freq_low: Start frequency of the first frequency bin [Hz].
-        n_band_bins: Frequency bins per SFT.
+        n_band_bins: Number of frequency bins per SFT.
         tsft: SFT length [s].
         sqrt_sn: Amplitude spectral density of the strain, flat over the band
             [1/sqrt(Hz)].
@@ -106,7 +106,7 @@ def gaussian_noise_sft(
         detector: The interferometer the SFTs belong to.
         key: PRNG key.
         freq_low: Start frequency of the first frequency bin [Hz].
-        n_band_bins: Frequency bins per SFT.
+        n_band_bins: Number of frequency bins per SFT.
         tsft: SFT length [s].
         sqrt_sn: Amplitude spectral density of the strain, flat over the band
             [1/sqrt(Hz)].

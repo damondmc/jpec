@@ -15,7 +15,7 @@ def null_sigma(n_sfts: int, *, power_variance: float) -> Scalar:
     `Var(P) = 1`; real data can be wider, and then takes its fitted value.
 
     Args:
-        n_sfts: SFTs the harmonics were taken over.
+        n_sfts: Number of SFTs the harmonics were taken over.
         power_variance: `Var(P)` in one frequency bin of one SFT: 1 for Gaussian
             noise, the fitted null width squared on real data.
 
@@ -59,7 +59,7 @@ def false_alarm_probability(
 
     Args:
         threshold: Level on `S` the maximum over phase is compared against.
-        n_sfts: SFTs the harmonics were taken over.
+        n_sfts: Number of SFTs the harmonics were taken over.
         j_rms: Template's RMS harmonic number, from rms_harmonic_number().
         power_variance: `Var(P)` of the floor-normalized power, as in null_sigma().
 
@@ -83,7 +83,7 @@ def detection_threshold(
 
     Args:
         fap: Target false-alarm probability, in `(0, 1)`.
-        n_sfts: SFTs the harmonics were taken over.
+        n_sfts: Number of SFTs the harmonics were taken over.
         j_rms: Template's RMS harmonic number, from rms_harmonic_number().
         power_variance: `Var(P)` of the floor-normalized power, as in null_sigma().
 
@@ -118,11 +118,12 @@ def toplist_threshold(
     with `sigma` from null_sigma(), taken on floor-normalized power.
 
     Args:
-        n_candidates: Templates noise alone puts above the threshold, on average.
-        n_templates: Templates at each modulation depth, over sky positions, f0 and
-            periods.
+        n_candidates: Number of templates noise alone puts above the threshold, on
+            average.
+        n_templates: Number of templates at each modulation depth, over sky positions,
+            f0 and periods.
         j_rms: RMS harmonic number at each modulation depth, from rms_harmonic_number().
-        n_sfts: SFTs the harmonics were taken over.
+        n_sfts: Number of SFTs the harmonics were taken over.
         power_variance: `Var(P)` of the floor-normalized power, as in null_sigma().
 
     Returns:

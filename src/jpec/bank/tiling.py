@@ -91,7 +91,7 @@ class LatticeTiling:
             prior: The region searched.
             observation: The run's SFT length, midpoints and detector motion.
             mismatch: Mismatch budget over every axis.
-            n_ap_blocks: ap blocks the box is cut into.
+            n_ap_blocks: Number of ap blocks the box is cut into.
             window: The window the SFTs were made with.
 
         Returns:
