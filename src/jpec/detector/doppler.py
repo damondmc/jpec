@@ -119,7 +119,7 @@ def doppler_corrected_power(
     direction = sky_direction(alpha, delta)
     planes = []
     for detector_time_series, detector_floor, detector_velocity in zip(
-        sft_time_series, floor, velocity_per_detector
+        sft_time_series, floor, velocity_per_detector, strict=True
     ):
         # full float32, not a GPU's TF32
         v_dot_n = jnp.matmul(

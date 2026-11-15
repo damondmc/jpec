@@ -169,7 +169,13 @@ def f0_groups(
             each group's reference and offset.
     """
     group_keys = sorted(
-        set(zip(doppler_reference_idxs.tolist(), sub_bin_offset_idxs.tolist()))
+        set(
+            zip(
+                doppler_reference_idxs.tolist(),
+                sub_bin_offset_idxs.tolist(),
+                strict=True,
+            )
+        )
     )
     members = [
         np.flatnonzero(

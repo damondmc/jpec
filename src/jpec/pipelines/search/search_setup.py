@@ -310,7 +310,7 @@ def run(args: argparse.Namespace) -> None:
     job_setups = []
     for job_f0_low, job_f0_high in zip(f0_edges, f0_edges[1:]):
         for tiling_idx, (tiling, (period_low, period_high)) in enumerate(
-            zip(tilings, period_ranges)
+            zip(tilings, period_ranges, strict=True)
         ):
             n_templates, n_sky_points = template_and_sky_point_counts(
                 tiling, velocity, job_f0_low, job_f0_high
@@ -382,7 +382,7 @@ def run(args: argparse.Namespace) -> None:
         )
         run_logger.info(f"Total hours: {hours_per_job.sum():.1f}")
         for (period_low, period_high), period_hours in zip(
-            period_ranges, hours_per_job.reshape(n_f0_intervals, -1).T
+            period_ranges, hours_per_job.reshape(n_f0_intervals, -1).T, strict=True
         ):
             run_logger.info(
                 f"  period {period_low:g}-{period_high:g} d: {period_hours.sum():.1f} h"

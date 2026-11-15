@@ -132,7 +132,7 @@ class SimulatedSource(NamedTuple):
         """
         return [
             sft_with_simulated_signal(sft, unit_sft_data, h0=h0)
-            for sft, unit_sft_data in zip(sfts, self.unit_sft_data)
+            for sft, unit_sft_data in zip(sfts, self.unit_sft_data, strict=True)
         ]
 
 

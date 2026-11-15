@@ -66,7 +66,7 @@ def measure_sensitivity_depth(
     ]
     sources = [
         simulated_source(injection, band_data.sfts, t_ref=band_data.t_ref)
-        for injection, band_data in zip(injections, source_data)
+        for injection, band_data in zip(injections, source_data, strict=True)
     ]
 
     # a template bank near each source laid out on the source's band, built once per
@@ -92,7 +92,7 @@ def measure_sensitivity_depth(
             doppler_mismatch=search_loop_config.doppler_mismatch,
             modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
         )
-        for injection, band_data in zip(injections, source_data)
+        for injection, band_data in zip(injections, source_data, strict=True)
     ]
 
     # result tracking: one recovery curve per threshold, all fed by the same loudest
@@ -113,7 +113,7 @@ def measure_sensitivity_depth(
         # kept
         loudest = np.zeros(len(sources))
         for source_idx, (source, band_data, harmonic_bank) in enumerate(
-            zip(sources, source_data, source_harmonic_banks)
+            zip(sources, source_data, source_harmonic_banks, strict=True)
         ):
             injected_data = SearchData(
                 source.injected_sfts(band_data.sfts, h0=h0),
@@ -139,7 +139,7 @@ def measure_sensitivity_depth(
             )
         h0_values.append(h0)
         loudest_statistics.append(loudest.tolist())
-        for curve, threshold in zip(curves, thresholds):
+        for curve, threshold in zip(curves, thresholds, strict=True):
             curve.add(h0, loudest >= threshold)
         recovered = ", ".join(
             f"{np.mean(loudest >= threshold):.1%}" for threshold in thresholds
@@ -174,7 +174,7 @@ def measure_sensitivity_depth(
     sensitivity_depth = search_data.sqrt_sn / h0_ul
     sensitivity_depth_error = search_data.sqrt_sn * h0_ul_error / h0_ul**2
     for threshold, threshold_depth, threshold_depth_error, threshold_h0_ul in zip(
-        thresholds, sensitivity_depth, sensitivity_depth_error, h0_ul
+        thresholds, sensitivity_depth, sensitivity_depth_error, h0_ul, strict=True
     ):
         run_logger.info(
             f"Sensitivity depth at S {threshold:.4g}: {threshold_depth:.1f} "

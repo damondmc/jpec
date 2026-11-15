@@ -278,7 +278,9 @@ def write_sfts(sft: SFTData, path: str, *, comment: str) -> None:
         comment: Description recorded in the file.
     """
     sft_vector = lalpulsar.CreateSFTVector(sft.n_sfts, sft.sft_data.shape[1])
-    for lal_sft, start, sft_data in zip(sft_vector.data, sft.timestamps, sft.sft_data):
+    for lal_sft, start, sft_data in zip(
+        sft_vector.data, sft.timestamps, sft.sft_data, strict=True
+    ):
         lal_sft.name = sft.detector.name
         lal_sft.epoch = lal.LIGOTimeGPS(float(start))
         lal_sft.f0 = sft.freq_low

@@ -40,7 +40,7 @@ def draw_injections(
         cos_iota,
         psi,
     )
-    low, high = (jnp.array(edge) for edge in zip(*intervals))
+    low, high = (jnp.array(edge) for edge in zip(*intervals, strict=True))
     uniform = jax.random.uniform(
         key, (n_injections, len(intervals)), minval=low, maxval=high
     )
