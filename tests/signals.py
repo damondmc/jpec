@@ -123,8 +123,10 @@ def search_data_harmonics(
         centre_idx - half_width_bins, centre_idx + half_width_bins + 1
     )
     delay = solar_roemer_delay(
-        jnp.asarray(sft.position), alpha=float(point.alpha), delta=float(point.delta)
-    )
+        jnp.asarray(sft.position),
+        alpha=jnp.array([float(point.alpha)]),
+        delta=jnp.array([float(point.delta)]),
+    )[0]
     sft_orbital_phase = jnp.asarray(
         orbital_phase_mod_2pi(np.asarray(times) + np.asarray(delay), point.omega)
     )

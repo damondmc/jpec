@@ -8,13 +8,13 @@ from jpec.typing import Scalar
 
 
 def sky_direction(
-    alpha: Scalar | Float[Array, " n_sky"], delta: Scalar | Float[Array, " n_sky"]
-) -> Float[Array, "3 ..."]:
-    """Unit vector toward a sky position, in the frame `Detector.velocity` uses.
+    alpha: Float[Array, " n_sky"], delta: Float[Array, " n_sky"]
+) -> Float[Array, "3 n_sky"]:
+    """Unit vectors toward sky positions, in the frame `Detector.velocity` uses.
 
     Args:
-        alpha: Right ascension [rad], one or one per sky point.
-        delta: Declination [rad], one or one per sky point.
+        alpha: Right ascension [rad], one per sky point.
+        delta: Declination [rad], one per sky point.
 
     Returns:
         `(cos(delta) cos(alpha), cos(delta) sin(alpha), sin(delta))`, a column per
@@ -32,9 +32,9 @@ def sky_direction(
 def solar_roemer_delay(
     position: Float[Array, "n_sft 3"],
     *,
-    alpha: Scalar | Float[Array, " n_sky"],
-    delta: Scalar | Float[Array, " n_sky"],
-) -> Float[Array, "*n_sky n_sft"]:
+    alpha: Float[Array, " n_sky"],
+    delta: Float[Array, " n_sky"],
+) -> Float[Array, "n_sky n_sft"]:
     """Solar System Barycenter time minus detector time toward sky positions.
 
         delay(t) = r(t) . n_hat   [s]
@@ -43,8 +43,8 @@ def solar_roemer_delay(
 
     Args:
         position: Detector position at each SFT [light-s].
-        alpha: Right ascension [rad], one or one per sky point.
-        delta: Declination [rad], one or one per sky point.
+        alpha: Right ascension [rad], one per sky point.
+        delta: Declination [rad], one per sky point.
 
     Returns:
         The delay at each SFT [s], a row per sky point.
@@ -53,6 +53,29 @@ def solar_roemer_delay(
     # full float32: a GPU's default rounds the inputs to TF32, off by up to 0.3 s
     # on a 500 s delay
     return jnp.matmul(direction.T, position.T, precision=jax.lax.Precision.HIGHEST)
+
+
+def line_of_sight_velocity(
+    velocity: Float[Array, "n_sft 3"],
+    *,
+    alpha: Float[Array, " n_sky"],
+    delta: Float[Array, " n_sky"],
+) -> Float[Array, "n_sky n_sft"]:
+    """Detector velocity over c along the direction to sky positions.
+
+        v(t) . n_hat
+
+    Args:
+        velocity: Detector velocity `v/c` at each SFT.
+        alpha: Right ascension [rad], one per sky point.
+        delta: Declination [rad], one per sky point.
+
+    Returns:
+        The line-of-sight velocity over c at each SFT, a row per sky point.
+    """
+    direction = sky_direction(alpha, delta)
+    # full float32, not a GPU's TF32
+    return jnp.matmul(direction.T, velocity.T, precision=jax.lax.Precision.HIGHEST)
 
 
 def shift_spectrum(
@@ -116,15 +139,12 @@ def doppler_corrected_power(
         Normalized power at each SFT of every detector, concatenated, the full band
         wide.
     """
-    direction = sky_direction(alpha, delta)
+    alpha, delta = jnp.reshape(alpha, (1,)), jnp.reshape(delta, (1,))
     planes = []
     for detector_time_series, detector_floor, detector_velocity in zip(
         sft_time_series, floor, velocity_per_detector, strict=True
     ):
-        # full float32, not a GPU's TF32
-        v_dot_n = jnp.matmul(
-            detector_velocity, direction, precision=jax.lax.Precision.HIGHEST
-        )
+        v_dot_n = line_of_sight_velocity(detector_velocity, alpha=alpha, delta=delta)[0]
         shift = doppler_reference * v_dot_n * tsft
         corrected = shift_spectrum(detector_time_series, shift=shift)
         planes.append(2.0 * jnp.abs(corrected) ** 2 / detector_floor)
@@ -164,16 +184,14 @@ def doppler_corrected_mean_power(
         `expected`, a row per SFT, the detectors concatenated, and a column per bin,
         `n_bins` of them from `start_idx`.
     """
-    direction = sky_direction(alpha, delta)
+    alpha, delta = jnp.reshape(alpha, (1,)), jnp.reshape(delta, (1,))
     planes = []
     for detector_mean_power, detector_velocity in zip(
         mean_power, velocity_per_detector, strict=True
     ):
         band_bin_idxs = jnp.arange(detector_mean_power.shape[0])
         bin_idxs = start_idx + jnp.arange(n_bins)
-        v_dot_n = jnp.matmul(
-            detector_velocity, direction, precision=jax.lax.Precision.HIGHEST
-        )
+        v_dot_n = line_of_sight_velocity(detector_velocity, alpha=alpha, delta=delta)[0]
         shift = doppler_reference * v_dot_n * tsft
         # fractional bins of the detector-frame spectrum each corrected bin reads
         shifted_bins = bin_idxs[None, :] + shift[:, None]

@@ -4,6 +4,7 @@ import pytest
 
 from jpec.detector.doppler import (
     doppler_corrected_power,
+    line_of_sight_velocity,
     shift_spectrum,
     sky_direction,
 )
@@ -58,14 +59,34 @@ def velocity(data):
 
 def test_sky_direction_is_a_unit_vector_in_the_equatorial_frame():
     """Right ascension runs around the equator from x, declination up to the pole."""
-    np.testing.assert_allclose(sky_direction(0.0, 0.0), [1.0, 0.0, 0.0], atol=1e-15)
-    np.testing.assert_allclose(
-        sky_direction(0.5 * np.pi, 0.0), [0.0, 1.0, 0.0], atol=1e-15
+    directions = sky_direction(
+        jnp.array([0.0, 0.5 * np.pi, ALPHA, ALPHA]),
+        jnp.array([0.0, 0.0, 0.5 * np.pi, DELTA]),
     )
     np.testing.assert_allclose(
-        sky_direction(ALPHA, 0.5 * np.pi), [0.0, 0.0, 1.0], atol=1e-15
+        directions[:, :3].T,
+        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        atol=1e-15,
     )
-    assert float(jnp.linalg.norm(sky_direction(ALPHA, DELTA))) == pytest.approx(1.0)
+    assert float(jnp.linalg.norm(directions[:, 3])) == pytest.approx(1.0)
+
+
+def test_line_of_sight_velocity_is_v_dot_n_per_sky_point(velocity):
+    """A row per sky point, one sky position alone a single row."""
+    alpha, delta = np.array([ALPHA, 0.3]), np.array([DELTA, -1.1])
+    directions = np.stack(
+        [np.cos(delta) * np.cos(alpha), np.cos(delta) * np.sin(alpha), np.sin(delta)]
+    )
+    projected = line_of_sight_velocity(
+        jnp.asarray(velocity), alpha=jnp.asarray(alpha), delta=jnp.asarray(delta)
+    )
+    np.testing.assert_allclose(projected, (velocity @ directions).T, rtol=1e-12)
+    alone = line_of_sight_velocity(
+        jnp.asarray(velocity),
+        alpha=jnp.asarray(alpha[:1]),
+        delta=jnp.asarray(delta[:1]),
+    )
+    np.testing.assert_allclose(alone, projected[:1], rtol=1e-12)
 
 
 def test_correction_is_the_projected_shift(data, velocity):

@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 from jaxtyping import Array, Complex
 
-from jpec.detector.doppler import sky_direction, solar_roemer_delay
+from jpec.detector.doppler import line_of_sight_velocity, solar_roemer_delay
 from jpec.detector.sft import SFTData
 from jpec.params import Parameters
 from jpec.typing import Scalar
@@ -59,11 +59,16 @@ def simulated_signal_sft_data(
     parameters, orientation = injection
     f0 = float(parameters.f0)
     alpha, delta = float(parameters.alpha), float(parameters.delta)
-    delay = solar_roemer_delay(jnp.asarray(sft.position), alpha=alpha, delta=delta)
+    sky_alpha, sky_delta = jnp.array([alpha]), jnp.array([delta])
+    delay = solar_roemer_delay(
+        jnp.asarray(sft.position), alpha=sky_alpha, delta=sky_delta
+    )[0]
     # SFT midpoints from t_ref in barycenter time, which the orbit runs in
     barycenter_times = jnp.asarray(sft.timestamps_midpoints - t_ref) + delay
 
-    doppler = jnp.asarray(sft.velocity) @ sky_direction(alpha, delta)
+    doppler = line_of_sight_velocity(
+        jnp.asarray(sft.velocity), alpha=sky_alpha, delta=sky_delta
+    )[0]
     offset = frequency_offset(
         barycenter_times,
         modulation_depth=float(parameters.modulation_depth),

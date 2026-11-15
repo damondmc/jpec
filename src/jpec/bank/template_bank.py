@@ -299,7 +299,10 @@ class TemplateBank(NamedTuple):
             @ sky_eigenvectors
         )
         source_x = (
-            np.asarray(sky_direction(point.alpha, point.delta)) @ sky_eigenvectors
+            np.asarray(
+                sky_direction(jnp.asarray([point.alpha]), jnp.asarray([point.delta]))
+            ).T
+            @ sky_eigenvectors
         )
         sky_mismatch = ((lattice_x - source_x) ** 2 * curvature).sum(axis=1)
         nearest_sky_idxs = np.argsort(sky_mismatch)[:n_sky_neighbours]

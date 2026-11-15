@@ -9,6 +9,7 @@ length-one array.
 """
 
 # Axis names used in shape annotations, so a shape reads as what it indexes:
+#   n_sky       sky points; one sky position alone is a length-one array
 #   n_sft       SFTs, the time axis of a plane or of the data's harmonics
 #   n_time      arbitrary sample times, as a track function takes them
 #   n_freq      frequency bins

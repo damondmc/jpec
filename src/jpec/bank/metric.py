@@ -6,7 +6,7 @@ import numpy as np
 from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, Float
 
-from jpec.detector.doppler import sky_direction, solar_roemer_delay
+from jpec.detector.doppler import line_of_sight_velocity, solar_roemer_delay
 from jpec.detector.site import Observation
 from jpec.params import Parameters
 from jpec.waveform.track import observed_frequency
@@ -79,14 +79,15 @@ def physical_metric(
 
     def track(vector: Float[Array, " 6"]) -> Float[Array, " n_sft"]:
         p = unravel(vector)
-        delay = solar_roemer_delay(position, alpha=p.alpha, delta=p.delta)
+        alpha, delta = p.alpha[None], p.delta[None]
+        delay = solar_roemer_delay(position, alpha=alpha, delta=delta)[0]
         return observed_frequency(
             times + delay,
             f0=p.f0,
             ap=p.ap,
             omega=p.omega,
             phi_b=p.phi_b,
-            doppler=velocity @ sky_direction(p.alpha, p.delta),
+            doppler=line_of_sight_velocity(velocity, alpha=alpha, delta=delta)[0],
         )
 
     jacobian = jax.jacfwd(track)(flat) * observation.tsft
