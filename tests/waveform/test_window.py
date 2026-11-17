@@ -98,6 +98,22 @@ def test_every_window_peaks_at_one():
         assert float(window.power(jnp.array([0.0]))[0]) == pytest.approx(1.0)
 
 
+@pytest.mark.parametrize(
+    "window",
+    [
+        Window(kind="rectangular"),
+        Window(kind="tukey", beta=0.001),
+        Window(kind="tukey", beta=0.5),
+        Window(kind="tukey", beta=0.75),
+        Window(kind="hann"),
+    ],
+)
+def test_centre_amplitude_is_mean_over_rms_of_the_samples(window):
+    samples = np.asarray(window.samples(1 << 16))
+    expected = samples.mean() / np.sqrt(np.mean(samples**2))
+    assert window.centre_amplitude() == pytest.approx(expected, rel=1e-4)
+
+
 def test_unknown_window_is_rejected():
     with pytest.raises(ValueError, match="window must be"):
         Window(kind="blackman")

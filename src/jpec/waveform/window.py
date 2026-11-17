@@ -153,6 +153,27 @@ class Window:
         beta = 1.0 if self.kind == "hann" else self.beta
         return tukey_spectrum(offset, beta=beta) / (1.0 - 0.5 * beta)
 
+    def centre_amplitude(self) -> float:
+        """Amplitude a unit sinusoid on a bin's centre gets in a noise-normalized SFT.
+
+        The SFTs are normalized to the same noise power for any window, as
+        lalpulsar's MakeSFTs and gaussian_noise_sft() make them, so, against the
+        rectangular window:
+
+            centre_amplitude = mean(w) / sqrt(mean(w^2))
+
+        with, for a Tukey window, `mean(w) = 1 - beta/2` and
+        `mean(w^2) = 1 - 5 beta/8`.
+
+        Returns:
+            The amplitude: 1 for the rectangular window, 0.905 for Tukey 0.5,
+            0.816 for Hann.
+        """
+        if self.kind == "rectangular":
+            return 1.0
+        beta = 1.0 if self.kind == "hann" else self.beta
+        return (1.0 - 0.5 * beta) / (1.0 - 0.625 * beta) ** 0.5
+
     def power(self, offset: Float[Array, "..."]) -> Float[Array, "..."]:
         """Power a bin receives from a sinusoid `offset` bins from its centre.
 
