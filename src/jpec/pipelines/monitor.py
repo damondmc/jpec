@@ -334,8 +334,7 @@ class RunLogger:
             seed: Seed of the drawn sources.
         """
         trials_config = setup.trials
-        curve_config = setup.recovery_curve
-        h_label = f"h{100.0 * curve_config.efficiency:.0f}"
+        h_label = f"h{100.0 * setup.efficiency:.0f}"
         self.info(f"Injection run from {setup_path}, seed {seed}")
         self.data_summary(search_data)
         self.info(f"Sources: {trials_config.n_injections}")
@@ -348,13 +347,8 @@ class RunLogger:
         self.info(f"Thresholds: S {thresholds}, one depth each")
         self.search_loop_summary(setup.search_loop)
         self.info(
-            f"First scan: sensitivity depth {curve_config.sensitivity_depth[0]} to "
-            f"{curve_config.sensitivity_depth[1]} at "
-            f"{curve_config.n_amplitudes} h0 values, "
-            f"then up to {curve_config.n_refinements} per threshold "
-            f"at its fitted {h_label}"
+            f"Amplitudes: one h0 per source, sensitivity depth "
+            f"{trials_config.sensitivity_depth[0]} to "
+            f"{trials_config.sensitivity_depth[1]}, uniform in log"
         )
-        self.info(
-            f"Fit: {h_label} at {curve_config.efficiency:.0%} recovery to "
-            f"{curve_config.tolerance:.0%}"
-        )
+        self.info(f"Fit: {h_label} at {setup.efficiency:.0%} recovery")

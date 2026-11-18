@@ -204,12 +204,14 @@ class SearchJobConfig(BaseModel):
 
 
 class InjectionTrialConfig(BaseModel):
-    """Trials of an injection run: how many sources, searched how far around each."""
+    """Trials of an injection run: how many sources, how loud, how far around each."""
 
     model_config = ConfigDict(extra="forbid")
 
-    # sources drawn once and reused at every amplitude
+    # sources drawn, each injected at one amplitude
     n_injections: int = Field(default=200, ge=1)
+    # sqrt(Sn) / h0 range each source's amplitude is drawn over, uniform in log
+    sensitivity_depth: tuple[float, float] = (15.0, 45.0)
     # lattice steps each side of the source, per orbital axis
     n_steps: int = Field(default=2, ge=1)
     # sky lattice points searched around it, nearest in mismatch
@@ -232,29 +234,8 @@ class InjectionTrialConfig(BaseModel):
         return self
 
 
-class RecoveryCurveConfig(BaseModel):
-    """The sigmoid of the recovered fraction against amplitude.
-
-    Where it is sampled, and when the amplitude fitted at the efficiency is good enough.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    # sqrt(Sn) / h0 range the first scan spans
-    sensitivity_depth: tuple[float, float] = (15.0, 45.0)
-    # h0 points of the first scan, evenly spaced in log over that range
-    n_amplitudes: int = Field(default=4, ge=2)
-    # the recovered fraction the quoted amplitude h0_ul is read at
-    efficiency: float = Field(default=0.95, gt=0.0, lt=1.0)
-    # standard error of the fitted amplitude, relative to it, that ends the refinement
-    tolerance: float = Field(default=0.05, gt=0.0)
-    # h0 points each threshold may add, one at a time, before its fit meets the
-    # tolerance
-    n_refinements: int = Field(default=4, ge=0)
-
-
 class InjectionConfig(BaseModel):
-    """An injection run: box, banks, trials, recovery curve, and what counts as found.
+    """An injection run: box, banks, trials, and what counts as found.
 
     The box is the one the sources are drawn from and searched over.
     """
@@ -264,9 +245,10 @@ class InjectionConfig(BaseModel):
     parameter_space: ParameterSpaceConfig
     template_bank: TemplateBankConfig = Field(default_factory=TemplateBankConfig)
     trials: InjectionTrialConfig = Field(default_factory=InjectionTrialConfig)
-    recovery_curve: RecoveryCurveConfig = Field(default_factory=RecoveryCurveConfig)
     search_loop: SearchLoopConfig = Field(default_factory=SearchLoopConfig)
     thresholds: list[float] = Field(min_length=1)  # thresholds on the statistic S
+    # the recovered fraction the quoted amplitude h0_ul is read at
+    efficiency: float = Field(default=0.95, gt=0.0, lt=1.0)
     sft_glob: str  # glob of the SFT files, as the run will find them
 
 
@@ -462,11 +444,10 @@ class InjectionSetup(BaseModel):
         files: The files holding the band, at least one per detector.
         parameter_space: The box the sources are drawn from and searched over.
         tiling: LatticeTiling.to_dict() of the lattice.
-        trials: How many sources, searched how far around each.
-        recovery_curve: Where the recovered fraction is sampled, and when its fit is
-            good enough.
+        trials: How many sources, how loud, searched how far around each.
         search_loop: How the search loop batches its work.
         thresholds: Thresholds on the statistic `S`, one sensitivity depth each.
+        efficiency: The recovered fraction the quoted amplitude is read at.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -479,9 +460,9 @@ class InjectionSetup(BaseModel):
     parameter_space: ParameterSpaceConfig
     tiling: dict[str, Any]
     trials: InjectionTrialConfig
-    recovery_curve: RecoveryCurveConfig
     search_loop: SearchLoopConfig
     thresholds: list[float]
+    efficiency: float
 
 
 def read_config(path: str, model: type[ConfigT]) -> ConfigT:

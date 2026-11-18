@@ -78,9 +78,9 @@ def run(args: argparse.Namespace) -> None:
         parameter_space=box_config,
         tiling=tiling.to_dict(),
         trials=config.trials,
-        recovery_curve=config.recovery_curve,
         search_loop=config.search_loop,
         thresholds=config.thresholds,
+        efficiency=config.efficiency,
     )
     run_logger.save_setup(output.stem, setup)
 
