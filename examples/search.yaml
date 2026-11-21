@@ -26,7 +26,7 @@ search_loop:
   n_sub_bin_offsets: 8          # template offsets across one bin; an f0 point takes the nearest
   harmonic_fraction: 0.6        # share of each depth's harmonic_count matched; 0.6 loses 1e-3
                                 # of a matched signal's S
-  phase_mismatch: 0.01          # largest mismatch the orbital phase grid leaves
+  phase_mismatch: 0.04          # largest mismatch the orbital phase grid leaves
   doppler_mismatch: 0.001       # largest mismatch an f0 point's offset from its Doppler
                                 # reference leaves
 

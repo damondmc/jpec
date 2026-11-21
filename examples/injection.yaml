@@ -11,7 +11,7 @@ template_bank:
   mismatch: 0.4                 # the search's; jpec injection-setup --mismatch sets another
 
 trials:
-  n_injections: 500             # sources drawn once and reused at every amplitude
+  n_injections: 500             # sources drawn, each injected at one amplitude
   n_steps: 2                    # lattice steps each side of the injection, per orbital axis
   n_sky_neighbours: 10          # sky lattice points searched around it
   cos_iota: [-1.0, 1.0]         # inclination the sources are drawn over, isotropic

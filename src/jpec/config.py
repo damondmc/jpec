@@ -117,7 +117,7 @@ class SearchLoopConfig(BaseModel):
     # share of each modulation depth's harmonics matched
     harmonic_fraction: float = Field(default=1.0, gt=0.0, le=1.0)
     # largest mismatch the orbital phase grid may leave
-    phase_mismatch: float = Field(default=0.01, gt=0.0, lt=1.0)
+    phase_mismatch: float = Field(default=0.04, gt=0.0, lt=1.0)
     # largest mismatch an f0 point's offset from its Doppler reference may leave
     doppler_mismatch: float = Field(default=1e-3, gt=0.0, lt=1.0)
     # modulation depths whose templates are built at once
@@ -209,7 +209,7 @@ class InjectionTrialConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # sources drawn, each injected at one amplitude
-    n_injections: int = Field(default=200, ge=1)
+    n_injections: int = Field(default=500, ge=1)
     # sqrt(Sn) / h0 range each source's amplitude is drawn over, uniform in log
     sensitivity_depth: tuple[float, float] = (15.0, 45.0)
     # lattice steps each side of the source, per orbital axis
