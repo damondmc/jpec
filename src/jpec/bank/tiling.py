@@ -1,79 +1,65 @@
-"""Lattice tiling of a box, its steps taken from the metric at the top of the box."""
+"""Lattice tiling of a box, its curvatures from the metric at the top of the box."""
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
-import jax.numpy as jnp
 import numpy as np
 from jaxtyping import Float
 
-from jpec.bank.lattice import (
-    BCC_SUBGRID_OFFSETS,
-    ApBlock,
-    OrbitalSubgrid,
-    cubic_step,
-    orbital_subgrid,
-    sky_lattice,
-)
-from jpec.bank.metric import (
-    freq_bin_curvature,
-    orbital_lattice_metric,
-    physical_metric,
-    project_out,
-)
-from jpec.constant import N_CURVATURE_POSITIONS
+from jpec.bank.metric import orbital_metric, physical_metric, project_out
 from jpec.detector.site import Observation
 from jpec.params import Parameters, Prior
-from jpec.waveform.window import Window
+from jpec.waveform.window import Window, freq_bin_curvature
 
-# (alpha, delta) [rad]: reference sky position for the orbital metric computation
-# 1 + v.n_hat  moves it by under 2e-4 over the sk only so taken at one position
+# reference sky position (alpha, delta) [rad] the orbital metric is taken at
 METRIC_SKY_POSITION = (1.2, 0.3)
 # f0, modulation depth, omega^2 and two sky coordinates share the mismatch
 N_AXES = 5
 
 
+class ApBlock(NamedTuple):
+    """One ap range of the box and the omega^2 curvature it is tiled with.
+
+    Attributes:
+        ap_low: Low edge of the ap block [light-seconds].
+        ap_high: High edge [light-seconds], the ap its curvature is taken at.
+        g_ww: The omega^2 curvature at `ap_high` and the box's top f0 [s^4/rad^4].
+    """
+
+    ap_low: float
+    ap_high: float
+    g_ww: float
+
+
 @dataclass(frozen=True)
 class LatticeTiling:
-    """The bank's five axes: a bcc lattice on the orbit and a hexagonal one on the sky.
+    """The bank's five axes, one A5* lattice under the metric.
 
     Attributes:
         prior: The region searched; its `phi_b` interval is not used.
-        mismatch: Mismatch budget over every axis.
+        mismatch: Covering mismatch over every axis together.
         tsft: SFT length [s].
-        ap_blocks: One per ap block, in order, all from the metric at the top of the
-            box.
+        g_f0f0: The f0 curvature at the box's top [1/Hz^2].
+        g_dd: The modulation-depth curvature at the box's top [1/Hz^2].
+        ap_blocks: One per ap block, in order.
     """
 
     prior: Prior
     mismatch: float
     tsft: float
+    g_f0f0: float
+    g_dd: float
     ap_blocks: list[ApBlock]
 
     @property
     def f0_reference(self) -> float:
-        """Frequency the omega^2 steps were taken at, the top of the box [Hz]."""
+        """Frequency the curvatures were taken at, the top of the box [Hz]."""
         return self.prior.f0[1]
 
     @property
     def mismatch_per_axis(self) -> float:
-        """Mismatch one axis is gridded at."""
+        """The mismatch over the axes, at which a cubic step is taken."""
         return self.mismatch / N_AXES
-
-    @property
-    def g_f0f0(self) -> float:
-        """The f0 curvature at the box's top, which sets the f0 grid and sky lattice."""
-        return self.ap_blocks[-1].g_f0f0
-
-    @property
-    def f0_step(self) -> float:
-        """Cubic f0 step at the top of the box [Hz]."""
-        return float(cubic_step(jnp.asarray(self.g_f0f0), self.mismatch_per_axis))
-
-    @property
-    def modulation_depth_step(self) -> float:
-        """Cubic modulation-depth step at the top of the box [bins]."""
-        return self.ap_blocks[-1].modulation_depth_step
 
     @classmethod
     def from_metric(
@@ -90,15 +76,14 @@ class LatticeTiling:
         Args:
             prior: The region searched.
             observation: The run's SFT length, midpoints and detector motion.
-            mismatch: Mismatch budget over every axis.
+            mismatch: Covering mismatch over every axis together.
             n_ap_blocks: Number of ap blocks the box is cut into.
             window: The window the SFTs were made with.
 
         Returns:
-            The lattice, its steps measured.
+            The lattice, its curvatures measured.
         """
-        mismatch_per_axis = mismatch / N_AXES
-        g_freq_bin = freq_bin_curvature(window, n_positions=N_CURVATURE_POSITIONS)
+        g_freq_bin = freq_bin_curvature(window)
         top = Parameters(
             f0=prior.f0[1],
             ap=prior.ap[1],
@@ -108,100 +93,96 @@ class LatticeTiling:
             delta=METRIC_SKY_POSITION[1],
         )
 
-        tsft = observation.tsft
         metric = project_out(physical_metric(top, observation, g_freq_bin=g_freq_bin))
-        orbital_metric = orbital_lattice_metric(metric, top, tsft=tsft)
-        orbital_steps = np.asarray(
-            cubic_step(jnp.diag(orbital_metric), mismatch_per_axis)
-        )
+        g_f0f0, g_dd, g_ww = np.diag(orbital_metric(metric, top))
 
-        # ap enters the track only through the modulation depth, so the omega^2 step
-        # goes exactly as 1 / ap and the other steps do not change with it
+        # ap enters the track only through the modulation depth, so the omega^2
+        # curvature goes exactly as ap^2 and the others do not change with it
         edges = np.linspace(*prior.ap, n_ap_blocks + 1)
         ap_blocks = [
             ApBlock(
                 ap_low=float(low),
                 ap_high=float(high),
-                modulation_depth_step=float(orbital_steps[1]),
-                omega2_step=float(orbital_steps[2]) * prior.ap[1] / float(high),
-                g_f0f0=float(metric[0, 0]),
+                g_ww=float(g_ww) * (float(high) / prior.ap[1]) ** 2,
             )
             for low, high in zip(edges[:-1], edges[1:])
         ]
-        return cls(prior=prior, mismatch=mismatch, tsft=tsft, ap_blocks=ap_blocks)
+        return cls(
+            prior=prior,
+            mismatch=mismatch,
+            tsft=observation.tsft,
+            g_f0f0=float(g_f0f0),
+            g_dd=float(g_dd),
+            ap_blocks=ap_blocks,
+        )
 
-    def orbital_subgrids(self, f0_low: float, f0_high: float) -> list[OrbitalSubgrid]:
-        """Every subgrid of the orbital lattice over an f0 band.
+    def lattice_metric(
+        self,
+        velocity: Float[np.ndarray, "n_sft 3"],
+        *,
+        f0: float,
+        sky_eigenvectors: Float[np.ndarray, "3 3"],
+    ) -> Float[np.ndarray, "n_ap_block 5 5"]:
+        """The 5x5 metric on `(f0, modulation_depth, omega^2, x_a, x_b)` per ap block.
 
-        In the order of `BCC_SUBGRID_OFFSETS`.
+                     f0      depth   omega^2   x_a     x_b
+            f0     [ g_00    .       .         g_0a    g_0b ]
+            depth  [ .       g_dd    .         .       .    ]
+            omega^2[ .       .       g_ww      .       .    ]
+            x_a    [ g_0a    .       .         g_aa    g_ab ]
+            x_b    [ g_0b    .       .         g_ab    g_bb ]
 
-        Args:
-            f0_low: Low edge of the band [Hz].
-            f0_high: High edge [Hz].
+        `x_a`, `x_b` are direction cosines along the sky metric's two largest
+        eigenvectors `e_a`, `e_b`, and f0 and the sky follow the track
+        `f0 (1 + v . n)`, with `<.>` the mean over every SFT:
 
-        Returns:
-            One orbital_subgrid() per offset.
-        """
-        return [
-            orbital_subgrid(
-                f0_low,
-                f0_high,
-                ap_low=self.prior.ap[0],
-                ap_high=self.prior.ap[1],
-                period_low=self.prior.period[0],
-                period_high=self.prior.period[1],
-                f0_step=self.f0_step,
-                modulation_depth_step=self.modulation_depth_step,
-                ap_blocks=self.ap_blocks,
-                f0_reference=self.f0_reference,
-                tsft=self.tsft,
-                offset=offset,
-            )
-            for offset in BCC_SUBGRID_OFFSETS
-        ]
+            g_00 = g_f0f0,  g_0a = g_f0f0 f0 <v . e_a>,
+            g_ab = g_f0f0 f0^2 <(v . e_a)(v . e_b)>
 
-    def sky_points(
-        self, velocity: Float[np.ndarray, "n_sft 3"], *, f0: float
-    ) -> tuple[Float[np.ndarray, " n_sky"], Float[np.ndarray, " n_sky"]]:
-        """The sky lattice at one frequency, on the same mismatch per axis.
+        and `g_ww` each ap block's, scaled by `(f0 / f0_reference)^2`.
 
         Args:
             velocity: Detector velocity `v/c` at each SFT, every detector.
-            f0: Frequency the lattice is for [Hz].
+            f0: Frequency the metric is for [Hz].
+            sky_eigenvectors: sky_metric()'s eigenvectors as columns, largest first.
 
         Returns:
-            Right ascension and declination of each position [rad].
+            The metric of each ap block.
         """
-        alpha_low, alpha_high = self.prior.alpha
-        delta_low, delta_high = self.prior.delta
-        if alpha_low == alpha_high and delta_low == delta_high:
-            return np.array([alpha_low]), np.array([delta_low])
-        return sky_lattice(
-            velocity,
-            f0=f0,
-            g_f0f0=self.g_f0f0,
-            mismatch=self.mismatch_per_axis,
-            box=(*self.prior.alpha, *self.prior.delta),
-        )
+        # v . e_a and v . e_b at each SFT
+        sky_velocity = np.asarray(velocity) @ sky_eigenvectors[:, :2]
+        g_f0_sky = self.g_f0f0 * f0 * sky_velocity.mean(axis=0)
+        # <(v . e_i)(v . e_j)>, the mean over SFTs
+        sky_second_moment = sky_velocity.T @ sky_velocity / len(sky_velocity)
+        g_sky = self.g_f0f0 * f0**2 * sky_second_moment
+        g_ww = np.array([ap_block.g_ww for ap_block in self.ap_blocks])
+        g_ww = g_ww * (f0 / self.f0_reference) ** 2
+
+        metric = np.zeros((len(self.ap_blocks), N_AXES, N_AXES))
+        metric[:, 0, 0] = self.g_f0f0
+        metric[:, 1, 1] = self.g_dd
+        metric[:, 2, 2] = g_ww
+        metric[:, 0, 3:] = g_f0_sky
+        metric[:, 3:, 0] = g_f0_sky
+        metric[:, 3:, 3:] = g_sky
+        return metric
 
     def to_dict(self) -> dict[str, Any]:
-        """The lattice as a record, with its derived steps written out for a reader.
+        """The lattice as a record.
 
         Returns:
             The record, the prior field by field in its own units, the period in
                 seconds.
         """
         return {
-            "lattice": "bcc",
+            "lattice": "a5_star",
             "prior": {
                 name: list(interval) for name, interval in self.prior._asdict().items()
             },
             "mismatch": self.mismatch,
             "tsft": self.tsft,
-            "f0_reference": self.f0_reference,
-            "f0_step": self.f0_step,
-            "modulation_depth_step": self.modulation_depth_step,
             "g_f0f0": self.g_f0f0,
+            "g_dd": self.g_dd,
             "ap_blocks": [ap_block._asdict() for ap_block in self.ap_blocks],
         }
 
@@ -213,11 +194,11 @@ class LatticeTiling:
             record: What to_dict() wrote.
 
         Returns:
-            The lattice; its derived steps are recomputed, not read.
+            The lattice.
         """
-        if record.get("lattice") != "bcc" or "prior" not in record:
+        if record.get("lattice") != "a5_star":
             raise ValueError(
-                "the record is not a bcc lattice this class wrote; "
+                "the record is not an a5_star lattice; "
                 "rerun jpec search-setup"
             )
         prior = Prior(
@@ -227,5 +208,7 @@ class LatticeTiling:
             prior=prior,
             mismatch=record["mismatch"],
             tsft=record["tsft"],
+            g_f0f0=record["g_f0f0"],
+            g_dd=record["g_dd"],
             ap_blocks=[ApBlock(**ap_block) for ap_block in record["ap_blocks"]],
         )
