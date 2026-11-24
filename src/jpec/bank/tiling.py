@@ -175,7 +175,7 @@ class LatticeTiling:
                 seconds.
         """
         return {
-            "lattice": "a5_star",
+            "lattice": "a5star",
             "prior": {
                 name: list(interval) for name, interval in self.prior._asdict().items()
             },
@@ -196,9 +196,9 @@ class LatticeTiling:
         Returns:
             The lattice.
         """
-        if record.get("lattice") != "a5_star":
+        if record.get("lattice") != "a5star":
             raise ValueError(
-                "the record is not an a5_star lattice; "
+                "the record is not an a5star lattice; "
                 "rerun jpec search-setup"
             )
         prior = Prior(
