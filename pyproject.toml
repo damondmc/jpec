@@ -15,7 +15,7 @@ dependencies = [
     "numpy>=1.26",
     "jax>=0.10.1",
     "jaxtyping>=0.3.10",
-    "lalsuite>=7.26",
+    "lalsuite==8.0.2",
     "solar-system-ephemerides>=1.2.0",
     "pyyaml>=6.0",
     "scipy>=1.17.1",
