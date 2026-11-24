@@ -337,7 +337,7 @@ class SFTMetadata(BaseModel):
                     for file in band.files
                 ]
         raise SystemExit(
-            f"{freq_low:.4f} to {freq_high:.4f} Hz is not inside one checked band of "
+            f"[{freq_low:.4f}, {freq_high:.4f}] Hz is not in one checked band of "
             f"{self.sft_glob}"
         )
 

@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from signals import Case, search_template_harmonics
 
-from jpec.constant import ARC_PAD_BINS, THETA_OVERSAMPLE
+from jpec.constant import ARC_PAD_BINS
 from jpec.waveform.harmonics import (
     harmonic_count,
     phase_count,
@@ -25,7 +25,7 @@ def test_harmonic_count_is_at_least_one():
 
 @pytest.mark.parametrize("j_max", [1, 7, 28, 91, 351])
 def test_theta_samples_is_a_power_of_two_above_nyquist(j_max):
-    n = theta_sample_count(j_max, oversample=THETA_OVERSAMPLE)
+    n = theta_sample_count(j_max)
     assert n > 2 * j_max
     assert n & (n - 1) == 0
 
@@ -40,7 +40,7 @@ def test_phase_count_holds_the_phase_mismatch(modulation_depth_bins, phase_misma
     tau = template_harmonics(
         arc_bin_offsets(modulation_depth_bins, pad_bins=ARC_PAD_BINS),
         modulation_depth_bins=modulation_depth_bins,
-        n_theta=theta_sample_count(j_max, oversample=THETA_OVERSAMPLE),
+        n_theta=theta_sample_count(j_max),
         j_max=j_max,
         window=window,
     )[:n_harmonics]

@@ -65,25 +65,23 @@ def omega_from_period(period: Float[Array, "..."]) -> Float[Array, "..."]:
     return 2.0 * jnp.pi / period
 
 
-def ap_from_modulation_depth_bins(
-    modulation_depth_bins: float | Float[np.ndarray, "..."],
+def ap_from_modulation_depth(
+    modulation_depth: float | Float[np.ndarray, "..."],
     *,
     f0: float | Float[np.ndarray, "..."],
     omega: float | Float[np.ndarray, "..."],
-    tsft: float,
 ) -> float | Float[np.ndarray, "..."]:
-    """The projected semi-major axis a modulation depth in bins implies [light-seconds].
+    """The projected semi-major axis a modulation depth implies [light-seconds].
 
     Args:
-        modulation_depth_bins: Half-width of the frequency arc [bins].
+        modulation_depth: Half-width of the frequency arc [Hz].
         f0: Signal frequency [Hz].
         omega: Orbital angular frequency [rad/s].
-        tsft: SFT length [s].
 
     Returns:
         `ap`, elementwise over whatever shapes broadcast.
     """
-    return modulation_depth_bins / (f0 * omega * tsft)
+    return modulation_depth / (f0 * omega)
 
 
 class Prior(NamedTuple):
