@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from signals import CASES
 
-from jpec.constant import ARC_PAD_BINS, THETA_OVERSAMPLE
+from jpec.constant import ARC_PAD_BINS
 from jpec.stat.matched_filter import (
     data_harmonics,
     harmonic_overlap,
@@ -34,7 +34,7 @@ def background():
     case = CASES[0]
     parameters = case.parameters
     j_max = harmonic_count(case.modulation_depth_bins)
-    n_phi = theta_sample_count(j_max, oversample=THETA_OVERSAMPLE)
+    n_phi = theta_sample_count(j_max)
     offsets = arc_bin_offsets(case.modulation_depth_bins, pad_bins=ARC_PAD_BINS)
     case_template_harmonics = template_harmonics(
         offsets,
