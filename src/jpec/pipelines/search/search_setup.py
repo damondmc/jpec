@@ -157,18 +157,28 @@ def search_memory_gb(
     )
     # transforming: the stack twice, and a full run of periods
     transform_bytes = 2 * stack_bytes + layout.period_batch_size * per_period_bytes
-    # building the template table: about three unplaced tables in flight
-    unplaced_template_bytes = (
+    # one template per (subbin offset, depth class, depth)
+    n_templates = (
         layout.subbin_offsets.size
         * layout.bank.depth_shift_fractions.size
         * layout.bank.modulation_depth.size
+    )
+    # the loop's placed template harmonics and their norms
+    template_bytes = (
+        (layout.n_pad + 1)
+        * n_templates
         * layout.j_max
-        * layout.bin_offsets.shape[0]
+        * n_padded_window_bins
         * COMPLEX64_BYTES
+        + n_templates * layout.j_max * FLOAT32_BYTES
+    )
+    # building the template table: about three unplaced tables in flight
+    unplaced_template_bytes = (
+        n_templates * layout.j_max * layout.bin_offsets.shape[0] * COMPLEX64_BYTES
     )
     return (
         loaded_bytes
-        + layout.template_harmonics_bytes
+        + template_bytes
         + orbital_phase_bytes
         + max(3 * unplaced_template_bytes, doppler_correction_bytes, transform_bytes)
     ) / GB

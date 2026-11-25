@@ -88,24 +88,6 @@ class BankLayout(NamedTuple):
     n_batch_depths: int
     n_phi: int
 
-    @property
-    def template_harmonics_bytes(self) -> int:
-        """Number of device bytes the loop's template harmonics take on this layout."""
-        n_templates = (
-            self.subbin_offsets.size
-            * self.bank.depth_shift_fractions.size
-            * self.bank.modulation_depth.size
-        )
-        placed_bytes = (
-            (self.n_pad + 1)
-            * n_templates
-            * self.j_max
-            * (self.bin_offsets.shape[0] + self.n_pad)
-            * np.dtype(np.complex64).itemsize
-        )
-        norms_bytes = n_templates * self.j_max * np.dtype(np.float32).itemsize
-        return placed_bytes + norms_bytes
-
     def sky_batches(self, sky_batch_size: int) -> list[Int[np.ndarray, " n_sky"]]:
         """The bank's sky points in batches, each of one omega^2 class.
 
