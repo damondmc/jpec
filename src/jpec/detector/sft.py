@@ -89,7 +89,7 @@ class SFTData:
             strain_unit=self.strain_unit * strain_unit,
         )
 
-    def sub_band(self, bin_idxs: slice) -> "SFTData":
+    def subband(self, bin_idxs: slice) -> "SFTData":
         """These SFTs over a narrower band.
 
         Args:

@@ -107,7 +107,7 @@ class SearchData:
         ]
         return cls(sfts, floor=floor, t_ref=data_setup.t_ref)
 
-    def sub_band(self, freq_low: float, freq_high: float) -> "SearchData":
+    def subband(self, freq_low: float, freq_high: float) -> "SearchData":
         """A narrower band of this one, its SFTs and floor cut together.
 
         Args:
@@ -126,7 +126,7 @@ class SearchData:
                 f"{self.freq_low + self.n_band_bins / self.tsft:.5f}] Hz"
             )
         bin_idxs = slice(start_idx, stop_idx)
-        sfts = [sft.sub_band(bin_idxs) for sft in self.sfts]
+        sfts = [sft.subband(bin_idxs) for sft in self.sfts]
         floor = [floor_per_detector[:, bin_idxs] for floor_per_detector in self.floor]
         return SearchData(sfts, floor=floor, t_ref=self.t_ref)
 

@@ -104,7 +104,7 @@ def measure_sensitivity_depth(
             max_modulation_depth=bank.max_modulation_depth,
             tsft=bank.tsft,
         )
-        band_data = search_data.sub_band(freq_low, freq_high)
+        band_data = search_data.subband(freq_low, freq_high)
         injected_data = SearchData(
             [
                 sft_with_simulated_signal(
