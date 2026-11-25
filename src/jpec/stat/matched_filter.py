@@ -33,9 +33,9 @@ def barycenter_orbital_phase(
 ) -> Float[Array, "n_sky n_period n_sft"]:
     """The orbital phase in barycenter time at each sky point.
 
-        x_n = omega t_n + omega delay_n
+        x_n = omega t_n + omega R_n
 
-    with `omega t_n` the phase in detector time and `delay_n` the sky point's Solar
+    with `omega t_n` the phase in detector time and `R_n` the sky point's Solar
     System Roemer delay at the n-th SFT.
 
     Args:

@@ -1,4 +1,4 @@
-"""Inject a source into Gaussian noise, search for it, and plot the loudest templates.
+"""Inject a source into Gaussian noise, search for it, and plot the top templates.
 
 Usage:
 
@@ -18,9 +18,14 @@ from jpec.config import SearchLoopConfig
 from jpec.constant import DAY
 from jpec.detector.site import Detector, Observation, reference_epoch
 from jpec.engine.candidates import Candidate, Toplist
-from jpec.engine.data import SearchData, band_edges_for_f0
-from jpec.engine.loop import HarmonicBank, top_templates_at_sky_points
-from jpec.injection.signal import Injection, Orientation, simulated_source
+from jpec.engine.data import SearchData, freq_band_edges
+from jpec.engine.loop import BandSearch
+from jpec.injection.signal import (
+    Injection,
+    Orientation,
+    sft_with_simulated_signal,
+    simulated_signal_sft_data,
+)
 from jpec.noise.floor import noise_floor
 from jpec.noise.gaussian import gaussian_noise_series_sft
 from jpec.params import Parameters, Prior
@@ -58,39 +63,26 @@ MISMATCH = 0.4
 FIGURE = Path(__file__).with_name("inject_and_search.png")
 
 
-def loudest_candidates(
-    search_data: SearchData,
-    harmonic_bank: HarmonicBank,
+def top_candidates(
+    band_search: BandSearch,
     search_loop_config: SearchLoopConfig,
     n_toplist: int,
 ) -> list[Candidate]:
     """The toplist of a search over the bank.
 
     Args:
-        search_data: The band searched.
-        harmonic_bank: The bank's template harmonics, laid out on the band.
+        band_search: The bank laid out on the band searched.
         search_loop_config: How the search loop batches its work.
         n_toplist: Templates kept.
 
     Returns:
-        The loudest templates, loudest first.
+        The top templates, highest statistic first.
     """
     toplist = Toplist(n_toplist)
-    n_sky_points = int(harmonic_bank.bank.alpha.size)
-    sky_batch_size = search_loop_config.sky_batch_size
-    for sky_start_idx in range(0, n_sky_points, sky_batch_size):
-        for top in top_templates_at_sky_points(
-            search_data,
-            harmonic_bank,
-            sky_idxs=range(
-                sky_start_idx, min(sky_start_idx + sky_batch_size, n_sky_points)
-            ),
-            f0_batch_size=search_loop_config.f0_batch_size,
-            n_top=n_toplist,
-            # one toplist over every f0 point
-            toplist_f0_edges=np.array([-np.inf, np.inf]),
-        ):
-            toplist.add_top(top, harmonic_bank.bank)
+    layout = band_search.layout
+    for sky_idxs in layout.sky_batches(search_loop_config.sky_batch_size):
+        for top in band_search.search_sky_batch(sky_idxs):
+            toplist.add_top(top, layout.bank)
     return toplist.descending()
 
 
@@ -113,9 +105,20 @@ def main() -> None:
         window=WINDOW,
     )
 
+    # the bank over the box
+    bank = TemplateBank.over_f0_interval(
+        tiling, *PRIOR.f0, velocity=observation.velocity, window=WINDOW
+    )
+    print(f"{bank.n_templates} templates")
+
     # Gaussian noise on the band the search loads, each SFT cut from one continuous
     # series
-    freq_low, freq_high = band_edges_for_f0(PRIOR, *PRIOR.f0, tsft=TSFT)
+    freq_low, freq_high = freq_band_edges(
+        bank.f0[0],
+        bank.f0_high,
+        max_modulation_depth=bank.max_modulation_depth,
+        tsft=TSFT,
+    )
     n_band_bins = round((freq_high - freq_low) * TSFT)
     detector_keys = jax.random.split(jax.random.key(0), len(DETECTORS))
     noise_sfts = [
@@ -147,49 +150,57 @@ def main() -> None:
     injection = Injection(
         parameters=SOURCE, orientation=Orientation(cos_iota=1.0, psi=0.0)
     )
-    source = simulated_source(injection, noise_sfts, t_ref=t_ref)
     h0 = noise_data.sqrt_sn / SENSITIVITY_DEPTH
     signal_data = SearchData(
-        source.injected_sfts(noise_sfts, h0=h0), floor=floor, t_ref=t_ref
+        [
+            sft_with_simulated_signal(
+                sft,
+                np.asarray(simulated_signal_sft_data(sft, injection, t_ref=t_ref)),
+                h0=h0,
+            )
+            for sft in noise_sfts
+        ],
+        floor=floor,
+        t_ref=t_ref,
     )
-
-    # the bank over the box
-    bank = TemplateBank.over_f0_interval(
-        tiling, *PRIOR.f0, velocity=noise_data.velocity, window=WINDOW
-    )
-    harmonic_bank = HarmonicBank(
-        bank,
-        times=noise_data.times,
-        freq_low=noise_data.freq_low,
-        n_band_bins=noise_data.n_band_bins,
-        n_subbin_offsets=search_loop_config.n_subbin_offsets,
-        period_batch_size=search_loop_config.period_batch_size,
-        harmonic_fraction=search_loop_config.harmonic_fraction,
-        phase_mismatch=search_loop_config.phase_mismatch,
-        doppler_mismatch=search_loop_config.doppler_mismatch,
-        modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
-    )
-    print(f"{bank.n_templates} templates")
 
     # every template kept, in noise alone and with the injection
     sigma_s = float(null_sigma(noise_data.n_sfts, power_variance=1.0))
-    noise_candidates = loudest_candidates(
-        noise_data, harmonic_bank, search_loop_config, bank.n_templates
+    # one toplist over every f0 point
+    toplist_f0_edges = np.array([-np.inf, np.inf])
+    noise_candidates = top_candidates(
+        BandSearch(
+            bank,
+            noise_data,
+            search_loop_config,
+            n_top=bank.n_templates,
+            toplist_f0_edges=toplist_f0_edges,
+        ),
+        search_loop_config,
+        bank.n_templates,
     )
-    signal_candidates = loudest_candidates(
-        signal_data, harmonic_bank, search_loop_config, bank.n_templates
+    signal_candidates = top_candidates(
+        BandSearch(
+            bank,
+            signal_data,
+            search_loop_config,
+            n_top=bank.n_templates,
+            toplist_f0_edges=toplist_f0_edges,
+        ),
+        search_loop_config,
+        bank.n_templates,
     )
-    loudest = signal_candidates[0]
+    top = signal_candidates[0]
     print(
-        f"loudest with the injection: S = {loudest.statistic / sigma_s:.1f} sigma_S at "
-        f"f0 {float(loudest.parameters.f0):.5f} Hz, "
-        f"ap {float(loudest.parameters.ap):.2f} ls, "
-        f"P {float(loudest.parameters.period) / DAY:.3f} d; "
+        f"top with the injection: S = {top.statistic / sigma_s:.1f} sigma_S at "
+        f"f0 {float(top.parameters.f0):.5f} Hz, "
+        f"ap {float(top.parameters.ap):.2f} ls, "
+        f"P {float(top.parameters.period) / DAY:.3f} d; "
         f"injected {SOURCE.f0:.5f} Hz, "
         f"{SOURCE.ap:.2f} ls, {SOURCE.period / DAY:.3f} d"
     )
     print(
-        "loudest in noise alone: "
+        "top in noise alone: "
         f"S = {noise_candidates[0].statistic / sigma_s:.1f} sigma_S"
     )
 
@@ -224,16 +235,16 @@ def main() -> None:
     histogram_axes.set_ylabel("probability density")
     histogram_axes.legend()
 
-    # the peak in (f0, P): every template at the loudest's modulation depth
-    loudest_modulation_depth_bins = float(
-        loudest.parameters.modulation_depth_bins(TSFT)
+    # the peak in (f0, P): every template at the top template's modulation depth
+    top_modulation_depth_bins = float(
+        top.parameters.modulation_depth_bins(TSFT)
     )
     slice_candidates = [
         candidate
         for candidate in signal_candidates
         if np.isclose(
             float(candidate.parameters.modulation_depth_bins(TSFT)),
-            loudest_modulation_depth_bins,
+            top_modulation_depth_bins,
         )
     ]
     f0 = np.array([float(candidate.parameters.f0) for candidate in slice_candidates])

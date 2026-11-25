@@ -102,7 +102,7 @@ def data_harmonics_per_sky_point(
 ]:
     """`F[j, k]` of a sky batch at a run of trial periods.
 
-        x_n = omega t_n + omega delay_n,   F[j, k] = <exp(-i j x_n) P[n, k]>_n
+        x_n = omega t_n + omega R_n,   F[j, k] = <exp(-i j x_n) P[n, k]>_n
 
     Args:
         weighted_excess_power: The Doppler-corrected band `P[n, k]` of each sky
@@ -111,7 +111,7 @@ def data_harmonics_per_sky_point(
             trial period and SFT, per omega^2 class [rad].
         omega: Orbital angular frequency of each trial period, per omega^2 class
             [rad/s].
-        solar_roemer_delays: Solar System Roemer delay `delay_n` at each sky point
+        solar_roemer_delays: Solar System Roemer delay `R_n` at each sky point
             and SFT [s].
         omega2_class: Omega^2 class of the sky batch.
         period_start_idx: First trial period of the run.
