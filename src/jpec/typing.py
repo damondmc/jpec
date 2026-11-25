@@ -1,8 +1,10 @@
 """The shared type alias, and the axis names shape annotations use."""
 
+from typing import Union
+
 from jaxtyping import Array, Float
 
-Scalar = int | float | Float[Array, ""]
+Scalar = Union[float, Float[Array, ""]]
 """One real number that may be traced: a Python number or a 0-d float array.
 Not an integer array, which `jax.grad` cannot differentiate, and not a
 length-one array.

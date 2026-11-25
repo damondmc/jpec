@@ -283,15 +283,12 @@ class TemplateBank(NamedTuple):
         )
 
     def modulation_depth_at(
-        self, depth_class: int | Int[np.ndarray, " n_period"]
-    ) -> (
-        Float[np.ndarray, " n_modulation_depth"]
-        | Float[np.ndarray, "n_period n_modulation_depth"]
-    ):
+        self, depth_class: Int[np.ndarray, "..."]
+    ) -> Float[np.ndarray, "... n_modulation_depth"]:
         """The base modulation-depth grid moved by a depth class's shift [Hz].
 
         Args:
-            depth_class: Index of a depth shift fraction, or one per period.
+            depth_class: Indices of depth shift fractions.
 
         Returns:
             The moved grid, one per depth class given.
@@ -334,7 +331,7 @@ class TemplateBank(NamedTuple):
         )
         # one modulation-depth step, in ap
         ap_margin = ap_from_modulation_depth(
-            self.modulation_depth_step, f0=self.f0_centre, omega=omega
+            np.asarray(self.modulation_depth_step), f0=self.f0_centre, omega=omega
         )
         ap_low = np.array([ap_block.ap_low for ap_block in self.ap_blocks])
         ap_high = np.array([ap_block.ap_high for ap_block in self.ap_blocks])
@@ -382,11 +379,11 @@ class TemplateBank(NamedTuple):
                 - depth_whole_steps,
             )
         )
-        modulation_depth = float(
+        modulation_depth = np.asarray(
             self.modulation_depth_at(depth_class)[modulation_depth_idx]
         )
         omega = float(self.omega_at(int(omega2_class))[period_idx])
-        ap = ap_from_modulation_depth(modulation_depth, f0=f0, omega=omega)
+        ap = ap_from_modulation_depth(modulation_depth, f0=f0, omega=np.asarray(omega))
         return Parameters(
             f0=f0,
             ap=float(ap),

@@ -8,7 +8,7 @@ import sys
 import time
 from pathlib import Path
 from platform import machine
-from typing import Any
+from typing import Any, Optional, Union
 
 import jax
 from pydantic import BaseModel
@@ -36,7 +36,7 @@ class Progress:
         self.started = started
         self.due = started + seconds
 
-    def report(self, n_sky_points_done: int) -> str | None:
+    def report(self, n_sky_points_done: int) -> Optional[str]:
         """The progress line, if one is due.
 
         Args:
@@ -67,7 +67,12 @@ class RunLogger:
     """One command's run: its JAX backend, logs, job progress and saved results."""
 
     def __init__(
-        self, name: str, output: str | Path, *, platform: str | None, x64: bool
+        self,
+        name: str,
+        output: Union[str, Path],
+        *,
+        platform: Optional[str],
+        x64: bool,
     ) -> None:
         """Select the backend and precision, record the run metadata, open the log.
 
@@ -112,7 +117,7 @@ class RunLogger:
         self.logger.addHandler(log_file)
 
         # the job in progress, set by start_progress()
-        self.job_progress: Progress | None = None
+        self.job_progress: Optional[Progress] = None
 
         self.info(
             f"backend {self.run_metadata['backend']}  "
@@ -133,7 +138,7 @@ class RunLogger:
         """
         self.logger.info(message)
 
-    def device_memory_gb(self) -> tuple[float, float] | None:
+    def device_memory_gb(self) -> Optional[tuple[float, float]]:
         """Giga-bytes the first device holds now and has held at most.
 
         Returns:

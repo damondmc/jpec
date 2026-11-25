@@ -66,11 +66,11 @@ def omega_from_period(period: Float[Array, "..."]) -> Float[Array, "..."]:
 
 
 def ap_from_modulation_depth(
-    modulation_depth: float | Float[np.ndarray, "..."],
+    modulation_depth: Float[np.ndarray, "..."],
     *,
-    f0: float | Float[np.ndarray, "..."],
-    omega: float | Float[np.ndarray, "..."],
-) -> float | Float[np.ndarray, "..."]:
+    f0: float,
+    omega: Float[np.ndarray, "..."],
+) -> Float[np.ndarray, "..."]:
     """The projected semi-major axis a modulation depth implies [light-seconds].
 
     Args:

@@ -126,7 +126,7 @@ class BankLayout(NamedTuple):
         return batches
 
     def padded_runs(
-        self, per_period: np.ndarray, fill_value: int | bool
+        self, per_period: np.ndarray, fill_value: int
     ) -> list[np.ndarray]:
         """A per-(period, modulation depth) or per-period array over each batch's run.
 
@@ -478,7 +478,8 @@ def bank_layout(
     # each depth's share of its harmonics at its deepest depth class, rounded up to
     # the step and at most j_max
     deepest_class_depth_bins = (
-        bank.modulation_depth_at(bank.depth_shift_fractions.size - 1) * tsft
+        bank.modulation_depth_at(np.asarray(bank.depth_shift_fractions.size - 1))
+        * tsft
     )
     n_kept_harmonics_per_depth = [
         math.ceil(round(harmonic_fraction * harmonic_count(float(depth_bins)), 9))

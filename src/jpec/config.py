@@ -4,7 +4,7 @@ import json
 import math
 from itertools import takewhile
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, Optional, TypeVar
 
 import yaml
 from pydantic import (
@@ -398,7 +398,7 @@ class JobSetup(BaseModel):
     n_sky_points: int
     n_templates: int
     memory_gb: float
-    hours: float | None
+    hours: Optional[float]
 
 
 class SearchSetup(BaseModel):

@@ -72,6 +72,8 @@ select = [
 ignore = [
     "F722",
     "ANN401",
+    "UP007",
+    "UP045",
 ]
 
 [tool.ruff.lint.pydocstyle]

@@ -9,6 +9,7 @@ Usage:
 import argparse
 import os
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
@@ -24,7 +25,7 @@ READ_WIDTH = 0.1
 
 
 def checked_sft_metadata(
-    run_logger: RunLogger, sft_glob: str, *, unrecorded_window: Window | None
+    run_logger: RunLogger, sft_glob: str, *, unrecorded_window: Optional[Window]
 ) -> SFTMetadata:
     """Read every band, check they agree, and return the metadata.
 
