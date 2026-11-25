@@ -108,38 +108,27 @@ class BankLayout(NamedTuple):
         return batches
 
     def padded_runs(
-        self, per_period: np.ndarray, fill_value: int
-    ) -> list[np.ndarray]:
-        """A per-(period, modulation depth) or per-period array over each batch's run.
+        self, per_period: Int[np.ndarray, " n_period"], fill_value: int
+    ) -> Int[np.ndarray, "n_batch n_batch_period"]:
+        """A per-period array over each batch's run of periods.
 
         Args:
-            per_period: The array, periods first and modulation depths second if any.
-            fill_value: What the rows past the last period read.
+            per_period: The array over the trial periods.
+            fill_value: What the entries past the last period read.
 
         Returns:
-            Each batch's run of `period_batch_size` periods, cut to its modulation-depth
-                window when the array has that axis.
+            Each batch's run of `period_batch_size` periods.
         """
-        n_periods = per_period.shape[0]
+        n_periods = per_period.size
         padded = np.full(
-            (n_periods + self.period_batch_size - 1, *per_period.shape[1:]),
-            fill_value,
-            dtype=per_period.dtype,
+            n_periods + self.period_batch_size - 1, fill_value, dtype=per_period.dtype
         )
         padded[:n_periods] = per_period
         runs = []
         for batch in self.template_batches:
-            run = padded[
-                batch.period_start_idx : batch.period_start_idx + self.period_batch_size
-            ]
-            if per_period.ndim == 2:
-                run = run[
-                    :,
-                    batch.modulation_depth_start_idx : batch.modulation_depth_start_idx
-                    + self.n_batch_depths,
-                ]
-            runs.append(run)
-        return runs
+            start_idx = batch.period_start_idx
+            runs.append(padded[start_idx : start_idx + self.period_batch_size])
+        return np.stack(runs)
 
     def ap_in_range(
         self, omega2_class: int, depth_class: Int[np.ndarray, " n_period"]
@@ -152,15 +141,22 @@ class BankLayout(NamedTuple):
                 point.
 
         Returns:
-            The mask over each batch's full run of periods and its window's depths.
+            The mask over each batch's full run of periods and its window's depths,
+                False past the batch's last period.
         """
-        ap_in_range = np.stack(
-            self.padded_runs(self.bank.ap_in_range(omega2_class, depth_class), False)
+        bank_ap_in_range = self.bank.ap_in_range(omega2_class, depth_class)
+        ap_in_range = np.zeros(
+            (len(self.template_batches), self.period_batch_size, self.n_batch_depths),
+            dtype=bool,
         )
-        # a batch shorter than period_batch_size runs on into periods outside it
         for batch_idx, batch in enumerate(self.template_batches):
+            period_idxs = slice(batch.period_start_idx, batch.period_stop_idx)
+            depth_start_idx = batch.modulation_depth_start_idx
+            depth_idxs = slice(depth_start_idx, depth_start_idx + self.n_batch_depths)
             n_batch_periods = batch.period_stop_idx - batch.period_start_idx
-            ap_in_range[batch_idx, n_batch_periods:] = False
+            ap_in_range[batch_idx, :n_batch_periods] = bank_ap_in_range[
+                period_idxs, depth_idxs
+            ]
         return ap_in_range
 
 

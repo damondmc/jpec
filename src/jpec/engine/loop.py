@@ -155,9 +155,10 @@ class BandSearch:
         units = np.rint(bank.f0_shift(sky_idx) * bank.tsft * n_offsets).astype(
             np.int32
         )
-        units = np.stack(layout.padded_runs(units, 0))
+        units = layout.padded_runs(units, 0)
         omega2_class = int(bank.omega2_class[sky_idx])
         depth_class = bank.depth_class(sky_idx)
+        depth_classes = layout.padded_runs(depth_class.astype(np.int32), 0)
         # the mask depends on the sky point only through its classes
         classes = (omega2_class, *depth_class.tolist())
         if classes not in self.ap_in_range_per_classes:
@@ -167,9 +168,7 @@ class BandSearch:
         return SkyShifts(
             whole_bin_shifts=jnp.asarray(units // n_offsets),
             subbin_shifts=jnp.asarray(units % n_offsets),
-            depth_classes=jnp.asarray(
-                np.stack(layout.padded_runs(depth_class.astype(np.int32), 0))
-            ),
+            depth_classes=jnp.asarray(depth_classes),
             ap_in_range=self.ap_in_range_per_classes[classes],
         )
 
