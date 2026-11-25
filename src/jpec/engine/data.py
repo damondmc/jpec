@@ -1,5 +1,6 @@
 """The band one job searches: its width, its SFTs on the device, and its epoch."""
 
+import math
 from functools import cached_property
 
 import jax.numpy as jnp
@@ -7,36 +8,35 @@ import numpy as np
 from jaxtyping import Array, Complex, Float
 
 from jpec.config import DataSetup
-from jpec.constant import ARC_PAD_BINS, SHIFT_MARGIN_BINS, V_MAX
+from jpec.constant import ARC_PAD_BINS, V_MAX
 from jpec.detector.sft import SFTData, load_sft_data
 from jpec.noise.floor import noise_floor
-from jpec.params import Prior, omega_from_period
 from jpec.waveform.plane import arc_bin_offsets
 
 
-def band_edges_for_f0(
-    prior: Prior, f0_low: float, f0_high: float, *, tsft: float
+def freq_band_edges(
+    f0_low: float, f0_high: float, *, max_modulation_depth: float, tsft: float
 ) -> tuple[float, float]:
-    """The frequency band to load for an f0 interval.
+    """The band a search over [f0_low, f0_high] reads, Doppler shift and window included.
 
     Args:
-        prior: The region searched, whose deepest orbit sets the widest template.
-        f0_low: Low edge of the interval [Hz].
-        f0_high: High edge [Hz].
+        f0_low: Lowest template f0 [Hz].
+        f0_high: Highest template f0, with its shift [Hz].
+        max_modulation_depth: Deepest template depth, with its shift [Hz].
         tsft: SFT length [s].
 
     Returns:
         The band's low and high edge [Hz].
     """
-    ap_high, period_low = prior.ap[1], prior.period[0]
     n_window_bins = arc_bin_offsets(
-        f0_high * ap_high * float(omega_from_period(jnp.asarray(period_low))) * tsft,
-        pad_bins=ARC_PAD_BINS,
+        max_modulation_depth * tsft, pad_bins=ARC_PAD_BINS
     ).shape[0]
-    margin = (
-        np.ceil(f0_high * V_MAX * tsft) + n_window_bins // 2 + SHIFT_MARGIN_BINS
-    ) / tsft
-    return f0_low - margin, f0_high + margin
+    n_doppler_bins = math.ceil(f0_high * V_MAX * tsft)
+    # a window of 2h + 1 bins runs h bins below its nearest bin and h + 1 from it up;
+    # the f0 shift is read in whole bins, up to one past f0_high
+    n_low_bins = n_doppler_bins + n_window_bins // 2
+    n_high_bins = n_doppler_bins + (n_window_bins - n_window_bins // 2) + 1
+    return f0_low - n_low_bins / tsft, f0_high + n_high_bins / tsft
 
 
 class SearchData:
@@ -107,33 +107,27 @@ class SearchData:
         ]
         return cls(sfts, floor=floor, t_ref=data_setup.t_ref)
 
-    def around_f0(self, prior: Prior, f0: float) -> "SearchData":
-        """The band the search around one f0 reads, its SFTs and floor cut together.
+    def sub_band(self, freq_low: float, freq_high: float) -> "SearchData":
+        """A narrower band of this one, its SFTs and floor cut together.
 
         Args:
-            prior: The region searched, whose deepest orbit sets the widest template.
-            f0: The frequency searched around [Hz].
+            freq_low: Low edge of the narrower band [Hz].
+            freq_high: High edge [Hz].
 
         Returns:
-            The narrower band, wide enough for the template, the Doppler shift and
-                the f0 shift, at the same epoch.
+            The bins nearest the edges and those between, at the same epoch.
         """
-        search_freq_low, search_freq_high = band_edges_for_f0(
-            prior, f0, f0, tsft=self.tsft
-        )
-        start_idx = int(round((search_freq_low - self.freq_low) * self.tsft))
-        stop_idx = int(round((search_freq_high - self.freq_low) * self.tsft))
+        start_idx = int(round((freq_low - self.freq_low) * self.tsft))
+        stop_idx = int(round((freq_high - self.freq_low) * self.tsft))
         if start_idx < 0 or stop_idx > self.n_band_bins:
             raise ValueError(
-                f"the search around {f0:.5f} Hz needs {search_freq_low:.5f} "
-                f"to {search_freq_high:.5f} Hz, "
-                f"and the band holds {self.freq_low:.5f} "
-                f"to {self.freq_low + self.n_band_bins / self.tsft:.5f} Hz; "
-                "widen the loaded band"
+                f"[{freq_low:.5f}, {freq_high:.5f}] Hz is not in the data "
+                f"[{self.freq_low:.5f}, "
+                f"{self.freq_low + self.n_band_bins / self.tsft:.5f}] Hz"
             )
         bin_idxs = slice(start_idx, stop_idx)
         return SearchData(
-            [sft.narrowed(bin_idxs) for sft in self.sfts],
+            [sft.sub_band(bin_idxs) for sft in self.sfts],
             floor=[
                 floor_per_detector[:, bin_idxs] for floor_per_detector in self.floor
             ],
