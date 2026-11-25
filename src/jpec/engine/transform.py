@@ -6,7 +6,7 @@ import jax
 from jaxtyping import Array, Complex, Float, Int
 
 from jpec.detector.doppler import doppler_corrected_mean_power, doppler_corrected_power
-from jpec.stat.matched_filter import data_harmonics
+from jpec.stat.matched_filter import barycenter_orbital_phase, data_harmonics
 
 
 @partial(jax.jit, static_argnames="n_transformed_bins")
@@ -24,12 +24,12 @@ def weighted_excess_power_per_reference(
     sft_weights: Float[Array, " n_sft"],
     mean_power: list[Float[Array, " n_band"]],
 ) -> Float[Array, "n_doppler_reference n_sft n_transformed_bin"]:
-    """The band corrected toward one sky position at every Doppler reference in turn.
+    """The weighted excess power `P[n, k]` of one sky position, per Doppler reference.
 
-    Each SFT's power less the power expected from its detector's time-averaged
-    spectrum is multiplied by the SFT's weight:
+        P[n, k] = w[n] (power[n, k] - mean power[n, k])
 
-        sft_weights[n] (power[n, k] - expected[n, k])
+    with `w[n]` the SFT's weight and the mean power that of its detector's
+    time-averaged spectrum, both Doppler-corrected.
 
     Args:
         sft_time_series: Inverse transform of the band, per detector.
@@ -47,7 +47,7 @@ def weighted_excess_power_per_reference(
             detector frame.
 
     Returns:
-        The weighted power at each Doppler reference, over the bins it keeps.
+        The weighted excess power at each Doppler reference, over the bins it keeps.
     """
 
     def at_reference(
@@ -84,24 +84,52 @@ def weighted_excess_power_per_reference(
     return jax.lax.map(at_reference, (doppler_references, transformed_start_idxs))
 
 
-@partial(jax.jit, static_argnames="j_max")
+@partial(jax.jit, static_argnames=("period_batch_size", "j_max"))
 def data_harmonics_per_sky_point(
-    weighted_excess_power: Float[Array, "n_sky n_doppler_reference n_sft n_freq"],
-    orbital_phase: Float[Array, "n_sky n_period n_sft"],
+    weighted_excess_power: Float[
+        Array, "n_sky n_doppler_reference n_sft n_transformed_bin"
+    ],
+    orbital_phase: Float[Array, "n_omega2_class n_period n_sft"],
+    omega: Float[Array, "n_omega2_class n_period"],
+    solar_roemer_delays: Float[Array, "n_sky n_sft"],
+    omega2_class: Int[Array, ""],
+    period_start_idx: Int[Array, ""],
     *,
+    period_batch_size: int,
     j_max: int,
-) -> Complex[Array, "n_sky n_doppler_reference n_period n_harmonic n_freq"]:
-    """data_harmonics() of the weighted excess power at each sky point and reference.
+) -> Complex[
+    Array, "n_sky n_doppler_reference n_batch_period n_harmonic n_transformed_bin"
+]:
+    """`F[j, k]` of a sky batch at a run of trial periods.
+
+        x_n = omega t_n + omega delay_n,   F[j, k] = <exp(-i j x_n) P[n, k]>_n
 
     Args:
-        weighted_excess_power: weighted_excess_power_per_reference() at each sky
-            point.
-        orbital_phase: barycenter_orbital_phase() at each sky point, SFT and trial
-            period of a batch [rad].
+        weighted_excess_power: The Doppler-corrected band `P[n, k]` of each sky
+            point, per Doppler reference.
+        orbital_phase: Orbital phase `omega t_n` in detector time at each trial
+            period and SFT, per omega^2 class [rad].
+        omega: Orbital angular frequency of each trial period, per omega^2 class
+            [rad/s].
+        solar_roemer_delays: Solar System Roemer delay `delay_n` at each sky point
+            and SFT [s].
+        omega2_class: Omega^2 class of the sky batch.
+        period_start_idx: First trial period of the run.
+        period_batch_size: Number of trial periods in the run.
         j_max: Highest harmonic to keep.
 
     Returns:
-        `F[j, k]` at each sky point, reference and trial period.
+        `F[j, k]` at each sky point, Doppler reference and trial period of the run.
     """
+    n_sfts = orbital_phase.shape[-1]
+    run_phase = jax.lax.dynamic_slice(
+        orbital_phase,
+        (omega2_class, period_start_idx, 0),
+        (1, period_batch_size, n_sfts),
+    )[0]
+    run_omega = jax.lax.dynamic_slice(
+        omega, (omega2_class, period_start_idx), (1, period_batch_size)
+    )[0]
+    phase = barycenter_orbital_phase(run_phase, run_omega, solar_roemer_delays)
     per_reference = jax.vmap(partial(data_harmonics, j_max=j_max), in_axes=(0, None))
-    return jax.vmap(per_reference)(weighted_excess_power, orbital_phase)
+    return jax.vmap(per_reference)(weighted_excess_power, phase)

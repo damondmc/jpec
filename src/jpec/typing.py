@@ -33,6 +33,7 @@ length-one array.
 #   n_template_batch  period batches of a bank's layout
 #   n_f0        f0 points of a bank
 #   n_period    trial orbital periods of a bank
+#   n_batch_period  trial periods of one period batch
 #   n_top       templates of a grid kept on the device, top first
 #   n_doppler_reference  frequencies a band is Doppler-corrected at, shared by
 #                        the f0 points near each

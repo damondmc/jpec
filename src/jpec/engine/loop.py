@@ -3,7 +3,6 @@
 from collections.abc import Iterator, Sequence
 from typing import NamedTuple
 
-import jax
 import jax.numpy as jnp
 import numpy as np
 from jaxtyping import Array, Bool, Complex, Float, Int
@@ -25,7 +24,7 @@ from jpec.engine.transform import (
     data_harmonics_per_sky_point,
     weighted_excess_power_per_reference,
 )
-from jpec.stat.matched_filter import barycenter_orbital_phase, orbital_phase_mod_2pi
+from jpec.stat.matched_filter import orbital_phase_mod_2pi
 
 
 class SkyShifts(NamedTuple):
@@ -217,7 +216,7 @@ class BandSearch:
         omega2_class: int,
         template_batch: TemplateBatch,
     ) -> Complex[
-        Array, "n_sky n_doppler_reference n_period n_harmonic n_transformed_bin"
+        Array, "n_sky n_doppler_reference n_batch_period n_harmonic n_transformed_bin"
     ]:
         """Transform a sky batch at one template batch's periods.
 
@@ -231,25 +230,21 @@ class BandSearch:
         Returns:
             `F[j, k]` at each sky point, Doppler reference and trial period.
         """
-        period_batch_size = self.layout.period_batch_size
-        orbital_phase = jax.lax.dynamic_slice_in_dim(
-            self.orbital_phase[omega2_class],
-            template_batch.period_start_idx,
-            period_batch_size,
-        )
-        omega = jax.lax.dynamic_slice_in_dim(
-            self.omega[omega2_class], template_batch.period_start_idx, period_batch_size
-        )
         return data_harmonics_per_sky_point(
             weighted_excess_power,
-            barycenter_orbital_phase(orbital_phase, omega, solar_roemer_delays),
+            self.orbital_phase,
+            self.omega,
+            solar_roemer_delays,
+            omega2_class,
+            template_batch.period_start_idx,
+            period_batch_size=self.layout.period_batch_size,
             j_max=template_batch.n_harmonics,
         )
 
     def match(
         self,
         data_harmonics: Complex[
-            Array, "n_doppler_reference n_period n_harmonic n_transformed_bin"
+            Array, "n_doppler_reference n_batch_period n_harmonic n_transformed_bin"
         ],
         sky_shifts: SkyShifts,
         batch_idx: int,
