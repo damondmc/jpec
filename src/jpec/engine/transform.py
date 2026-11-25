@@ -1,4 +1,4 @@
-"""The transform: a sky point's Doppler-corrected band and its data harmonics."""
+"""The transform: a sky batch's Doppler-corrected band and its data harmonics."""
 
 from functools import partial
 
@@ -28,8 +28,8 @@ def weighted_excess_power_per_reference(
 
         P[n, k] = w[n] (power[n, k] - mean power[n, k])
 
-    with `w[n]` the SFT's weight and the mean power that of its detector's
-    time-averaged spectrum, both Doppler-corrected.
+    with `w[n]` the SFT's weight, and the power and its detector's time-averaged
+    spectrum both Doppler-corrected.
 
     Args:
         sft_time_series: Inverse transform of the band, per detector.
@@ -107,8 +107,8 @@ def data_harmonics_per_sky_point(
     Args:
         weighted_excess_power: The Doppler-corrected band `P[n, k]` of each sky
             point, per Doppler reference.
-        orbital_phase: Orbital phase `omega t_n` in detector time at each trial
-            period and SFT, per omega^2 class [rad].
+        orbital_phase: Orbital phase `omega t_n mod 2 pi` in detector time at each
+            trial period and SFT, per omega^2 class [rad].
         omega: Orbital angular frequency of each trial period, per omega^2 class
             [rad/s].
         solar_roemer_delays: Solar System Roemer delay `delay_n` at each sky point

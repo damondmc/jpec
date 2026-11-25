@@ -28,7 +28,8 @@ def physical_metric(
     Args:
         point: Point to evaluate at.
         observation: The run's SFT length, midpoints and detector motion.
-        g_freq_bin: freq_bin_curvature() of the window the SFTs were made with.
+        g_freq_bin: Mismatch per squared frequency bin of track error, for the
+            window the SFTs were made with [1 / bins^2].
 
     Returns:
         `g[mu, nu]` in the field order of Parameters.

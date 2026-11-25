@@ -26,7 +26,7 @@ class TemplateBatch(NamedTuple):
     """Trial periods and the modulation-depth window holding their in-range templates.
 
     Attributes:
-        period_start_idx: First trial period of the run.
+        period_start_idx: First trial period of the batch.
         period_stop_idx: One past its last.
         modulation_depth_start_idx: First modulation depth of the window.
         n_harmonics: Number of harmonics the batch is transformed and matched with.
@@ -42,7 +42,7 @@ class BankLayout(NamedTuple):
     """A bank's layout on one band: f0 windows, references, offsets and batches.
 
     Attributes:
-        bank: The bank.
+        bank: The template bank laid out.
         transformed_start_idxs: First band bin each Doppler reference transforms.
         n_transformed_bins: Number of bins every reference transforms.
         window_start_idxs: First bin of each f0 point's template window, counted from
@@ -372,7 +372,7 @@ def bank_layout(
     """A bank's layout on one band: all the loop needs but data and harmonics.
 
     Args:
-        bank: The bank.
+        bank: The template bank to lay out.
         freq_low: First frequency of the loaded band [Hz].
         n_band_bins: Number of bins the loaded band holds.
         n_sub_bin_offsets: Number of sub-bin template offsets across one bin.

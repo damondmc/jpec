@@ -39,8 +39,8 @@ def barycenter_orbital_phase(
     System Roemer delay at the n-th SFT.
 
     Args:
-        orbital_phase: orbital_phase_mod_2pi() at the SFT midpoints, detector time
-            [rad].
+        orbital_phase: Orbital phase `omega t_n mod 2 pi` in detector time at each
+            trial period and SFT [rad].
         omega: Orbital angular frequency of each trial period [rad/s].
         solar_roemer_delays: The delay at each sky point and SFT [s].
 
@@ -61,9 +61,9 @@ def data_harmonics(
         F[j, k] = <exp(-i j x_n) sft_power[n, k]>_n,  j = 1..j_max
 
     Args:
-        sft_power: Normalized power, SFT n by frequency bin k.
-        orbital_phase: `x_n`, orbital_phase_mod_2pi() at the SFT midpoints [rad]; a
-            leading axis of trial periods gives one `F[j, k]` each.
+        sft_power: Power `P[n, k]` at each SFT and frequency bin.
+        orbital_phase: Orbital phase `x_n` at each SFT [rad]; a leading axis of
+            trial periods gives one `F[j, k]` each.
         j_max: Highest harmonic to keep.
 
     Returns:
@@ -102,17 +102,9 @@ def harmonic_overlap(
 def statistic_over_phase(
     coefficients: Complex[Array, " n_harmonic"], *, n_phi: int
 ) -> Float[Array, " n_phi"]:
-    """The statistic at every orbital phase at once.
+    """The statistic at every orbital phase, from one real inverse FFT.
 
-        S(phi_b) = Re{ sum_j c[j] exp(+i j phi_b) }
-
-    which is exactly the real inverse FFT with `phi_b = 2 pi m / n_phi`, since for
-    `x[0] = 0` and `x[j] = 0` from `j = n_phi/2` up
-
-        irfft(x)[m] = (2 / n_phi) Re{ sum_j x[j] exp(+2 pi i j m / n_phi) }
-
-    and multiplying by `n_phi/2` cancels its 2 / n_phi. Every phase therefore costs
-    one transform rather than one template each.
+        S(phi_b) = Re{ sum_j c[j] exp(+i j phi_b) },   phi_b = 2 pi m / n_phi
 
     Args:
         coefficients: `c[j]` starting with 1st harmonic.
@@ -123,6 +115,9 @@ def statistic_over_phase(
     """
     # a zero for the dropped j=0 slot, so harmonic j lands on index j
     padded = jnp.concatenate([jnp.zeros((1,), coefficients.dtype), coefficients])
+    # with x[0] = 0 and no x[j] from j = n_phi / 2 up,
+    # irfft(x)[m] = (2 / n_phi) Re{ sum_j x[j] exp(+2 pi i j m / n_phi) },
+    # so n_phi / 2 times it is S at phi_b = 2 pi m / n_phi
     return jnp.fft.irfft(padded, n=n_phi) * (n_phi / 2)
 
 

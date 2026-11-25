@@ -49,7 +49,7 @@ class SearchData:
         floor: list[Float[Array, "n_sft n_band"]],
         t_ref: float,
     ) -> None:
-        """Put the band's velocities and times on the device.
+        """Hold the band's SFTs and floor; velocities and positions go on the device.
 
         Args:
             sfts: The SFTs per detector, scaled.
@@ -82,7 +82,7 @@ class SearchData:
             files: The files holding the band, at least one per detector.
             freq_low: Low edge of the band [Hz].
             freq_high: High edge of the band [Hz].
-            floor_width: Bins of the running median the floor is taken over.
+            floor_width: Number of bins in the running median the floor is taken over.
             floor_batch_size: Number of SFTs whose floor is taken at once.
 
         Returns:
@@ -136,7 +136,7 @@ class SearchData:
 
     @cached_property
     def sft_time_series(self) -> list[Complex[Array, "n_sft n_band"]]:
-        """The inverse transform the Doppler correction shifts, per detector."""
+        """Inverse FFT of each SFT's band, per detector."""
         return [jnp.fft.ifft(jnp.asarray(sft.sft_data), axis=-1) for sft in self.sfts]
 
     @cached_property
@@ -160,10 +160,8 @@ class SearchData:
     def sft_weights(self, alpha: float, delta: float) -> Float[Array, " n_sft"]:
         """The weight each SFT takes toward a sky position, of unit mean square.
 
-            w[n] = (F_plus[n]^2 + F_cross[n]^2) / noise_level[n]
-
-        the share of a signal's power the SFT is expected to hold, over
-        `sqrt(<w^2>_n)`.
+            w[n] proportional to (F_plus[n]^2 + F_cross[n]^2) / noise_level[n],
+            scaled to <w^2>_n = 1
 
         Args:
             alpha: Right ascension [rad].

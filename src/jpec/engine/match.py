@@ -29,8 +29,7 @@ def template_harmonics_at_depths(
         n_theta: Number of orbital phases sampled.
         j_max: Highest harmonic kept.
         window: The window the SFTs were made with.
-        batch_size: Number of modulation depths built at once, which caps the planes
-            held.
+        batch_size: Number of modulation depths built at once.
 
     Returns:
         `tau[j, k]` for every modulation depth, in their order.
@@ -71,7 +70,7 @@ def placed_template_harmonics(
         n_pad: Number of bins the window is widened by.
 
     Returns:
-        The placed templates, `n_sub_bin_offset * (n_pad + 1)` of them.
+        The templates at every sub-bin offset and whole-bin placement.
     """
     return jnp.concatenate(
         [
@@ -139,9 +138,11 @@ def matched_filter_grid(
     Args:
         data_harmonics: `F[j, k]` at each period over the transformed bins, per
             Doppler reference.
-        placed_harmonics: placed_template_harmonics() of the templates at every
-            modulation depth, per sub-bin offset and depth class.
-        norms_squared: template_norms_squared() of the same templates.
+        placed_harmonics: Each template's harmonics `tau[j, k]` at every sub-bin
+            offset and whole-bin placement in a widened window, zero outside it, per
+            depth class and modulation depth.
+        norms_squared: Each template's squared norm over harmonics 1 to `j + 1` at
+            index `j`, per sub-bin offset, depth class and modulation depth.
         window_start_idxs: First bin of each f0 point's template window, among its
             reference's transformed bins.
         group_f0_idxs: The f0 points of each (reference, offset) group.
@@ -215,7 +216,8 @@ def matched_filter_grid(
                 n_harmonics - 1,
             ]
         )
-        # c[j] of harmonic_overlap() at every (member, period, modulation depth)
+        # c[j] = sum_k conj(tau[j, k]) F[j, k] / ||tau|| at every (member, period,
+        # modulation depth)
         coefficients = (
             jnp.einsum("mpjk,pqjk->mpqj", member_data_harmonics, jnp.conj(templates))
             / norms[None, :, :, None]
@@ -267,8 +269,8 @@ def top_k_templates(
         max_statistic: Maximum of `S` over the orbital phase at every template of
             the grid.
         phase_idxs: Index of the orbital phase each maximum sits at.
-        ap_in_range: Whether each (period, modulation depth) has ap in range.
-        toplist_f0_idxs: The f0 points each toplist covers.
+        ap_in_range: Whether each (period, modulation depth) has ap in its ap block.
+        toplist_f0_idxs: The f0 points each toplist covers, padded past the grid.
         n_top: Number of templates kept per toplist.
 
     Returns:

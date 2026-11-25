@@ -1,6 +1,6 @@
 """The search loop: a template bank searched on one band, sky batch by sky batch."""
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from typing import NamedTuple
 
 import jax.numpy as jnp
@@ -106,24 +106,20 @@ class BandSearch:
         self.toplist_f0_idxs = jnp.asarray(
             f0_idxs_per_toplist(bank.f0, toplist_f0_edges)
         )
+        # every depth of every depth class, in bins, one row per class
+        depth_classes = np.arange(bank.depth_shift_fractions.size)
+        depth_bins = bank.modulation_depth_at(depth_classes) * bank.tsft
         # tau[j, k] per (sub-bin offset, depth class, modulation depth)
         templates = jnp.stack(
             [
-                jnp.stack(
-                    [
-                        template_harmonics_at_depths(
-                            jnp.asarray(layout.bin_offsets - sub_bin_offset),
-                            jnp.asarray(
-                                bank.modulation_depth_at(depth_class) * bank.tsft
-                            ),
-                            n_theta=layout.n_theta,
-                            j_max=layout.j_max,
-                            window=bank.window,
-                            batch_size=config.modulation_depth_batch_size,
-                        )
-                        for depth_class in range(bank.depth_shift_fractions.size)
-                    ]
-                )
+                template_harmonics_at_depths(
+                    jnp.asarray(layout.bin_offsets - sub_bin_offset),
+                    jnp.asarray(depth_bins.ravel()),
+                    n_theta=layout.n_theta,
+                    j_max=layout.j_max,
+                    window=bank.window,
+                    batch_size=config.modulation_depth_batch_size,
+                ).reshape(*depth_bins.shape, layout.j_max, -1)
                 for sub_bin_offset in layout.sub_bin_offsets
             ]
         )
@@ -337,7 +333,7 @@ class BandSearch:
             )
 
     def search_sky_batch(
-        self, sky_idxs: Sequence[int] | Int[np.ndarray, " n_batch_sky"]
+        self, sky_idxs: Int[np.ndarray, " n_batch_sky"]
     ) -> Iterator[TopTemplates]:
         """Search a batch of sky points and yield each match's top templates.
 
@@ -348,7 +344,6 @@ class BandSearch:
             One TopTemplates per (template batch, sky point, toplist).
         """
         bank = self.layout.bank
-        sky_idxs = np.asarray(sky_idxs)
         omega2_class = int(bank.omega2_class[sky_idxs[0]])
         solar_roemer_delays = solar_roemer_delay(
             self.search_data.position,

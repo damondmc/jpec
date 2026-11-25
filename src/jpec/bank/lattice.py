@@ -123,7 +123,7 @@ def split_shift(
 
     Args:
         shift: Shifts, in steps of the axis.
-        fractions: shift_fractions() of the axis's generator row.
+        fractions: The row's shift fractions, `0, 1/q, ..., (q - 1)/q`.
 
     Returns:
         The index of each shift's fraction, and its whole steps.
