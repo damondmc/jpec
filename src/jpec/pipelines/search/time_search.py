@@ -21,16 +21,17 @@ from jpec.bank.tiling import LatticeTiling
 from jpec.config import SearchSetup, read_json
 from jpec.detector.doppler import solar_roemer_delay
 from jpec.engine.data import SearchData
-from jpec.engine.layout import f0_idxs_per_toplist, subgrid_layout
+from jpec.engine.layout import f0_idxs_per_toplist
 from jpec.engine.loop import (
+    HarmonicBank,
     data_harmonics_per_sky_point,
-    matched_filter_grid,
+    match_at_sky_point,
     sft_weights_at_sky_point,
     top_k_templates,
     weighted_excess_power_per_reference,
 )
 from jpec.pipelines.monitor import RunLogger
-from jpec.stat.matched_filter import barycenter_orbital_phase, orbital_phase_mod_2pi
+from jpec.stat.matched_filter import barycenter_orbital_phase
 
 
 def mean_seconds(function: Callable[..., Any], *args: Any, repeats: int) -> float:
@@ -52,7 +53,7 @@ def mean_seconds(function: Callable[..., Any], *args: Any, repeats: int) -> floa
 
 
 def run(args: argparse.Namespace) -> None:
-    """Time the stages on the first subgrid; save the rates and one sky point's cost.
+    """Time the stages on the first sky batch; save the rates and one sky point's cost.
 
     Args:
         args: The parsed flags.
@@ -79,8 +80,9 @@ def run(args: argparse.Namespace) -> None:
         velocity=search_data.velocity,
         window=setup.data.window,
     )
-    layout = subgrid_layout(
-        bank.template_grids[0],
+    harmonic_bank = HarmonicBank(
+        bank,
+        times=search_data.times,
         freq_low=search_data.freq_low,
         n_band_bins=search_data.n_band_bins,
         n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
@@ -88,31 +90,26 @@ def run(args: argparse.Namespace) -> None:
         harmonic_fraction=search_loop_config.harmonic_fraction,
         phase_mismatch=search_loop_config.phase_mismatch,
         doppler_mismatch=search_loop_config.doppler_mismatch,
+        modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
     )
-    template_grid = layout.template_grid
-    # the job's toplists over the subgrid's f0 points, as the search keeps them
+    layout = harmonic_bank.layout
+    # the job's toplists over the bank's f0 points, as the search keeps them
     toplist_f0_idxs = jnp.asarray(
-        f0_idxs_per_toplist(
-            template_grid.orbital_subgrid.f0,
-            np.asarray(setup.toplist_f0_edges(job_setup)),
-        )
-    )
-    template_harmonics = template_grid.template_harmonics_at_offsets(
-        layout.sub_bin_offsets,
-        batch_size=search_loop_config.modulation_depth_batch_size,
+        f0_idxs_per_toplist(bank.f0, np.asarray(setup.toplist_f0_edges(job_setup)))
     )
 
-    j_max = template_grid.j_max
-    n_window_bins = template_grid.bin_offsets.shape[0]
+    j_max = layout.j_max
+    n_window_bins = layout.bin_offsets.shape[0]
     n_f0_points = int(layout.window_start_idxs.size)
     n_doppler_references = int(layout.doppler_references.size)
     n_window_modulation_depths = layout.n_window_modulation_depths
     period_batch_size = layout.period_batch_size
-    # the bank's first sky points, as many as one transform takes
-    sky_batch_size = min(search_loop_config.sky_batch_size, int(bank.alpha.size))
-    n_subgrids = len(bank.template_grids)
+    # the bank's first sky batch, of one omega^2 class, and its first sky point
+    sky_idxs = layout.sky_batches(search_loop_config.sky_batch_size)[0]
+    sky_batch_size = int(sky_idxs.size)
+    omega2_class = int(bank.omega2_class[sky_idxs[0]])
+    sky_point = harmonic_bank.sky_point(int(sky_idxs[0]))
     n_period_batches = len(layout.template_batches)
-    ap_in_range = jnp.ones((period_batch_size, n_window_modulation_depths), dtype=bool)
 
     def doppler_correction(
         sky_idx: int,
@@ -135,36 +132,43 @@ def run(args: argparse.Namespace) -> None:
             mean_power=search_data.mean_power,
         )
 
-    doppler_seconds = mean_seconds(doppler_correction, 0, repeats=args.repeats)
+    doppler_seconds = mean_seconds(
+        doppler_correction, int(sky_idxs[0]), repeats=args.repeats
+    )
     weighted_excess_power = jnp.stack(
-        [doppler_correction(sky_idx) for sky_idx in range(sky_batch_size)]
+        [doppler_correction(int(sky_idx)) for sky_idx in sky_idxs]
     )
     n_transformed_bins = int(weighted_excess_power.shape[-1])
 
-    orbital_phases = jnp.asarray(orbital_phase_mod_2pi(search_data.times, layout.omega))
-    omega = jnp.asarray(layout.omega)
     solar_roemer_delays = solar_roemer_delay(
         search_data.position,
-        alpha=jnp.asarray(bank.alpha[:sky_batch_size]),
-        delta=jnp.asarray(bank.delta[:sky_batch_size]),
+        alpha=jnp.asarray(bank.alpha[sky_idxs]),
+        delta=jnp.asarray(bank.delta[sky_idxs]),
     )
 
     n_templates = n_f0_points * period_batch_size * n_window_modulation_depths
     transform_seconds, match_seconds = [], []
     transform_work = []
     # every match timed, at the batch's harmonics and at half of them: its seconds,
-    # its overlap multiply-adds and its orbital phases evaluated
+    # its overlap multiply-adds over the windows widened by n_pad, and its orbital
+    # phases evaluated
     match_fit_seconds, match_fit_work = [], []
-    for batch in layout.template_batches[: args.n_period_batches_timed]:
+    for batch_idx, batch in enumerate(
+        layout.template_batches[: args.n_period_batches_timed]
+    ):
 
         def transform() -> Complex[
             Array, "n_sky n_doppler_reference n_period n_harmonic n_transformed_bin"
         ]:
             batch_orbital_phase = jax.lax.dynamic_slice_in_dim(
-                orbital_phases, batch.period_start_idx, period_batch_size
+                harmonic_bank.orbital_phase[omega2_class],
+                batch.period_start_idx,
+                period_batch_size,
             )
             batch_omega = jax.lax.dynamic_slice_in_dim(
-                omega, batch.period_start_idx, period_batch_size
+                harmonic_bank.omega[omega2_class],
+                batch.period_start_idx,
+                period_batch_size,
             )
             batch_barycenter_orbital_phase = barycenter_orbital_phase(
                 batch_orbital_phase, batch_omega, solar_roemer_delays
@@ -188,22 +192,18 @@ def run(args: argparse.Namespace) -> None:
             Int[Array, "n_toplist n_kept"],
             Int[Array, "n_toplist n_kept"],
         ]:
-            max_statistic, phase_idxs = matched_filter_grid(
-                data_harmonics=data_harmonics,
-                template_harmonics=template_harmonics,
-                window_start_idxs=layout.window_start_idxs,
-                group_f0_idxs=layout.group_f0_idxs,
-                group_doppler_reference_idxs=layout.group_doppler_reference_idxs,
-                group_sub_bin_offset_idxs=layout.group_sub_bin_offset_idxs,
-                modulation_depth_start_idx=batch.modulation_depth_start_idx,
-                n_matched_modulation_depths=n_window_modulation_depths,
-                n_phi=layout.n_phi,
+            max_statistic, phase_idxs = match_at_sky_point(
+                harmonic_bank,
+                data_harmonics,
+                sky_point,
+                batch,
+                batch_idx,
                 f0_batch_size=search_loop_config.f0_batch_size,
             )
             return top_k_templates(
                 max_statistic,
                 phase_idxs,
-                ap_in_range,
+                sky_point.ap_in_range[batch_idx],
                 toplist_f0_idxs,
                 n_top=setup.n_toplist,
             )
@@ -223,7 +223,7 @@ def run(args: argparse.Namespace) -> None:
             match_fit_seconds.append(seconds)
             match_fit_work.append(
                 [
-                    n_templates * n_harmonics * n_window_bins,
+                    n_templates * n_harmonics * (n_window_bins + layout.n_pad),
                     n_templates * layout.n_phi,
                 ]
             )
@@ -235,25 +235,25 @@ def run(args: argparse.Namespace) -> None:
             * n_transformed_bins
         )
 
-    # seconds per call, and calls per sky point over every subgrid as this one
+    # seconds per call, and calls per sky point
     stages = {
         "doppler correction": (
             doppler_seconds / n_doppler_references,
-            n_subgrids * n_doppler_references,
+            n_doppler_references,
         ),
         "transform": (
             float(np.mean(transform_seconds)) / (sky_batch_size * n_doppler_references),
-            n_subgrids * n_period_batches * n_doppler_references,
+            n_period_batches * n_doppler_references,
         ),
-        "match": (float(np.mean(match_seconds)), n_subgrids * n_period_batches),
+        "match": (float(np.mean(match_seconds)), n_period_batches),
     }
     seconds_per_sky_point = {
         name: call * calls for name, (call, calls) in stages.items()
     }
     sky_point_seconds = sum(seconds_per_sky_point.values())
 
-    # the match's seconds per overlap multiply-add and per orbital phase of a
-    # template, fitted to every match timed
+    # the match's seconds per overlap multiply-add over the widened window and per
+    # orbital phase of a template, fitted to every match timed
     (match_rate, phase_maximum_rate), *_ = np.linalg.lstsq(
         np.array(match_fit_work, dtype=float),
         np.array(match_fit_seconds),
@@ -278,10 +278,10 @@ def run(args: argparse.Namespace) -> None:
         f"{n_f0_points} f0 points, {n_period_batches} period batches of "
         f"{period_batch_size}, {sky_batch_size} sky points per transform, "
         f"{n_window_modulation_depths} window modulation depths, j_max {j_max}, "
-        f"{n_window_bins} window bins, {search_data.n_band_bins} band bins, "
-        f"{n_transformed_bins} transformed, {search_data.n_sfts} SFTs, "
-        f"{n_doppler_references} Doppler references, "
-        f"{n_subgrids} subgrids"
+        f"{n_window_bins} window bins + {layout.n_pad} for the f0 shifts, "
+        f"{search_data.n_band_bins} band bins, {n_transformed_bins} transformed, "
+        f"{search_data.n_sfts} SFTs, {n_doppler_references} Doppler references, "
+        f"{bank.alpha.size} sky points"
     )
     run_logger.info(
         f"{'stage':<24}{'ms per call':>13}{'calls per sky point':>21}"
@@ -313,11 +313,12 @@ def run(args: argparse.Namespace) -> None:
             "n_window_modulation_depths": n_window_modulation_depths,
             "j_max": j_max,
             "n_window_bins": n_window_bins,
+            "n_pad": layout.n_pad,
             "n_band_bins": search_data.n_band_bins,
             "n_transformed_bins": n_transformed_bins,
             "n_sfts": search_data.n_sfts,
             "n_doppler_references": n_doppler_references,
-            "n_subgrids": n_subgrids,
+            "n_sky_points": int(bank.alpha.size),
             "seconds_per_call": {name: call for name, (call, _) in stages.items()},
             "calls_per_sky_point": {name: calls for name, (_, calls) in stages.items()},
             "seconds_per_sky_point": seconds_per_sky_point,

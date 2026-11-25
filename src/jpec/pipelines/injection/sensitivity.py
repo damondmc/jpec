@@ -17,7 +17,7 @@ from jpec.bank.template_bank import TemplateBank
 from jpec.bank.tiling import LatticeTiling
 from jpec.config import InjectionSetup, read_json
 from jpec.constant import DAY
-from jpec.engine.data import SearchData
+from jpec.engine.data import SearchData, freq_band_edges
 from jpec.engine.loop import HarmonicBank, top_templates_at_sky_points
 from jpec.injection.population import draw_injections
 from jpec.injection.signal import (
@@ -86,21 +86,28 @@ def measure_sensitivity_depth(
     # noise + h0 x signal around each injection, its floor taken before the injection,
     # then the search loop over the bank around it, the top in-range template kept
     tiling = LatticeTiling.from_dict(setup.tiling)
-    sky_batch_size = search_loop_config.sky_batch_size
     top_statistic = np.zeros(len(injections))
     for injection_idx, (injection, injection_h0) in enumerate(
         zip(injections, h0, strict=True)
     ):
-        band_data = search_data.around_f0(prior, float(injection.parameters.f0))
+        bank = TemplateBank.around_point(
+            tiling,
+            injection.parameters,
+            velocity=search_data.velocity,
+            window=setup.data.window,
+            n_sky_neighbours=trials_config.n_sky_neighbours,
+            n_steps=trials_config.n_steps,
+        )
+        band_data = search_data.sub_band(
+            *freq_band_edges(
+                bank.f0[0],
+                bank.f0_high,
+                max_modulation_depth=bank.max_modulation_depth,
+                tsft=bank.tsft,
+            )
+        )
         harmonic_bank = HarmonicBank(
-            TemplateBank.around_point(
-                tiling,
-                injection.parameters,
-                velocity=search_data.velocity,
-                window=setup.data.window,
-                n_sky_neighbours=trials_config.n_sky_neighbours,
-                n_steps=trials_config.n_steps,
-            ),
+            bank,
             times=band_data.times,
             freq_low=band_data.freq_low,
             n_band_bins=band_data.n_band_bins,
@@ -125,16 +132,15 @@ def measure_sensitivity_depth(
             floor=band_data.floor,
             t_ref=band_data.t_ref,
         )
-        n_sky_points = int(harmonic_bank.bank.alpha.size)
         top_statistic[injection_idx] = max(
             float(top.max_statistic[0])
-            for sky_start_idx in range(0, n_sky_points, sky_batch_size)
+            for sky_idxs in harmonic_bank.layout.sky_batches(
+                search_loop_config.sky_batch_size
+            )
             for top in top_templates_at_sky_points(
                 injected_data,
                 harmonic_bank,
-                sky_idxs=range(
-                    sky_start_idx, min(sky_start_idx + sky_batch_size, n_sky_points)
-                ),
+                sky_idxs=sky_idxs,
                 f0_batch_size=search_loop_config.f0_batch_size,
                 n_top=1,
                 # one toplist over every f0 point

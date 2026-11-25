@@ -46,7 +46,7 @@ def search_job(
         floor_batch_size=search_loop_config.floor_batch_size,
     )
 
-    # the bcc lattice's 2 subgrids over the sky lattice, on the job's period range
+    # the A5* lattice over the sky, on the job's period range
     bank = TemplateBank.over_f0_interval(
         LatticeTiling.from_dict(setup.tilings[job_setup.tiling_idx]),
         job_setup.f0_low,
@@ -54,7 +54,7 @@ def search_job(
         velocity=search_data.velocity,
         window=setup.data.window,
     )
-    # tau[j, k] and orbital phases once per subgrid, shared by every sky point
+    # tau[j, k] and orbital phases, shared by every sky point
     harmonic_bank = HarmonicBank(
         bank,
         times=search_data.times,
@@ -67,17 +67,9 @@ def search_job(
         doppler_mismatch=search_loop_config.doppler_mismatch,
         modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
     )
-    n_doppler_references_per_subgrid = [
-        int(subgrid.layout.doppler_references.size)
-        for subgrid in harmonic_bank.subgrids
-    ]
+    layout = harmonic_bank.layout
     run_logger.search_summary(
-        setup,
-        job_setup,
-        search_data,
-        bank,
-        setup_path=args.setup,
-        n_doppler_references_per_subgrid=n_doppler_references_per_subgrid,
+        setup, job_setup, search_data, layout, setup_path=args.setup
     )
 
     # one toplist per toplist_f0_width of the job's f0 interval
@@ -88,26 +80,24 @@ def search_job(
         bank, seconds=60.0 * args.progress_minutes, started=started
     )
     n_sky_points = int(bank.alpha.size)
-    sky_batch_size = search_loop_config.sky_batch_size
-    for sky_start_idx in range(0, n_sky_points, sky_batch_size):
+    n_sky_points_done = 0
+    for sky_idxs in layout.sky_batches(search_loop_config.sky_batch_size):
         for top in top_templates_at_sky_points(
             search_data,
             harmonic_bank,
-            sky_idxs=range(
-                sky_start_idx, min(sky_start_idx + sky_batch_size, n_sky_points)
-            ),
+            sky_idxs=sky_idxs,
             f0_batch_size=search_loop_config.f0_batch_size,
             n_top=setup.n_toplist,
             toplist_f0_edges=toplist_f0_edges,
         ):
-            run_logger.progress(top.sky_idx, top.subgrid_idx)
+            run_logger.progress(n_sky_points_done)
             toplists[top.toplist_idx].add_top(top, bank)
+        n_sky_points_done += sky_idxs.size
 
     toplist_dicts = [
         {
             "f0_low": float(toplist_f0_low),
             "f0_high": float(toplist_f0_high),
-            # loudest first
             "candidates": [candidate.to_dict() for candidate in toplist.descending()],
         }
         for toplist, toplist_f0_low, toplist_f0_high in zip(
@@ -141,7 +131,7 @@ def search_job(
             "t_ref": search_data.t_ref,
             "seconds": elapsed,
             "modelled_gb": job_setup.memory_gb,
-            "n_doppler_references_per_subgrid": n_doppler_references_per_subgrid,
+            "n_doppler_references": int(layout.doppler_references.size),
             "search_loop": search_loop_config.model_dump(),
             # in f0 order
             "toplists": toplist_dicts,
@@ -169,8 +159,8 @@ def run(args: argparse.Namespace) -> None:
         ]
         if not job_setups:
             raise SystemExit(
-                f"no job overlaps {f0_low} to {f0_high} Hz; the setup covers "
-                f"{setup.jobs[0].f0_low} to {setup.jobs[-1].f0_high} Hz"
+                f"[{f0_low}, {f0_high}] Hz is not in the setup's jobs "
+                f"[{setup.jobs[0].f0_low}, {setup.jobs[-1].f0_high}] Hz"
             )
     elif args.jobs is not None:
         job_setups = setup.jobs[args.jobs[0] : args.jobs[1]]

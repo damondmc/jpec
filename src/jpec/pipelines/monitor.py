@@ -11,64 +11,46 @@ from platform import machine
 from typing import Any
 
 import jax
-import numpy as np
 from pydantic import BaseModel
 
 from jpec.bank.template_bank import TemplateBank
 from jpec.config import InjectionSetup, JobSetup, SearchLoopConfig, SearchSetup
 from jpec.constant import GB
 from jpec.engine.data import SearchData
+from jpec.engine.layout import BankLayout
 
 
 class Progress:
     """How far one job has got, a line no more often than every `seconds`."""
 
     def __init__(self, bank: TemplateBank, *, seconds: float, started: float) -> None:
-        """Count the bank's templates per sky point, subgrid by subgrid.
+        """Count the bank's sky points.
 
         Args:
-            bank: The job's bank, whose sky points and templates are counted, sky
-                point by sky point.
+            bank: The job's bank, whose sky points are counted.
             seconds: Minimum gap between lines; 0 or less gives none.
             started: When the job began, from `time.perf_counter`.
         """
         self.n_sky_points = int(bank.alpha.size)
-        # templates of the subgrids before each one at a sky point, so a subgrid
-        # index maps to templates done
-        self.n_templates_before_subgrid = np.cumsum(
-            [0]
-            + [
-                template_grid.orbital_subgrid.n_templates_per_sky_point
-                for template_grid in bank.template_grids
-            ],
-            dtype=float,
-        )
-        self.n_templates_per_sky_point = float(self.n_templates_before_subgrid[-1])
-        self.n_templates = self.n_templates_per_sky_point * self.n_sky_points
         self.seconds = seconds
         self.started = started
         self.due = started + seconds
 
-    def report(self, sky_idx: int, subgrid_idx: int) -> str | None:
+    def report(self, n_sky_points_done: int) -> str | None:
         """The progress line, if one is due.
 
         Args:
-            sky_idx: Index of the sky point being searched.
-            subgrid_idx: Index of the subgrid being searched at it.
+            n_sky_points_done: Number of sky points whose every template is scored.
 
         Returns:
-            The fraction, sky points and templates done, the time spent and the time
-            left; None when no line is due.
+            The fraction and sky points done, the time spent and the time left; None
+            when no line is due.
         """
         now = time.perf_counter()
         if self.seconds <= 0.0 or now < self.due:
             return None
         self.due = now + self.seconds
-        n_templates_done = (
-            sky_idx * self.n_templates_per_sky_point
-            + self.n_templates_before_subgrid[subgrid_idx]
-        )
-        fraction_done = n_templates_done / self.n_templates
+        fraction_done = n_sky_points_done / self.n_sky_points
         elapsed = now - self.started
         time_left = (
             f"{elapsed * (1.0 - fraction_done) / fraction_done / 60.0:.1f} min to go"
@@ -76,8 +58,7 @@ class Progress:
             else "time left unknown"
         )
         return (
-            f"  {fraction_done:6.1%}  sky {sky_idx}/{self.n_sky_points}  "
-            f"templates {n_templates_done:.3e}/{self.n_templates:.3e}  "
+            f"  {fraction_done:6.1%}  sky {n_sky_points_done}/{self.n_sky_points}  "
             f"{elapsed / 60.0:.1f} min in, {time_left}"
         )
 
@@ -216,23 +197,21 @@ class RunLogger:
         """Start tracking a job, so progress() can log how far it has got.
 
         Args:
-            bank: The job's bank, whose sky points and templates are counted, sky
-                point by sky point.
+            bank: The job's bank, whose sky points are counted.
             seconds: Minimum gap between progress lines; 0 or less logs none.
             started: When the job began, from `time.perf_counter`.
         """
         self.job_progress = Progress(bank, seconds=seconds, started=started)
 
-    def progress(self, sky_idx: int, subgrid_idx: int) -> None:
+    def progress(self, n_sky_points_done: int) -> None:
         """Log how far the job has got, if a line is due.
 
         Args:
-            sky_idx: Index of the sky point being searched.
-            subgrid_idx: Index of the subgrid being searched at it.
+            n_sky_points_done: Number of sky points whose every template is scored.
         """
         if self.job_progress is None:
             return
-        report = self.job_progress.report(sky_idx, subgrid_idx)
+        report = self.job_progress.report(n_sky_points_done)
         if report is None:
             return
         device_memory_gb = self.device_memory_gb()
@@ -253,7 +232,7 @@ class RunLogger:
         )
         freq_low = first_detector_sfts.freq_low
         freq_high = freq_low + search_data.n_band_bins / search_data.tsft
-        self.info(f"Loaded band: {freq_low:.5f} to {freq_high:.5f} Hz")
+        self.info(f"Loaded band: [{freq_low:.5f}, {freq_high:.5f}] Hz")
         self.info(f"Frequency bins loaded: {search_data.n_band_bins}")
         self.info(f"SFTs per detector: {sfts_per_detector}")
         self.info(
@@ -281,10 +260,9 @@ class RunLogger:
         setup: SearchSetup,
         job_setup: JobSetup,
         search_data: SearchData,
-        bank: TemplateBank,
+        layout: BankLayout,
         *,
         setup_path: str,
-        n_doppler_references_per_subgrid: list[int],
     ) -> None:
         """Log what a job searches, before it starts.
 
@@ -292,26 +270,27 @@ class RunLogger:
             setup: The search setup.
             job_setup: The job's row of it.
             search_data: The band as loaded.
-            bank: The job's bank.
+            layout: The job's bank laid out on the band.
             setup_path: Where the setup was read from.
-            n_doppler_references_per_subgrid: Number of Doppler reference frequencies
-                of each subgrid.
         """
+        bank = layout.bank
         self.info(f"Job {job_setup.job_idx} of {len(setup.jobs)} from {setup_path}")
-        self.info(f"Search band: {job_setup.f0_low:.5f} to {job_setup.f0_high:.5f} Hz")
         self.info(
-            f"Period range: {job_setup.period_low:g} to {job_setup.period_high:g} d"
+            f"Search band: [{job_setup.f0_low:.5f}, {job_setup.f0_high:.5f}] Hz"
+        )
+        self.info(
+            f"Period range: [{job_setup.period_low:g}, {job_setup.period_high:g}] d"
         )
         self.data_summary(search_data)
         self.info(
-            f"Frequency bins of the first subgrid's deepest template: "
-            f"{bank.template_grids[0].bin_offsets.shape[0]}"
+            f"Frequency bins of the deepest template: {layout.bin_offsets.shape[0]}, "
+            f"{layout.n_pad} more for the f0 shifts"
         )
         tiling = setup.tilings[job_setup.tiling_idx]
         self.info(f"Lattice: {tiling['lattice']}, mismatch {tiling['mismatch']}")
         self.info(f"Sky points: {bank.alpha.size}")
         self.info(f"Templates: {bank.n_templates:.3e}")
-        self.info(f"Doppler references per subgrid: {n_doppler_references_per_subgrid}")
+        self.info(f"Doppler references: {layout.doppler_references.size}")
         self.search_loop_summary(setup.search_loop)
         self.info(
             f"Toplists: {setup.n_toplist} templates per {setup.toplist_f0_width:g} Hz"
