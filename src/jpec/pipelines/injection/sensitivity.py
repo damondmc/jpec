@@ -98,14 +98,13 @@ def measure_sensitivity_depth(
             n_sky_neighbours=trials_config.n_sky_neighbours,
             n_steps=trials_config.n_steps,
         )
-        band_data = search_data.sub_band(
-            *freq_band_edges(
-                bank.f0[0],
-                bank.f0_high,
-                max_modulation_depth=bank.max_modulation_depth,
-                tsft=bank.tsft,
-            )
+        freq_low, freq_high = freq_band_edges(
+            bank.f0[0],
+            bank.f0_high,
+            max_modulation_depth=bank.max_modulation_depth,
+            tsft=bank.tsft,
         )
+        band_data = search_data.sub_band(freq_low, freq_high)
         injected_data = SearchData(
             [
                 sft_with_simulated_signal(
