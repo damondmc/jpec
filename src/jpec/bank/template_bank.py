@@ -492,31 +492,34 @@ class TemplateBank(NamedTuple):
                 margin=sky_halfwidth,
             )
 
+        f0 = f0_low + f0_step * f0_lattice_idxs
+        modulation_depth = depth_low + depth_step * depth_lattice_idxs
+        omega2_per_block = []
+        for block_omega2_step, block_lattice_idxs in zip(
+            omega2_steps, omega2_lattice_idxs_per_block, strict=True
+        ):
+            omega2_per_block.append(
+                omega_low**2 + block_omega2_step * block_lattice_idxs
+            )
+        omega2 = np.concatenate(omega2_per_block)
+        omega2_lattice_idxs = np.concatenate(omega2_lattice_idxs_per_block)
+        omega2_step = np.repeat(omega2_steps, n_periods_per_block)
+        ap_block_idxs = np.repeat(np.arange(len(tiling.ap_blocks)), n_periods_per_block)
+
         return cls(
             tsft=tsft,
             window=window,
             f0_centre=f0_centre,
             generator=generator,
-            f0=f0_low + f0_step * f0_lattice_idxs,
+            f0=f0,
             f0_lattice_idxs=f0_lattice_idxs,
-            modulation_depth=(
-                depth_low + depth_step * depth_lattice_idxs
-            ),
+            modulation_depth=modulation_depth,
             modulation_depth_lattice_idxs=depth_lattice_idxs,
-            omega2=np.concatenate(
-                [
-                    omega_low**2 + omega2_step * block_lattice_idxs
-                    for omega2_step, block_lattice_idxs in zip(
-                        omega2_steps, omega2_lattice_idxs_per_block, strict=True
-                    )
-                ]
-            ),
-            omega2_lattice_idxs=np.concatenate(omega2_lattice_idxs_per_block),
-            omega2_step=np.repeat(omega2_steps, n_periods_per_block),
+            omega2=omega2,
+            omega2_lattice_idxs=omega2_lattice_idxs,
+            omega2_step=omega2_step,
             ap_blocks=tiling.ap_blocks,
-            ap_block_idxs=np.repeat(
-                np.arange(len(tiling.ap_blocks)), n_periods_per_block
-            ),
+            ap_block_idxs=ap_block_idxs,
             alpha=alpha,
             delta=delta,
             sky_lattice_idxs=sky_lattice_idxs,

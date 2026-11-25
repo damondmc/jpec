@@ -75,16 +75,17 @@ class TopTemplates(NamedTuple):
         Returns:
             The template's statistic and parameters.
         """
+        parameters = bank.parameters(
+            sky_idx=self.sky_idx,
+            f0_idx=int(self.f0_idxs[rank]),
+            period_idx=int(self.period_idxs[rank]),
+            modulation_depth_idx=int(self.modulation_depth_idxs[rank]),
+            phase_idx=int(self.phase_idxs[rank]),
+            n_phi=self.n_phi,
+        )
         return Candidate(
             statistic=float(self.max_statistic[rank]),
-            parameters=bank.parameters(
-                sky_idx=self.sky_idx,
-                f0_idx=int(self.f0_idxs[rank]),
-                period_idx=int(self.period_idxs[rank]),
-                modulation_depth_idx=int(self.modulation_depth_idxs[rank]),
-                phase_idx=int(self.phase_idxs[rank]),
-                n_phi=self.n_phi,
-            ),
+            parameters=parameters,
             doppler_reference=float(self.doppler_references[rank]),
         )
 

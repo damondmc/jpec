@@ -46,28 +46,17 @@ def draw_injections(
     )
     # one copy to the host, so every field is a float and not a 0-d device array
     draws = np.asarray(uniform, dtype=np.float64)
-    return [
-        Injection(
-            parameters=Parameters(
-                f0=float(f0),
-                ap=float(ap),
-                period=float(period),
-                phi_b=float(phi_b),
-                alpha=float(alpha),
-                delta=float(np.arcsin(sin_delta_drawn)),
-            ),
-            orientation=Orientation(
-                cos_iota=float(cos_iota_drawn), psi=float(psi_drawn)
-            ),
+    injections = []
+    for draw in draws:
+        f0, ap, period, phi_b, alpha, sin_delta_drawn, cos_iota_drawn, psi_drawn = draw
+        parameters = Parameters(
+            f0=float(f0),
+            ap=float(ap),
+            period=float(period),
+            phi_b=float(phi_b),
+            alpha=float(alpha),
+            delta=float(np.arcsin(sin_delta_drawn)),
         )
-        for (
-            f0,
-            ap,
-            period,
-            phi_b,
-            alpha,
-            sin_delta_drawn,
-            cos_iota_drawn,
-            psi_drawn,
-        ) in draws
-    ]
+        orientation = Orientation(cos_iota=float(cos_iota_drawn), psi=float(psi_drawn))
+        injections.append(Injection(parameters=parameters, orientation=orientation))
+    return injections

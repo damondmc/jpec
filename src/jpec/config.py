@@ -2,7 +2,6 @@
 
 import json
 import math
-from itertools import takewhile
 from pathlib import Path
 from typing import Any, Optional, TypeVar
 
@@ -324,12 +323,15 @@ class SFTMetadata(BaseModel):
             The files, at least one per detector.
         """
         # the directory above each glob's first wildcard
-        checked_root, read_root = (
-            Path(
-                *takewhile(lambda part: not set("*?[") & set(part), Path(pattern).parts)
-            )
-            for pattern in (self.sft_glob, sft_glob)
-        )
+        roots = []
+        for pattern in (self.sft_glob, sft_glob):
+            root = Path()
+            for part in Path(pattern).parts:
+                if set("*?[") & set(part):
+                    break
+                root /= part
+            roots.append(root)
+        checked_root, read_root = roots
         for band in sorted(self.bands, key=lambda band: band.freq_low):
             if band.freq_low <= freq_low and freq_high <= band.freq_high:
                 return [

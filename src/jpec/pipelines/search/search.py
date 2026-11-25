@@ -81,16 +81,18 @@ def search_job(
             toplists[top.toplist_idx].add_top(top, bank)
         n_sky_points_done += sky_idxs.size
 
-    toplist_dicts = [
-        {
-            "f0_low": float(toplist_f0_low),
-            "f0_high": float(toplist_f0_high),
-            "candidates": [candidate.to_dict() for candidate in toplist.descending()],
-        }
-        for toplist, toplist_f0_low, toplist_f0_high in zip(
-            toplists, toplist_f0_edges, toplist_f0_edges[1:]
+    toplist_dicts = []
+    for toplist, toplist_f0_low, toplist_f0_high in zip(
+        toplists, toplist_f0_edges, toplist_f0_edges[1:]
+    ):
+        candidates = [candidate.to_dict() for candidate in toplist.descending()]
+        toplist_dicts.append(
+            {
+                "f0_low": float(toplist_f0_low),
+                "f0_high": float(toplist_f0_high),
+                "candidates": candidates,
+            }
         )
-    ]
     elapsed = time.perf_counter() - started
     n_kept = sum(len(toplist.kept) for toplist in toplists)
     run_logger.info(

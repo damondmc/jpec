@@ -101,9 +101,9 @@ class Detector:
         Returns:
             Cartesian `v/c` per time, ~1e-4, read-only.
         """
-        return _detector_states(
-            self.name, np.ascontiguousarray(gps_times, dtype=np.float64).tobytes()
-        )[0]
+        timestamps = np.ascontiguousarray(gps_times, dtype=np.float64).tobytes()
+        velocity, _ = _detector_states(self.name, timestamps)
+        return velocity
 
     def position(
         self, gps_times: Float[np.ndarray, " n_time"]
@@ -118,9 +118,9 @@ class Detector:
         Returns:
             Cartesian position [light-s] per time, ~500, read-only.
         """
-        return _detector_states(
-            self.name, np.ascontiguousarray(gps_times, dtype=np.float64).tobytes()
-        )[1]
+        timestamps = np.ascontiguousarray(gps_times, dtype=np.float64).tobytes()
+        _, position = _detector_states(self.name, timestamps)
+        return position
 
     def antenna_pattern(
         self,

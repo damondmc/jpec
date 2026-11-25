@@ -126,13 +126,9 @@ class SearchData:
                 f"{self.freq_low + self.n_band_bins / self.tsft:.5f}] Hz"
             )
         bin_idxs = slice(start_idx, stop_idx)
-        return SearchData(
-            [sft.sub_band(bin_idxs) for sft in self.sfts],
-            floor=[
-                floor_per_detector[:, bin_idxs] for floor_per_detector in self.floor
-            ],
-            t_ref=self.t_ref,
-        )
+        sfts = [sft.sub_band(bin_idxs) for sft in self.sfts]
+        floor = [floor_per_detector[:, bin_idxs] for floor_per_detector in self.floor]
+        return SearchData(sfts, floor=floor, t_ref=self.t_ref)
 
     @cached_property
     def sft_time_series(self) -> list[Complex[Array, "n_sft n_band"]]:
