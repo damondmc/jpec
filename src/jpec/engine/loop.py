@@ -1,7 +1,6 @@
 """The search loop: every template at a batch of sky points scored on one band."""
 
 from collections.abc import Iterator, Sequence
-from functools import partial
 from typing import NamedTuple
 
 import jax
@@ -10,252 +9,22 @@ import numpy as np
 from jaxtyping import Array, Bool, Complex, Float, Int
 
 from jpec.bank.template_bank import TemplateBank
-from jpec.detector.doppler import (
-    doppler_corrected_mean_power,
-    doppler_corrected_power,
-    solar_roemer_delay,
-)
+from jpec.detector.doppler import solar_roemer_delay
 from jpec.engine.candidates import TopTemplates
 from jpec.engine.data import SearchData
 from jpec.engine.layout import TemplateBatch, bank_layout, f0_idxs_per_toplist
 from jpec.engine.match import (
     matched_filter_grid,
     placed_template_harmonics,
+    template_harmonics_at_depths,
     template_norms_squared,
+    top_k_templates,
 )
-from jpec.stat.matched_filter import (
-    barycenter_orbital_phase,
-    data_harmonics,
-    orbital_phase_mod_2pi,
+from jpec.engine.transform import (
+    data_harmonics_per_sky_point,
+    weighted_excess_power_per_reference,
 )
-from jpec.waveform.harmonics import template_harmonics
-from jpec.waveform.window import Window
-
-
-@partial(jax.jit, static_argnames=("n_theta", "j_max", "window", "batch_size"))
-def template_harmonics_at_depths(
-    bin_offsets: Float[Array, " n_freq"],
-    modulation_depth_bins: Float[Array, " n_modulation_depth"],
-    *,
-    n_theta: int,
-    j_max: int,
-    window: Window,
-    batch_size: int,
-) -> Complex[Array, "n_modulation_depth n_harmonic n_freq"]:
-    """`tau[j, k]` at every modulation depth on one grid, `batch_size` at a time.
-
-    Args:
-        bin_offsets: Bin centres, as offsets from f0 [bins].
-        modulation_depth_bins: The modulation depths [bins].
-        n_theta: Number of orbital phases sampled.
-        j_max: Highest harmonic kept.
-        window: The window the SFTs were made with.
-        batch_size: Number of modulation depths built at once, which caps the planes
-            held.
-
-    Returns:
-        `tau[j, k]` for every modulation depth, in their order.
-    """
-
-    def at_depth(
-        depth_bins: Float[Array, ""],
-    ) -> Complex[Array, "n_harmonic n_freq"]:
-        return template_harmonics(
-            bin_offsets,
-            modulation_depth_bins=depth_bins,
-            n_theta=n_theta,
-            j_max=j_max,
-            window=window,
-        )
-
-    return jax.lax.map(at_depth, modulation_depth_bins, batch_size=batch_size)
-
-
-def sft_weights_at_sky_point(
-    search_data: SearchData, *, alpha: float, delta: float
-) -> Float[Array, " n_sft"]:
-    """The weight each SFT takes toward a sky position, of unit mean square.
-
-        w[n] = (F_plus[n]^2 + F_cross[n]^2) / noise_level[n]
-
-    the share of a signal's power the SFT is expected to hold, over
-    `sqrt(<w^2>_n)`.
-
-    Args:
-        search_data: The band searched.
-        alpha: Right ascension [rad].
-        delta: Declination [rad].
-
-    Returns:
-        The weight per SFT, the detectors concatenated, in the floor's dtype.
-    """
-    antenna_power = np.concatenate(
-        [
-            sft.detector.antenna_power(
-                sft.timestamps_midpoints, alpha=alpha, delta=delta
-            )
-            for sft in search_data.sfts
-        ]
-    )
-    weights = antenna_power / search_data.sft_noise_level
-    return jnp.asarray(
-        weights / np.sqrt(np.mean(weights**2)), dtype=search_data.floor[0].dtype
-    )
-
-
-@partial(jax.jit, static_argnames="n_transformed_bins")
-def weighted_excess_power_per_reference(
-    sft_time_series: list[Complex[Array, "n_sft n_band"]],
-    floor: list[Float[Array, "n_sft n_band"]],
-    velocity_per_detector: list[Float[Array, "n_sft 3"]],
-    doppler_references: Float[Array, " n_doppler_reference"],
-    transformed_start_idxs: Int[Array, " n_doppler_reference"],
-    *,
-    n_transformed_bins: int,
-    tsft: float,
-    alpha: float,
-    delta: float,
-    sft_weights: Float[Array, " n_sft"],
-    mean_power: list[Float[Array, " n_band"]],
-) -> Float[Array, "n_doppler_reference n_sft n_transformed_bin"]:
-    """The band corrected toward one sky position at every Doppler reference in turn.
-
-    Each SFT's power less the power expected from its detector's time-averaged
-    spectrum is multiplied by the SFT's weight:
-
-        sft_weights[n] (power[n, k] - expected[n, k])
-
-    Args:
-        sft_time_series: Inverse transform of the band, per detector.
-        floor: Mean noise power in each SFT and bin, per detector.
-        velocity_per_detector: Detector velocity `v/c` at each SFT, per detector.
-        doppler_references: Frequencies the Doppler shift is taken at [Hz].
-        transformed_start_idxs: First band bin each reference keeps.
-        n_transformed_bins: Number of bins each reference keeps from its first.
-        tsft: SFT length [s].
-        alpha: Right ascension [rad].
-        delta: Declination [rad].
-        sft_weights: Weight of each SFT toward the sky position, the detectors
-            concatenated.
-        mean_power: Normalized power averaged over the SFTs, per detector, in the
-            detector frame.
-
-    Returns:
-        The weighted power at each Doppler reference, over the bins it keeps.
-    """
-
-    def at_reference(
-        reference_and_start_idx: tuple[Float[Array, ""], Int[Array, ""]],
-    ) -> Float[Array, "n_sft n_transformed_bin"]:
-        doppler_reference, transformed_start_idx = reference_and_start_idx
-        corrected_power = doppler_corrected_power(
-            sft_time_series,
-            floor=floor,
-            velocity_per_detector=velocity_per_detector,
-            tsft=tsft,
-            alpha=alpha,
-            delta=delta,
-            doppler_reference=doppler_reference,
-        )
-        corrected_power = jax.lax.dynamic_slice_in_dim(
-            corrected_power, transformed_start_idx, n_transformed_bins, axis=-1
-        )
-        expected_power = doppler_corrected_mean_power(
-            mean_power,
-            velocity_per_detector=velocity_per_detector,
-            tsft=tsft,
-            alpha=alpha,
-            delta=delta,
-            doppler_reference=doppler_reference,
-            start_idx=transformed_start_idx,
-            n_bins=n_transformed_bins,
-        )
-        # the expected power is subtracted so the weights do not spread the floor and
-        # steady lines from j = 0 into the harmonics matched
-        return sft_weights[:, None] * (corrected_power - expected_power)
-
-    # one reference's transforms in memory at a time
-    return jax.lax.map(at_reference, (doppler_references, transformed_start_idxs))
-
-
-@partial(jax.jit, static_argnames="j_max")
-def data_harmonics_per_sky_point(
-    weighted_excess_power: Float[Array, "n_sky n_doppler_reference n_sft n_freq"],
-    orbital_phase: Float[Array, "n_sky n_period n_sft"],
-    *,
-    j_max: int,
-) -> Complex[Array, "n_sky n_doppler_reference n_period n_harmonic n_freq"]:
-    """data_harmonics() of the weighted excess power at each sky point and reference.
-
-    Args:
-        weighted_excess_power: weighted_excess_power_per_reference() at each sky
-            point.
-        orbital_phase: barycenter_orbital_phase() at each sky point, SFT and trial
-            period of a batch [rad].
-        j_max: Highest harmonic to keep.
-
-    Returns:
-        `F[j, k]` at each sky point, reference and trial period.
-    """
-    per_reference = jax.vmap(partial(data_harmonics, j_max=j_max), in_axes=(0, None))
-    return jax.vmap(per_reference)(weighted_excess_power, orbital_phase)
-
-
-@partial(jax.jit, static_argnames="n_top")
-def top_k_templates(
-    max_statistic: Float[Array, "n_f0 n_period n_matched_modulation_depth"],
-    phase_idxs: Int[Array, "n_f0 n_period n_matched_modulation_depth"],
-    ap_in_range: Bool[Array, "n_period n_matched_modulation_depth"],
-    toplist_f0_idxs: Int[Array, "n_toplist n_member"],
-    *,
-    n_top: int,
-) -> tuple[
-    Float[Array, "n_toplist n_kept"],
-    Int[Array, "n_toplist n_kept"],
-    Int[Array, "n_toplist n_kept"],
-]:
-    """Each toplist's top in-range templates of a grid.
-
-    Args:
-        max_statistic: Maximum of `S` over the orbital phase at every template of
-            the grid.
-        phase_idxs: Index of the orbital phase each maximum sits at.
-        ap_in_range: Whether each (period, modulation depth) has ap in range.
-        toplist_f0_idxs: The f0 points each toplist covers.
-        n_top: Number of templates kept per toplist.
-
-    Returns:
-        Per toplist, their statistic, top first and `-inf` past the in-range ones,
-            their flat index into the grid, and their phase index.
-    """
-    n_f0, n_periods, n_modulation_depths = max_statistic.shape
-    n_templates_per_f0 = n_periods * n_modulation_depths
-    # top_k ranks NaN above every number, so a NaN statistic is dropped with the
-    # out-of-box ones
-    is_kept = ap_in_range[None] & ~jnp.isnan(max_statistic)
-    ap_in_range_max_statistic = jnp.where(is_kept, max_statistic, -jnp.inf)
-    # each toplist's f0 points, a padding point scoring -inf
-    toplist_max_statistic = jnp.take(
-        ap_in_range_max_statistic,
-        toplist_f0_idxs,
-        axis=0,
-        mode="fill",
-        fill_value=-jnp.inf,
-    ).reshape(toplist_f0_idxs.shape[0], -1)
-    # every template of the toplist when it holds fewer than n_top
-    top_max_statistic, member_flat_idxs = jax.lax.top_k(
-        toplist_max_statistic, min(n_top, toplist_max_statistic.shape[1])
-    )
-    f0_idxs = jnp.take_along_axis(
-        toplist_f0_idxs, member_flat_idxs // n_templates_per_f0, axis=1
-    )
-    # a padding point's index lies past the grid and is clipped onto its last
-    # template; its statistic is -inf
-    flat_idxs = jnp.minimum(
-        f0_idxs * n_templates_per_f0 + member_flat_idxs % n_templates_per_f0,
-        n_f0 * n_templates_per_f0 - 1,
-    )
-    return top_max_statistic, flat_idxs, phase_idxs.ravel()[flat_idxs]
+from jpec.stat.matched_filter import barycenter_orbital_phase, orbital_phase_mod_2pi
 
 
 class SkyPoint(NamedTuple):
@@ -553,10 +322,8 @@ def top_templates_at_sky_points(
                 tsft=search_data.tsft,
                 alpha=float(bank.alpha[sky_idx]),
                 delta=float(bank.delta[sky_idx]),
-                sft_weights=sft_weights_at_sky_point(
-                    search_data,
-                    alpha=float(bank.alpha[sky_idx]),
-                    delta=float(bank.delta[sky_idx]),
+                sft_weights=search_data.sft_weights(
+                    float(bank.alpha[sky_idx]), float(bank.delta[sky_idx])
                 ),
                 mean_power=search_data.mean_power,
             )

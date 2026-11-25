@@ -1,12 +1,53 @@
-"""The match: every (f0, period, modulation depth) template scored against the data."""
+"""The match: templates built, scored against the data, and the top ones kept."""
 
 from functools import partial
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, Complex, Float, Int
+from jaxtyping import Array, Bool, Complex, Float, Int
 
 from jpec.stat.matched_filter import statistic_over_phase
+from jpec.waveform.harmonics import template_harmonics
+from jpec.waveform.window import Window
+
+
+@partial(jax.jit, static_argnames=("n_theta", "j_max", "window", "batch_size"))
+def template_harmonics_at_depths(
+    bin_offsets: Float[Array, " n_freq"],
+    modulation_depth_bins: Float[Array, " n_modulation_depth"],
+    *,
+    n_theta: int,
+    j_max: int,
+    window: Window,
+    batch_size: int,
+) -> Complex[Array, "n_modulation_depth n_harmonic n_freq"]:
+    """`tau[j, k]` at every modulation depth on one grid, `batch_size` at a time.
+
+    Args:
+        bin_offsets: Bin centres, as offsets from f0 [bins].
+        modulation_depth_bins: The modulation depths [bins].
+        n_theta: Number of orbital phases sampled.
+        j_max: Highest harmonic kept.
+        window: The window the SFTs were made with.
+        batch_size: Number of modulation depths built at once, which caps the planes
+            held.
+
+    Returns:
+        `tau[j, k]` for every modulation depth, in their order.
+    """
+
+    def at_depth(
+        depth_bins: Float[Array, ""],
+    ) -> Complex[Array, "n_harmonic n_freq"]:
+        return template_harmonics(
+            bin_offsets,
+            modulation_depth_bins=depth_bins,
+            n_theta=n_theta,
+            j_max=j_max,
+            window=window,
+        )
+
+    return jax.lax.map(at_depth, modulation_depth_bins, batch_size=batch_size)
 
 
 @partial(jax.jit, static_argnames="n_pad")
@@ -205,3 +246,60 @@ def matched_filter_grid(
         .set(group_phase_idxs.reshape(-1, *grid_shape[1:]))
     )
     return max_statistic, phase_idxs
+
+
+@partial(jax.jit, static_argnames="n_top")
+def top_k_templates(
+    max_statistic: Float[Array, "n_f0 n_period n_matched_modulation_depth"],
+    phase_idxs: Int[Array, "n_f0 n_period n_matched_modulation_depth"],
+    ap_in_range: Bool[Array, "n_period n_matched_modulation_depth"],
+    toplist_f0_idxs: Int[Array, "n_toplist n_member"],
+    *,
+    n_top: int,
+) -> tuple[
+    Float[Array, "n_toplist n_kept"],
+    Int[Array, "n_toplist n_kept"],
+    Int[Array, "n_toplist n_kept"],
+]:
+    """Each toplist's top in-range templates of a grid.
+
+    Args:
+        max_statistic: Maximum of `S` over the orbital phase at every template of
+            the grid.
+        phase_idxs: Index of the orbital phase each maximum sits at.
+        ap_in_range: Whether each (period, modulation depth) has ap in range.
+        toplist_f0_idxs: The f0 points each toplist covers.
+        n_top: Number of templates kept per toplist.
+
+    Returns:
+        Per toplist, their statistic, top first and `-inf` past the in-range ones,
+            their flat index into the grid, and their phase index.
+    """
+    n_f0, n_periods, n_modulation_depths = max_statistic.shape
+    n_templates_per_f0 = n_periods * n_modulation_depths
+    # top_k ranks NaN above every number, so a NaN statistic is dropped with the
+    # out-of-box ones
+    is_kept = ap_in_range[None] & ~jnp.isnan(max_statistic)
+    ap_in_range_max_statistic = jnp.where(is_kept, max_statistic, -jnp.inf)
+    # each toplist's f0 points, a padding point scoring -inf
+    toplist_max_statistic = jnp.take(
+        ap_in_range_max_statistic,
+        toplist_f0_idxs,
+        axis=0,
+        mode="fill",
+        fill_value=-jnp.inf,
+    ).reshape(toplist_f0_idxs.shape[0], -1)
+    # every template of the toplist when it holds fewer than n_top
+    top_max_statistic, member_flat_idxs = jax.lax.top_k(
+        toplist_max_statistic, min(n_top, toplist_max_statistic.shape[1])
+    )
+    f0_idxs = jnp.take_along_axis(
+        toplist_f0_idxs, member_flat_idxs // n_templates_per_f0, axis=1
+    )
+    # a padding point's index lies past the grid and is clipped onto its last
+    # template; its statistic is -inf
+    flat_idxs = jnp.minimum(
+        f0_idxs * n_templates_per_f0 + member_flat_idxs % n_templates_per_f0,
+        n_f0 * n_templates_per_f0 - 1,
+    )
+    return top_max_statistic, flat_idxs, phase_idxs.ravel()[flat_idxs]

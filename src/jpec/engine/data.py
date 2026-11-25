@@ -17,7 +17,7 @@ from jpec.waveform.plane import arc_bin_offsets
 def freq_band_edges(
     f0_low: float, f0_high: float, *, max_modulation_depth: float, tsft: float
 ) -> tuple[float, float]:
-    """The band a search over [f0_low, f0_high] reads, Doppler shift and window included.
+    """The band a search over [f0_low, f0_high] reads, with Doppler shift and window.
 
     Args:
         f0_low: Lowest template f0 [Hz].
@@ -155,6 +155,34 @@ class SearchData:
                 np.asarray(jnp.mean(floor_per_detector, axis=1))
                 for floor_per_detector in self.floor
             ]
+        )
+
+    def sft_weights(self, alpha: float, delta: float) -> Float[Array, " n_sft"]:
+        """The weight each SFT takes toward a sky position, of unit mean square.
+
+            w[n] = (F_plus[n]^2 + F_cross[n]^2) / noise_level[n]
+
+        the share of a signal's power the SFT is expected to hold, over
+        `sqrt(<w^2>_n)`.
+
+        Args:
+            alpha: Right ascension [rad].
+            delta: Declination [rad].
+
+        Returns:
+            The weight per SFT, the detectors concatenated, in the floor's dtype.
+        """
+        antenna_power = np.concatenate(
+            [
+                sft.detector.antenna_power(
+                    sft.timestamps_midpoints, alpha=alpha, delta=delta
+                )
+                for sft in self.sfts
+            ]
+        )
+        weights = antenna_power / self.sft_noise_level
+        return jnp.asarray(
+            weights / np.sqrt(np.mean(weights**2)), dtype=self.floor[0].dtype
         )
 
     @property

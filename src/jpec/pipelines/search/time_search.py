@@ -22,12 +22,10 @@ from jpec.config import SearchSetup, read_json
 from jpec.detector.doppler import solar_roemer_delay
 from jpec.engine.data import SearchData
 from jpec.engine.layout import f0_idxs_per_toplist
-from jpec.engine.loop import (
-    HarmonicBank,
+from jpec.engine.loop import HarmonicBank, match_at_sky_point
+from jpec.engine.match import top_k_templates
+from jpec.engine.transform import (
     data_harmonics_per_sky_point,
-    match_at_sky_point,
-    sft_weights_at_sky_point,
-    top_k_templates,
     weighted_excess_power_per_reference,
 )
 from jpec.pipelines.monitor import RunLogger
@@ -124,10 +122,8 @@ def run(args: argparse.Namespace) -> None:
             tsft=search_data.tsft,
             alpha=float(bank.alpha[sky_idx]),
             delta=float(bank.delta[sky_idx]),
-            sft_weights=sft_weights_at_sky_point(
-                search_data,
-                alpha=float(bank.alpha[sky_idx]),
-                delta=float(bank.delta[sky_idx]),
+            sft_weights=search_data.sft_weights(
+                float(bank.alpha[sky_idx]), float(bank.delta[sky_idx])
             ),
             mean_power=search_data.mean_power,
         )
