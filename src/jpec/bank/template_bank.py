@@ -488,7 +488,8 @@ class TemplateBank(NamedTuple):
                 generator[3:, 3:],
                 sky_eigenvectors=sky_eigenvectors,
                 cubic_steps=cubic_step(g_sky_diag[:2], tiling.mismatch_per_axis),
-                box=(alpha_low, alpha_high, delta_low, delta_high),
+                alpha_interval=prior.alpha,
+                delta_interval=prior.delta,
                 margin=sky_halfwidth,
             )
 

@@ -26,7 +26,8 @@ TSFT = 1024.0
 DAYS = 60.0
 F0 = 150.0
 MISMATCH = 0.2
-WHOLE_SKY = (0.0, 2.0 * np.pi, -0.5 * np.pi, 0.5 * np.pi)
+WHOLE_SKY_ALPHA = (0.0, 2.0 * np.pi)
+WHOLE_SKY_DELTA = (-0.5 * np.pi, 0.5 * np.pi)
 # lattice indices each side of the origin enumerated for the covering check
 N_COVERING_STEPS = 4
 
@@ -141,7 +142,8 @@ def test_sky_lattice_covers_the_sphere_within_its_share_of_the_mismatch():
         triangular[3:, 3:],
         sky_eigenvectors=sky_eigenvectors,
         cubic_steps=cubic_step(curvature[:2], tiling.mismatch_per_axis),
-        box=WHOLE_SKY,
+        alpha_interval=WHOLE_SKY_ALPHA,
+        delta_interval=WHOLE_SKY_DELTA,
         margin=0.0,
     )
 

@@ -177,7 +177,8 @@ def in_sky_box(
     alpha: Float[np.ndarray, " n_sky"],
     delta: Float[np.ndarray, " n_sky"],
     *,
-    box: tuple[float, float, float, float],
+    alpha_interval: tuple[float, float],
+    delta_interval: tuple[float, float],
     margin: float,
 ) -> Bool[np.ndarray, " n_sky"]:
     """Whether each sky position lies within `margin` of a box in `(alpha, delta)`.
@@ -185,13 +186,15 @@ def in_sky_box(
     Args:
         alpha: Right ascension of each position [rad].
         delta: Declination of each position [rad].
-        box: `(alpha_low, alpha_high, delta_low, delta_high)` [rad].
+        alpha_interval: Interval of the box's right ascension [rad].
+        delta_interval: Interval of the box's declination [rad].
         margin: Distance on the sky past the box's edges still kept [rad].
 
     Returns:
         The mask.
     """
-    alpha_low, alpha_high, delta_low, delta_high = box
+    alpha_low, alpha_high = alpha_interval
+    delta_low, delta_high = delta_interval
     alpha_centre = 0.5 * (alpha_low + alpha_high)
     alpha_half_width = 0.5 * (alpha_high - alpha_low)
     alpha_offset = np.abs((alpha - alpha_centre + np.pi) % (2.0 * np.pi) - np.pi)
@@ -207,7 +210,8 @@ def sky_lattice(
     *,
     sky_eigenvectors: Float[np.ndarray, "3 3"],
     cubic_steps: Float[np.ndarray, " 2"],
-    box: tuple[float, float, float, float],
+    alpha_interval: tuple[float, float],
+    delta_interval: tuple[float, float],
     margin: float,
 ) -> tuple[
     Float[np.ndarray, " n_sky"], Float[np.ndarray, " n_sky"], Int[np.ndarray, "n_sky 2"]
@@ -222,7 +226,8 @@ def sky_lattice(
         sky_generator: `T` on `(x1, x2)`, upper triangular.
         sky_eigenvectors: The sky metric's eigenvectors as columns, largest first.
         cubic_steps: Cubic steps along x1 and x2, which space the rim ring.
-        box: `(alpha_low, alpha_high, delta_low, delta_high)` of the sky kept [rad].
+        alpha_interval: Interval of the right ascension kept [rad].
+        delta_interval: Interval of the declination kept [rad].
         margin: Distance on the sky past the box's edges still kept [rad].
 
     Returns:
@@ -266,5 +271,11 @@ def sky_lattice(
     directions = lattice_coords @ sky_eigenvectors.T
     alpha = np.arctan2(directions[:, 1], directions[:, 0]) % (2.0 * np.pi)
     delta = np.arcsin(np.clip(directions[:, 2], -1.0, 1.0))
-    keep = in_sky_box(alpha, delta, box=box, margin=margin)
+    keep = in_sky_box(
+        alpha,
+        delta,
+        alpha_interval=alpha_interval,
+        delta_interval=delta_interval,
+        margin=margin,
+    )
     return alpha[keep], delta[keep], lattice_idxs[keep]
