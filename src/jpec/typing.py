@@ -43,3 +43,10 @@ length-one array.
 #   n_lattice_point  points of a sky lattice in its eigenframe, before they are
 #                    cut to the box
 #   length      samples within one SFT, for a window
+
+# Index names:
+#   *_lattice_idxs  integer coordinates n_k of A5* lattice points (jpec.bank only)
+#   *_idx, *_idxs   positions in an array: a sky point in the bank, an f0 point on
+#                   the base grid, a bin
+#   *_class         index of a shift fraction (omega2_class, depth_class)
+#   *_kept          positions a subset keeps

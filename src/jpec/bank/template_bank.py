@@ -21,7 +21,7 @@ from jpec.params import Parameters, ap_from_modulation_depth, omega_from_period
 from jpec.waveform.window import Window
 
 
-def padded_axis_idxs(
+def padded_axis_lattice_idxs(
     span: float, *, step: float, margin: float
 ) -> Int[np.ndarray, " n_point"]:
     """Lattice indices of one axis's grid over a range, anchored at its low edge.
@@ -81,17 +81,17 @@ class TemplateBank(NamedTuple):
         f0_centre: The band centre the ap ranges and depths convert at [Hz].
         generator: `T` of the first ap block.
         f0: The base f0 grid [Hz].
-        f0_idxs: Lattice index of each f0 point.
+        f0_lattice_idxs: Lattice index of each f0 point.
         modulation_depth: The base modulation-depth grid [Hz].
-        modulation_depth_idxs: Lattice index of each modulation depth.
+        modulation_depth_lattice_idxs: Lattice index of each modulation depth.
         omega2: The base omega^2 grid [rad^2/s^2], ap block after ap block.
-        omega2_idxs: Lattice index of each omega^2 point within its ap block.
+        omega2_lattice_idxs: Lattice index of each omega^2 point within its ap block.
         omega2_step: The omega^2 step of each point's ap block [rad^2/s^2].
         ap_block_idxs: The ap block of each omega^2 point.
         ap_blocks: Every ap block.
         alpha: Right ascension of each sky point [rad].
         delta: Declination of each sky point [rad].
-        sky_idxs: Lattice indices `(n_3, n_4)` of each sky point.
+        sky_lattice_idxs: Lattice indices `(n_3, n_4)` of each sky point.
     """
 
     tsft: float
@@ -99,17 +99,17 @@ class TemplateBank(NamedTuple):
     f0_centre: float
     generator: Float[np.ndarray, "5 5"]
     f0: Float[np.ndarray, " n_f0"]
-    f0_idxs: Int[np.ndarray, " n_f0"]
+    f0_lattice_idxs: Int[np.ndarray, " n_f0"]
     modulation_depth: Float[np.ndarray, " n_modulation_depth"]
-    modulation_depth_idxs: Int[np.ndarray, " n_modulation_depth"]
+    modulation_depth_lattice_idxs: Int[np.ndarray, " n_modulation_depth"]
     omega2: Float[np.ndarray, " n_period"]
-    omega2_idxs: Int[np.ndarray, " n_period"]
+    omega2_lattice_idxs: Int[np.ndarray, " n_period"]
     omega2_step: Float[np.ndarray, " n_period"]
     ap_block_idxs: Int[np.ndarray, " n_period"]
     ap_blocks: list[ApBlock]
     alpha: Float[np.ndarray, " n_sky"]
     delta: Float[np.ndarray, " n_sky"]
-    sky_idxs: Int[np.ndarray, "n_sky 2"]
+    sky_lattice_idxs: Int[np.ndarray, "n_sky 2"]
 
     @property
     def f0_step(self) -> float:
@@ -144,7 +144,7 @@ class TemplateBank(NamedTuple):
     @property
     def omega2_class(self) -> Int[np.ndarray, " n_sky"]:
         """Index of each sky point's omega^2 shift fraction."""
-        omega2_class, _ = self._split_omega2_shift(self.sky_idxs)
+        omega2_class, _ = self._split_omega2_shift(self.sky_lattice_idxs)
         return omega2_class
 
     @property
@@ -241,8 +241,10 @@ class TemplateBank(NamedTuple):
         Returns:
             The indices, one per base omega^2 point.
         """
-        _, omega2_whole_steps = self._split_omega2_shift(self.sky_idxs[sky_idx])
-        return self.omega2_idxs - omega2_whole_steps
+        _, omega2_whole_steps = self._split_omega2_shift(
+            self.sky_lattice_idxs[sky_idx]
+        )
+        return self.omega2_lattice_idxs - omega2_whole_steps
 
     def depth_class(self, sky_idx: int) -> Int[np.ndarray, " n_period"]:
         """Index of each period's depth shift fraction at one sky point.
@@ -254,7 +256,7 @@ class TemplateBank(NamedTuple):
             The depth class per period.
         """
         depth_class, _ = self._split_depth_shift(
-            self.sky_idxs[sky_idx], self.period_lattice_idxs(sky_idx)
+            self.sky_lattice_idxs[sky_idx], self.period_lattice_idxs(sky_idx)
         )
         return depth_class
 
@@ -269,7 +271,7 @@ class TemplateBank(NamedTuple):
         Returns:
             The shift, in `[0, f0_step)`.
         """
-        sky_lattice_idxs = self.sky_idxs[sky_idx]
+        sky_lattice_idxs = self.sky_lattice_idxs[sky_idx]
         period_lattice_idxs = self.period_lattice_idxs(sky_idx)
         _, depth_whole_steps = self._split_depth_shift(
             sky_lattice_idxs, period_lattice_idxs
@@ -277,7 +279,7 @@ class TemplateBank(NamedTuple):
         return self._f0_shift(
             sky_lattice_idxs,
             period_lattice_idxs[:, None],
-            self.modulation_depth_idxs[None, :] - depth_whole_steps[:, None],
+            self.modulation_depth_lattice_idxs[None, :] - depth_whole_steps[:, None],
         )
 
     def modulation_depth_at(
@@ -365,9 +367,9 @@ class TemplateBank(NamedTuple):
         """
         # the lattice indices and shifts of this one template, not of every
         # (period, depth) of the sky point
-        sky_lattice_idxs = self.sky_idxs[sky_idx]
+        sky_lattice_idxs = self.sky_lattice_idxs[sky_idx]
         omega2_class, omega2_whole_steps = self._split_omega2_shift(sky_lattice_idxs)
-        period_lattice_idx = self.omega2_idxs[period_idx] - omega2_whole_steps
+        period_lattice_idx = self.omega2_lattice_idxs[period_idx] - omega2_whole_steps
         depth_class, depth_whole_steps = self._split_depth_shift(
             sky_lattice_idxs, period_lattice_idx
         )
@@ -376,7 +378,8 @@ class TemplateBank(NamedTuple):
             + self._f0_shift(
                 sky_lattice_idxs,
                 period_lattice_idx,
-                self.modulation_depth_idxs[modulation_depth_idx] - depth_whole_steps,
+                self.modulation_depth_lattice_idxs[modulation_depth_idx]
+                - depth_whole_steps,
             )
         )
         modulation_depth = float(
@@ -448,25 +451,24 @@ class TemplateBank(NamedTuple):
         depth_step = generator[1, 1]
         # one omega^2 step per ap block
         omega2_steps = generators[:, 2, 2]
-        
         f0_halfwidth = halfwidths[0, 0]
         depth_halfwidth = halfwidths[0, 1]
         omega2_halfwidths = halfwidths[:, 2]
 
-        f0_idxs = padded_axis_idxs(
+        f0_lattice_idxs = padded_axis_lattice_idxs(
             f0_high - f0_low, step=f0_step, margin=f0_halfwidth
         )
         omega_low = float(omega_from_period(jnp.asarray(prior.period[1])))
         omega_high = float(omega_from_period(jnp.asarray(prior.period[0])))
         depth_low = f0_centre * prior.ap[0] * omega_low
         depth_high = f0_centre * prior.ap[1] * omega_high
-        depth_idxs = padded_axis_idxs(
+        depth_lattice_idxs = padded_axis_lattice_idxs(
             depth_high - depth_low,
             step=depth_step,
             margin=depth_halfwidth,
         )
-        omega2_idxs_per_block = [
-            padded_axis_idxs(
+        omega2_lattice_idxs_per_block = [
+            padded_axis_lattice_idxs(
                 omega_high**2 - omega_low**2,
                 step=omega2_step,
                 margin=omega2_halfwidth,
@@ -475,14 +477,17 @@ class TemplateBank(NamedTuple):
                 omega2_steps, omega2_halfwidths, strict=True
             )
         ]
-        n_periods_per_block = [block_idxs.size for block_idxs in omega2_idxs_per_block]
+        n_periods_per_block = [
+            block_lattice_idxs.size
+            for block_lattice_idxs in omega2_lattice_idxs_per_block
+        ]
 
         if is_point_sky:
             alpha, delta = np.array([alpha_low]), np.array([delta_low])
-            sky_idxs = np.zeros((1, 2), dtype=int)
+            sky_lattice_idxs = np.zeros((1, 2), dtype=int)
         else:
             sky_halfwidth = float(halfwidths[0, 3:].max())
-            alpha, delta, sky_idxs = sky_lattice(
+            alpha, delta, sky_lattice_idxs = sky_lattice(
                 generator[3:, 3:],
                 sky_eigenvectors=sky_eigenvectors,
                 cubic_steps=cubic_step(g_sky_diag[:2], tiling.mismatch_per_axis),
@@ -495,21 +500,21 @@ class TemplateBank(NamedTuple):
             window=window,
             f0_centre=f0_centre,
             generator=generator,
-            f0=f0_low + f0_step * f0_idxs,
-            f0_idxs=f0_idxs,
+            f0=f0_low + f0_step * f0_lattice_idxs,
+            f0_lattice_idxs=f0_lattice_idxs,
             modulation_depth=(
-                depth_low + depth_step * depth_idxs
+                depth_low + depth_step * depth_lattice_idxs
             ),
-            modulation_depth_idxs=depth_idxs,
+            modulation_depth_lattice_idxs=depth_lattice_idxs,
             omega2=np.concatenate(
                 [
-                    omega_low**2 + omega2_step * block_idxs
-                    for omega2_step, block_idxs in zip(
-                        omega2_steps, omega2_idxs_per_block, strict=True
+                    omega_low**2 + omega2_step * block_lattice_idxs
+                    for omega2_step, block_lattice_idxs in zip(
+                        omega2_steps, omega2_lattice_idxs_per_block, strict=True
                     )
                 ]
             ),
-            omega2_idxs=np.concatenate(omega2_idxs_per_block),
+            omega2_lattice_idxs=np.concatenate(omega2_lattice_idxs_per_block),
             omega2_step=np.repeat(omega2_steps, n_periods_per_block),
             ap_blocks=tiling.ap_blocks,
             ap_block_idxs=np.repeat(
@@ -517,7 +522,7 @@ class TemplateBank(NamedTuple):
             ),
             alpha=alpha,
             delta=delta,
-            sky_idxs=sky_idxs,
+            sky_lattice_idxs=sky_lattice_idxs,
         )
 
     @classmethod
@@ -583,14 +588,16 @@ class TemplateBank(NamedTuple):
         )
         return bank._replace(
             f0=bank.f0[f0_kept],
-            f0_idxs=bank.f0_idxs[f0_kept],
+            f0_lattice_idxs=bank.f0_lattice_idxs[f0_kept],
             modulation_depth=bank.modulation_depth[depth_kept],
-            modulation_depth_idxs=bank.modulation_depth_idxs[depth_kept],
+            modulation_depth_lattice_idxs=bank.modulation_depth_lattice_idxs[
+                depth_kept
+            ],
             omega2=bank.omega2[omega2_kept],
-            omega2_idxs=bank.omega2_idxs[omega2_kept],
+            omega2_lattice_idxs=bank.omega2_lattice_idxs[omega2_kept],
             omega2_step=bank.omega2_step[omega2_kept],
             ap_block_idxs=bank.ap_block_idxs[omega2_kept],
             alpha=bank.alpha[sky_kept],
             delta=bank.delta[sky_kept],
-            sky_idxs=bank.sky_idxs[sky_kept],
+            sky_lattice_idxs=bank.sky_lattice_idxs[sky_kept],
         )

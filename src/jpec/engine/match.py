@@ -279,8 +279,8 @@ def top_k_templates(
     n_templates_per_f0 = n_periods * n_modulation_depths
     # top_k ranks NaN above every number, so a NaN statistic is dropped with the
     # out-of-box ones
-    is_kept = ap_in_range[None] & ~jnp.isnan(max_statistic)
-    ap_in_range_max_statistic = jnp.where(is_kept, max_statistic, -jnp.inf)
+    keep = ap_in_range[None] & ~jnp.isnan(max_statistic)
+    ap_in_range_max_statistic = jnp.where(keep, max_statistic, -jnp.inf)
     # each toplist's f0 points, a padding point scoring -inf
     toplist_max_statistic = jnp.take(
         ap_in_range_max_statistic,

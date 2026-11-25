@@ -236,7 +236,7 @@ def sky_lattice(
     # the points T n inside the unit disc
     n2_max = int(np.ceil(1.0 / x2_step))
     n1_max = int(np.ceil((1.0 + abs(x1_shift) * n2_max) / x1_step))
-    candidate_idxs = np.stack(
+    candidate_lattice_idxs = np.stack(
         np.meshgrid(
             np.arange(-n1_max, n1_max + 1),
             np.arange(-n2_max, n2_max + 1),
@@ -244,9 +244,10 @@ def sky_lattice(
         ),
         axis=-1,
     ).reshape(-1, 2)
-    candidate_coords = candidate_idxs @ sky_generator.T
+    candidate_coords = candidate_lattice_idxs @ sky_generator.T
     inside = (candidate_coords**2).sum(axis=1) < 1.0
-    disc_coords, disc_idxs = candidate_coords[inside], candidate_idxs[inside]
+    disc_coords = candidate_coords[inside]
+    disc_lattice_idxs = candidate_lattice_idxs[inside]
     lattice_coords = sphere_points(
         disc_coords[:, 0],
         disc_coords[:, 1],
@@ -258,10 +259,12 @@ def sky_lattice(
     _, nearest_disc_idxs = KDTree(disc_coords / cubic_steps).query(
         rim_coords / cubic_steps
     )
-    idxs = np.concatenate([disc_idxs, disc_idxs, disc_idxs[nearest_disc_idxs]])
+    lattice_idxs = np.concatenate(
+        [disc_lattice_idxs, disc_lattice_idxs, disc_lattice_idxs[nearest_disc_idxs]]
+    )
 
     directions = lattice_coords @ sky_eigenvectors.T
     alpha = np.arctan2(directions[:, 1], directions[:, 0]) % (2.0 * np.pi)
     delta = np.arcsin(np.clip(directions[:, 2], -1.0, 1.0))
     keep = in_sky_box(alpha, delta, box=box, margin=margin)
-    return alpha[keep], delta[keep], idxs[keep]
+    return alpha[keep], delta[keep], lattice_idxs[keep]

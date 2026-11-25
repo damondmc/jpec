@@ -403,17 +403,17 @@ def bank_layout(
     bins_from_freq_low = (f0 - freq_low) * tsft
     nearest_bin_idx = np.round(bins_from_freq_low).astype(int)
     sub_bin_remainder = bins_from_freq_low - nearest_bin_idx  # in [-0.5, 0.5]
-    window_start_idxs = nearest_bin_idx + int(bin_offsets[0])
+    band_window_start_idxs = nearest_bin_idx + int(bin_offsets[0])
     n_window_bins = bin_offsets.shape[0]
     # each window is read n_pad bins wider; dynamic_slice clamps a window that runs
     # off the band instead of failing
     if (
-        window_start_idxs.min() < 0
-        or window_start_idxs.max() + n_window_bins + n_pad > n_band_bins
+        band_window_start_idxs.min() < 0
+        or band_window_start_idxs.max() + n_window_bins + n_pad > n_band_bins
     ):
-        windows_low = freq_low + window_start_idxs.min() / tsft
+        windows_low = freq_low + band_window_start_idxs.min() / tsft
         windows_high = (
-            freq_low + (window_start_idxs.max() + n_window_bins + n_pad) / tsft
+            freq_low + (band_window_start_idxs.max() + n_window_bins + n_pad) / tsft
         )
         raise ValueError(
             f"the bank's windows [{windows_low:.5f}, {windows_high:.5f}] Hz are not "
@@ -445,7 +445,7 @@ def bank_layout(
     # a reference whose bins would run past the band starts lower; window_start_idxs
     # is then counted from the f0 point's own reference's start
     starts_per_reference = [
-        window_start_idxs[doppler_reference_idxs == reference_idx]
+        band_window_start_idxs[doppler_reference_idxs == reference_idx]
         for reference_idx in range(n_doppler_references)
     ]
     n_transformed_bins = (
@@ -460,7 +460,7 @@ def bank_layout(
         ]
     )
     window_start_idxs = (
-        window_start_idxs - transformed_start_idxs[doppler_reference_idxs]
+        band_window_start_idxs - transformed_start_idxs[doppler_reference_idxs]
     )
 
     # sub-bin offsets on one fixed grid across a bin; each f0 point takes the nearest
