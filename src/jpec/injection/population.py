@@ -30,33 +30,34 @@ def draw_injections(
         The sources, in the order they were drawn.
     """
     sin_delta = (float(np.sin(prior.delta[0])), float(np.sin(prior.delta[1])))
-    intervals = (
-        prior.f0,
-        prior.ap,
-        prior.period,
-        prior.phi_b,
-        prior.alpha,
-        sin_delta,
-        cos_iota,
-        psi,
-    )
-    low, high = (jnp.array(edge) for edge in zip(*intervals, strict=True))
+    intervals = {
+        "f0": prior.f0,
+        "ap": prior.ap,
+        "period": prior.period,
+        "phi_b": prior.phi_b,
+        "alpha": prior.alpha,
+        "sin_delta": sin_delta,
+        "cos_iota": cos_iota,
+        "psi": psi,
+    }
+    low = jnp.array([interval[0] for interval in intervals.values()])
+    high = jnp.array([interval[1] for interval in intervals.values()])
     uniform = jax.random.uniform(
         key, (n_injections, len(intervals)), minval=low, maxval=high
     )
     # one copy to the host, so every field is a float and not a 0-d device array
     draws = np.asarray(uniform, dtype=np.float64)
     injections = []
-    for draw in draws:
-        f0, ap, period, phi_b, alpha, sin_delta_drawn, cos_iota_drawn, psi_drawn = draw
+    for row in draws:
+        draw = dict(zip(intervals, row.tolist(), strict=True))
         parameters = Parameters(
-            f0=float(f0),
-            ap=float(ap),
-            period=float(period),
-            phi_b=float(phi_b),
-            alpha=float(alpha),
-            delta=float(np.arcsin(sin_delta_drawn)),
+            f0=draw["f0"],
+            ap=draw["ap"],
+            period=draw["period"],
+            phi_b=draw["phi_b"],
+            alpha=draw["alpha"],
+            delta=float(np.arcsin(draw["sin_delta"])),
         )
-        orientation = Orientation(cos_iota=float(cos_iota_drawn), psi=float(psi_drawn))
+        orientation = Orientation(cos_iota=draw["cos_iota"], psi=draw["psi"])
         injections.append(Injection(parameters=parameters, orientation=orientation))
     return injections
