@@ -83,8 +83,8 @@ def run(args: argparse.Namespace) -> None:
     j_max = layout.j_max
     n_window_bins = layout.bin_offsets.shape[0]
     n_f0_points = int(layout.window_start_idxs.size)
-    n_doppler_references = int(layout.doppler_references.size)
-    n_window_modulation_depths = layout.n_window_modulation_depths
+    n_doppler_refs = int(layout.doppler_references.size)
+    n_batch_depths = layout.n_batch_depths
     period_batch_size = layout.period_batch_size
     # the bank's first sky batch, of one omega^2 class, and its first sky point
     sky_idxs = layout.sky_batches(search_loop_config.sky_batch_size)[0]
@@ -107,7 +107,7 @@ def run(args: argparse.Namespace) -> None:
         delta=jnp.asarray(bank.delta[sky_idxs]),
     )
 
-    n_templates = n_f0_points * period_batch_size * n_window_modulation_depths
+    n_templates = n_f0_points * period_batch_size * n_batch_depths
     transform_seconds, match_seconds = [], []
     transform_work = []
     # every match timed, at the batch's harmonics and at half of them: its seconds,
@@ -169,12 +169,12 @@ def run(args: argparse.Namespace) -> None:
     # seconds per call, and calls per sky point
     stages = {
         "doppler correction": (
-            doppler_seconds / n_doppler_references,
-            n_doppler_references,
+            doppler_seconds / n_doppler_refs,
+            n_doppler_refs,
         ),
         "transform": (
-            float(np.mean(transform_seconds)) / (sky_batch_size * n_doppler_references),
-            n_period_batches * n_doppler_references,
+            float(np.mean(transform_seconds)) / (sky_batch_size * n_doppler_refs),
+            n_period_batches * n_doppler_refs,
         ),
         "match": (float(np.mean(match_seconds)), n_period_batches),
     }
@@ -199,7 +199,7 @@ def run(args: argparse.Namespace) -> None:
         "doppler_correction": stages["doppler correction"][0]
         / (search_data.n_sfts * search_data.n_band_bins),
         "data_harmonics": sum(transform_seconds)
-        / (sky_batch_size * n_doppler_references)
+        / (sky_batch_size * n_doppler_refs)
         / sum(transform_work),
         "match": float(match_rate),
         "phase_maximum": float(phase_maximum_rate),
@@ -208,10 +208,10 @@ def run(args: argparse.Namespace) -> None:
     run_logger.info(
         f"{n_f0_points} f0 points, {n_period_batches} period batches of "
         f"{period_batch_size}, {sky_batch_size} sky points per transform, "
-        f"{n_window_modulation_depths} window modulation depths, j_max {j_max}, "
+        f"{n_batch_depths} modulation depths per batch, j_max {j_max}, "
         f"{n_window_bins} window bins + {layout.n_pad} for the f0 shifts, "
         f"{search_data.n_band_bins} band bins, {n_transformed_bins} transformed, "
-        f"{search_data.n_sfts} SFTs, {n_doppler_references} Doppler references, "
+        f"{search_data.n_sfts} SFTs, {n_doppler_refs} Doppler references, "
         f"{bank.alpha.size} sky points"
     )
     run_logger.info(
@@ -241,14 +241,14 @@ def run(args: argparse.Namespace) -> None:
             "n_period_batches": n_period_batches,
             "sky_batch_size": sky_batch_size,
             "period_batch_size": period_batch_size,
-            "n_window_modulation_depths": n_window_modulation_depths,
+            "n_window_modulation_depths": n_batch_depths,
             "j_max": j_max,
             "n_window_bins": n_window_bins,
             "n_pad": layout.n_pad,
             "n_band_bins": search_data.n_band_bins,
             "n_transformed_bins": n_transformed_bins,
             "n_sfts": search_data.n_sfts,
-            "n_doppler_references": n_doppler_references,
+            "n_doppler_references": n_doppler_refs,
             "n_sky_points": int(bank.alpha.size),
             "seconds_per_call": {name: call for name, (call, _) in stages.items()},
             "calls_per_sky_point": {name: calls for name, (_, calls) in stages.items()},

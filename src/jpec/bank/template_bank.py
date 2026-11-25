@@ -100,8 +100,8 @@ class TemplateBank(NamedTuple):
     generator: Float[np.ndarray, "5 5"]
     f0: Float[np.ndarray, " n_f0"]
     f0_lattice_idxs: Int[np.ndarray, " n_f0"]
-    modulation_depth: Float[np.ndarray, " n_modulation_depth"]
-    modulation_depth_lattice_idxs: Int[np.ndarray, " n_modulation_depth"]
+    modulation_depth: Float[np.ndarray, " n_depth"]
+    modulation_depth_lattice_idxs: Int[np.ndarray, " n_depth"]
     omega2: Float[np.ndarray, " n_period"]
     omega2_lattice_idxs: Int[np.ndarray, " n_period"]
     omega2_step: Float[np.ndarray, " n_period"]
@@ -132,12 +132,12 @@ class TemplateBank(NamedTuple):
         return float(self.modulation_depth[-1] + self.modulation_depth_step)
 
     @property
-    def omega2_shift_fractions(self) -> Float[np.ndarray, " n_omega2_class"]:
+    def omega2_shift_fractions(self) -> Float[np.ndarray, " n_class"]:
         """Every omega^2 shift a sky point gives, in omega^2 steps, increasing."""
         return shift_fractions(self.generator[2, 3:] / self.generator[2, 2])
 
     @property
-    def depth_shift_fractions(self) -> Float[np.ndarray, " n_depth_class"]:
+    def depth_shift_fractions(self) -> Float[np.ndarray, " n_class"]:
         """Every depth shift a (sky point, period) gives, in depth steps, increasing."""
         return shift_fractions(self.generator[1, 2:] / self.generator[1, 1])
 
@@ -262,7 +262,7 @@ class TemplateBank(NamedTuple):
 
     def f0_shift(
         self, sky_idx: int
-    ) -> Float[np.ndarray, "n_period n_modulation_depth"]:
+    ) -> Float[np.ndarray, "n_period n_depth"]:
         """How far one sky point moves each (period, depth)'s f0 grid [Hz].
 
         Args:
@@ -284,7 +284,7 @@ class TemplateBank(NamedTuple):
 
     def modulation_depth_at(
         self, depth_class: Int[np.ndarray, "..."]
-    ) -> Float[np.ndarray, "... n_modulation_depth"]:
+    ) -> Float[np.ndarray, "... n_depth"]:
         """The base modulation-depth grid moved by a depth class's shift [Hz].
 
         Args:
@@ -315,7 +315,7 @@ class TemplateBank(NamedTuple):
 
     def ap_in_range(
         self, omega2_class: int, depth_class: Int[np.ndarray, " n_period"]
-    ) -> Bool[np.ndarray, "n_period n_modulation_depth"]:
+    ) -> Bool[np.ndarray, "n_period n_depth"]:
         """Whether each template's ap lies in its ap block, within one depth step.
 
         Args:

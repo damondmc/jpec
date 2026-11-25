@@ -109,7 +109,7 @@ def test_a_point_sky_gives_the_point(
     )
     assert bank.alpha.tolist() == [1.2]
     assert bank.delta.tolist() == [0.3]
-    assert bank.sky_idxs.tolist() == [[0, 0]]
+    assert bank.sky_lattice_idxs.tolist() == [[0, 0]]
 
 
 def test_a_foreign_record_is_rejected(tiling: LatticeTiling):
@@ -140,7 +140,7 @@ def test_templates_stay_inside_the_seam_margin(tiling: LatticeTiling, bank):
             )
             step_ap = np.broadcast_to(
                 ap_from_modulation_depth(
-                    bank.modulation_depth_step,
+                    np.asarray(bank.modulation_depth_step),
                     f0=bank.f0_centre,
                     omega=omega[:, None],
                 ),
@@ -172,17 +172,19 @@ def test_every_template_is_a_lattice_point(
     in_disc = (sky_x**2).sum(axis=1) < 1.0 - 1e-9
     assert in_disc.any()
     np.testing.assert_allclose(
-        sky_x[in_disc], bank.sky_idxs[in_disc] @ generator[3:, 3:].T, atol=1e-12
+        sky_x[in_disc],
+        bank.sky_lattice_idxs[in_disc] @ generator[3:, 3:].T,
+        atol=1e-12,
     )
 
     # the origin's depth, from any base depth and its lattice index
     modulation_depth_low = (
         bank.modulation_depth[0]
-        - bank.modulation_depth_step * bank.modulation_depth_idxs[0]
+        - bank.modulation_depth_step * bank.modulation_depth_lattice_idxs[0]
     )
     rng = np.random.default_rng(0)
     for sky_idx in rng.integers(0, bank.alpha.size, N_SAMPLED_SKY_POINTS):
-        sky_lattice_idxs = bank.sky_idxs[sky_idx]
+        sky_lattice_idxs = bank.sky_lattice_idxs[sky_idx]
         for f0_idx, period_idx, modulation_depth_idx in zip(
             rng.integers(0, bank.f0.size, N_SAMPLED_TEMPLATES),
             rng.integers(0, bank.omega2.size, N_SAMPLED_TEMPLATES),
@@ -201,7 +203,7 @@ def test_every_template_is_a_lattice_point(
             block_generator[2, 2:] *= bank.omega2_step[period_idx] / generator[2, 2]
             omega2_low = (
                 bank.omega2[period_idx]
-                - bank.omega2_step[period_idx] * bank.omega2_idxs[period_idx]
+                - bank.omega2_step[period_idx] * bank.omega2_lattice_idxs[period_idx]
             )
             # theta - origin on the orbital axes, then n by back substitution
             offset = np.array(
@@ -240,20 +242,25 @@ def test_around_point_is_a_subset_of_the_full_bank(
     assert around_bank.alpha.size == N_SKY_NEIGHBOURS
     assert around_bank.f0.size == 2 * N_STEPS + 1
     # each subset point's index in the full bank, by its lattice index
-    full_f0_idxs = np.searchsorted(full_bank.f0_idxs, around_bank.f0_idxs)
-    np.testing.assert_array_equal(full_bank.f0_idxs[full_f0_idxs], around_bank.f0_idxs)
+    full_f0_idxs = np.searchsorted(
+        full_bank.f0_lattice_idxs, around_bank.f0_lattice_idxs
+    )
+    np.testing.assert_array_equal(
+        full_bank.f0_lattice_idxs[full_f0_idxs], around_bank.f0_lattice_idxs
+    )
     full_modulation_depth_idxs = np.searchsorted(
-        full_bank.modulation_depth_idxs, around_bank.modulation_depth_idxs
+        full_bank.modulation_depth_lattice_idxs,
+        around_bank.modulation_depth_lattice_idxs,
     )
     full_period_idxs = [
         int(
             np.flatnonzero(
-                (full_bank.omega2_idxs == omega2_idx)
+                (full_bank.omega2_lattice_idxs == omega2_idx)
                 & (full_bank.ap_block_idxs == ap_block_idx)
             )[0]
         )
         for omega2_idx, ap_block_idx in zip(
-            around_bank.omega2_idxs, around_bank.ap_block_idxs, strict=True
+            around_bank.omega2_lattice_idxs, around_bank.ap_block_idxs, strict=True
         )
     ]
     full_sky_idxs = [

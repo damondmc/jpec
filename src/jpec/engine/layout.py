@@ -23,7 +23,7 @@ HARMONIC_COUNT_STEP = 32
 
 
 class TemplateBatch(NamedTuple):
-    """Trial periods and the modulation-depth window holding their in-range templates.
+    """Trial periods and the modulation depths holding their in-range templates.
 
     Attributes:
         period_start_idx: First trial period of the batch.
@@ -49,11 +49,11 @@ class BankLayout(NamedTuple):
             its reference's transformed start.
         doppler_references: Frequency of each Doppler reference [Hz].
         doppler_reference_idxs: Which Doppler reference each f0 point reads.
-        sub_bin_offsets: The sub-bin offsets template harmonics are built at [bins].
-        sub_bin_offset_idxs: Which sub-bin offset each f0 point takes.
+        subbin_offsets: The sub-bin offsets template harmonics are built at [bins].
+        subbin_offset_idxs: Which sub-bin offset each f0 point takes.
         group_f0_idxs: The f0 points of each (reference, offset) group.
         group_doppler_reference_idxs: The reference each group reads.
-        group_sub_bin_offset_idxs: The offset each group takes before any shift.
+        group_subbin_offset_idxs: The offset each group takes before any shift.
         bin_offsets: Bin centres of every template window, offsets from f0 [bins].
         j_max: Highest harmonic a template is built with.
         n_theta: Number of orbital phases a template is sampled at for its harmonics.
@@ -62,37 +62,37 @@ class BankLayout(NamedTuple):
             [rad/s].
         template_batches: The batches of trial periods.
         period_batch_size: Number of trial periods per batch.
-        n_window_modulation_depths: Number of modulation depths every batch is matched
+        n_batch_depths: Number of modulation depths every batch is matched
             against.
         n_phi: Number of orbital phases the statistic is read at.
     """
 
     bank: TemplateBank
-    transformed_start_idxs: Int[Array, " n_doppler_reference"]
+    transformed_start_idxs: Int[Array, " n_ref"]
     n_transformed_bins: int
     window_start_idxs: Int[Array, " n_f0"]
-    doppler_references: Float[Array, " n_doppler_reference"]
+    doppler_references: Float[Array, " n_ref"]
     doppler_reference_idxs: Int[Array, " n_f0"]
-    sub_bin_offsets: Float[np.ndarray, " n_sub_bin_offset"]
-    sub_bin_offset_idxs: Int[Array, " n_f0"]
+    subbin_offsets: Float[np.ndarray, " n_subbin_offset"]
+    subbin_offset_idxs: Int[Array, " n_f0"]
     group_f0_idxs: Int[Array, "n_group n_member"]
     group_doppler_reference_idxs: Int[Array, " n_group"]
-    group_sub_bin_offset_idxs: Int[Array, " n_group"]
+    group_subbin_offset_idxs: Int[Array, " n_group"]
     bin_offsets: Float[np.ndarray, " n_freq"]
     j_max: int
     n_theta: int
     n_pad: int
-    omega: Float[np.ndarray, "n_omega2_class n_period"]
+    omega: Float[np.ndarray, "n_class n_period"]
     template_batches: list[TemplateBatch]
     period_batch_size: int
-    n_window_modulation_depths: int
+    n_batch_depths: int
     n_phi: int
 
     @property
     def template_harmonics_bytes(self) -> int:
         """Number of device bytes the loop's template harmonics take on this layout."""
         n_templates = (
-            self.sub_bin_offsets.size
+            self.subbin_offsets.size
             * self.bank.depth_shift_fractions.size
             * self.bank.modulation_depth.size
         )
@@ -106,7 +106,7 @@ class BankLayout(NamedTuple):
         norms_bytes = n_templates * self.j_max * np.dtype(np.float32).itemsize
         return placed_bytes + norms_bytes
 
-    def sky_batches(self, sky_batch_size: int) -> list[Int[np.ndarray, " n_batch_sky"]]:
+    def sky_batches(self, sky_batch_size: int) -> list[Int[np.ndarray, " n_sky"]]:
         """The bank's sky points in batches, each of one omega^2 class.
 
         Args:
@@ -154,14 +154,14 @@ class BankLayout(NamedTuple):
                 run = run[
                     :,
                     batch.modulation_depth_start_idx : batch.modulation_depth_start_idx
-                    + self.n_window_modulation_depths,
+                    + self.n_batch_depths,
                 ]
             runs.append(run)
         return runs
 
     def ap_in_range(
         self, omega2_class: int, depth_class: Int[np.ndarray, " n_period"]
-    ) -> Bool[np.ndarray, "n_template_batch n_period n_matched_modulation_depth"]:
+    ) -> Bool[np.ndarray, "n_batch n_batch_period n_batch_depth"]:
         """Whether each (period, modulation depth) of each batch has ap in range.
 
         Args:
@@ -183,12 +183,12 @@ class BankLayout(NamedTuple):
 
 
 def split_periods(
-    ap_in_range: Bool[np.ndarray, "n_period n_modulation_depth"],
+    ap_in_range: Bool[np.ndarray, "n_period n_depth"],
     ap_block_idxs: Int[np.ndarray, " n_period"],
-    n_harmonics_per_depth: Int[np.ndarray, " n_modulation_depth"],
+    n_harmonics_per_depth: Int[np.ndarray, " n_depth"],
     batch_size: int,
 ) -> tuple[list[TemplateBatch], int]:
-    """Periods of one ap block, `batch_size` at a time, with a modulation-depth window.
+    """Periods of one ap block, `batch_size` at a time, with the depths each matches.
 
     Args:
         ap_in_range: Whether each (period, modulation depth) lies in its ap block.
@@ -206,7 +206,7 @@ def split_periods(
     block_starts = np.flatnonzero(np.diff(ap_block_idxs, prepend=ap_block_idxs[0] - 1))
     block_stops = np.append(block_starts[1:], n_periods)
     template_batches = []
-    n_window_modulation_depths = 0
+    n_batch_depths = 0
     for block_start, block_stop in zip(block_starts.tolist(), block_stops.tolist()):
         # the block's periods, batch_size at a time; the last batch may be shorter
         for period_start_idx in range(block_start, block_stop, batch_size):
@@ -222,12 +222,12 @@ def split_periods(
             template_batches.append(
                 TemplateBatch(period_start_idx, period_stop_idx, start_idx, n_harmonics)
             )
-            n_window_modulation_depths = max(
-                n_window_modulation_depths, stop_idx - start_idx
+            n_batch_depths = max(
+                n_batch_depths, stop_idx - start_idx
             )
-    # every window takes the widest width, so one that would run past the last
-    # modulation depth starts lower
-    max_start_idx = n_modulation_depths - n_window_modulation_depths
+    # every batch matches the widest batch's number of depths, so one that would run
+    # past the last modulation depth starts lower
+    max_start_idx = n_modulation_depths - n_batch_depths
     return [
         batch._replace(
             modulation_depth_start_idx=min(
@@ -235,12 +235,12 @@ def split_periods(
             )
         )
         for batch in template_batches
-    ], n_window_modulation_depths
+    ], n_batch_depths
 
 
 def f0_groups(
     doppler_reference_idxs: Int[np.ndarray, " n_f0"],
-    sub_bin_offset_idxs: Int[np.ndarray, " n_f0"],
+    subbin_offset_idxs: Int[np.ndarray, " n_f0"],
 ) -> tuple[
     Int[np.ndarray, "n_group n_member"],
     Int[np.ndarray, " n_group"],
@@ -250,7 +250,7 @@ def f0_groups(
 
     Args:
         doppler_reference_idxs: The reference each f0 point reads.
-        sub_bin_offset_idxs: The sub-bin offset each f0 point takes.
+        subbin_offset_idxs: The sub-bin offset each f0 point takes.
 
     Returns:
         Each group's f0 points, its last repeated to the largest group's size, and
@@ -260,7 +260,7 @@ def f0_groups(
         set(
             zip(
                 doppler_reference_idxs.tolist(),
-                sub_bin_offset_idxs.tolist(),
+                subbin_offset_idxs.tolist(),
                 strict=True,
             )
         )
@@ -268,7 +268,7 @@ def f0_groups(
     members = [
         np.flatnonzero(
             (doppler_reference_idxs == reference_idx)
-            & (sub_bin_offset_idxs == offset_idx)
+            & (subbin_offset_idxs == offset_idx)
         )
         for reference_idx, offset_idx in group_keys
     ]
@@ -282,8 +282,8 @@ def f0_groups(
     group_doppler_reference_idxs = np.array(
         [reference_idx for reference_idx, _ in group_keys]
     )
-    group_sub_bin_offset_idxs = np.array([offset_idx for _, offset_idx in group_keys])
-    return group_f0_idxs, group_doppler_reference_idxs, group_sub_bin_offset_idxs
+    group_subbin_offset_idxs = np.array([offset_idx for _, offset_idx in group_keys])
+    return group_f0_idxs, group_doppler_reference_idxs, group_subbin_offset_idxs
 
 
 def f0_idxs_per_toplist(
@@ -363,7 +363,7 @@ def bank_layout(
     *,
     freq_low: float,
     n_band_bins: int,
-    n_sub_bin_offsets: int,
+    n_subbin_offsets: int,
     period_batch_size: int,
     harmonic_fraction: float,
     phase_mismatch: float,
@@ -375,7 +375,7 @@ def bank_layout(
         bank: The template bank to lay out.
         freq_low: First frequency of the loaded band [Hz].
         n_band_bins: Number of bins the loaded band holds.
-        n_sub_bin_offsets: Number of sub-bin template offsets across one bin.
+        n_subbin_offsets: Number of sub-bin template offsets across one bin.
         period_batch_size: Number of trial periods per transform call.
         harmonic_fraction: Share of each modulation depth's harmonics matched.
         phase_mismatch: Largest mismatch the orbital phase grid may leave.
@@ -402,7 +402,7 @@ def bank_layout(
     # an f0 point is a whole-bin slice of the band plus a remainder the template carries
     bins_from_freq_low = (f0 - freq_low) * tsft
     nearest_bin_idx = np.round(bins_from_freq_low).astype(int)
-    sub_bin_remainder = bins_from_freq_low - nearest_bin_idx  # in [-0.5, 0.5]
+    subbin_remainder = bins_from_freq_low - nearest_bin_idx  # in [-0.5, 0.5]
     band_window_start_idxs = nearest_bin_idx + int(bin_offsets[0])
     n_window_bins = bin_offsets.shape[0]
     # each window is read n_pad bins wider; dynamic_slice clamps a window that runs
@@ -421,13 +421,13 @@ def bank_layout(
         )
     # Doppler references at the centres of equal pieces of the f0 range; each f0 point
     # takes the nearest
-    n_doppler_references = doppler_reference_count(
+    n_doppler_refs = doppler_reference_count(
         float(f0[-1] - f0[0]),
         tsft=tsft,
         window=bank.window,
         doppler_mismatch=doppler_mismatch,
     )
-    reference_centres = (np.arange(n_doppler_references) + 0.5) / n_doppler_references
+    reference_centres = (np.arange(n_doppler_refs) + 0.5) / n_doppler_refs
     doppler_references = f0[0] + reference_centres * (f0[-1] - f0[0])
     doppler_reference_idxs = np.argmin(
         np.abs(doppler_references[None, :] - f0[:, None]), axis=1
@@ -446,7 +446,7 @@ def bank_layout(
     # is then counted from the f0 point's own reference's start
     starts_per_reference = [
         band_window_start_idxs[doppler_reference_idxs == reference_idx]
-        for reference_idx in range(n_doppler_references)
+        for reference_idx in range(n_doppler_refs)
     ]
     n_transformed_bins = (
         n_window_bins
@@ -465,12 +465,12 @@ def bank_layout(
 
     # sub-bin offsets on one fixed grid across a bin; each f0 point takes the nearest
     # to its remainder, and a shift moves it along the whole grid
-    sub_bin_offsets = (np.arange(n_sub_bin_offsets) + 0.5) / n_sub_bin_offsets - 0.5
-    sub_bin_offset_idxs = np.argmin(
-        np.abs(sub_bin_offsets[None, :] - sub_bin_remainder[:, None]), axis=1
+    subbin_offsets = (np.arange(n_subbin_offsets) + 0.5) / n_subbin_offsets - 0.5
+    subbin_offset_idxs = np.argmin(
+        np.abs(subbin_offsets[None, :] - subbin_remainder[:, None]), axis=1
     )
-    group_f0_idxs, group_doppler_reference_idxs, group_sub_bin_offset_idxs = f0_groups(
-        doppler_reference_idxs, sub_bin_offset_idxs
+    group_f0_idxs, group_doppler_reference_idxs, group_subbin_offset_idxs = f0_groups(
+        doppler_reference_idxs, subbin_offset_idxs
     )
     # no wider than the bank, as a bank around one source is
     n_periods = bank.omega2.size
@@ -500,7 +500,7 @@ def bank_layout(
             ap_in_range |= bank.ap_in_range(
                 omega2_class, np.full(n_periods, depth_class)
             )
-    template_batches, n_window_modulation_depths = split_periods(
+    template_batches, n_batch_depths = split_periods(
         ap_in_range,
         bank.ap_block_idxs,
         n_harmonics_per_depth,
@@ -538,11 +538,11 @@ def bank_layout(
         window_start_idxs=jnp.asarray(window_start_idxs),
         doppler_references=jnp.asarray(doppler_references),
         doppler_reference_idxs=jnp.asarray(doppler_reference_idxs),
-        sub_bin_offsets=sub_bin_offsets,
-        sub_bin_offset_idxs=jnp.asarray(sub_bin_offset_idxs),
+        subbin_offsets=subbin_offsets,
+        subbin_offset_idxs=jnp.asarray(subbin_offset_idxs),
         group_f0_idxs=jnp.asarray(group_f0_idxs),
         group_doppler_reference_idxs=jnp.asarray(group_doppler_reference_idxs),
-        group_sub_bin_offset_idxs=jnp.asarray(group_sub_bin_offset_idxs),
+        group_subbin_offset_idxs=jnp.asarray(group_subbin_offset_idxs),
         bin_offsets=bin_offsets,
         j_max=j_max,
         n_theta=n_theta,
@@ -550,6 +550,6 @@ def bank_layout(
         omega=omega,
         template_batches=template_batches,
         period_batch_size=period_batch_size,
-        n_window_modulation_depths=n_window_modulation_depths,
+        n_batch_depths=n_batch_depths,
         n_phi=n_phi,
     )

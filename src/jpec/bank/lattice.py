@@ -135,12 +135,12 @@ def split_shift(
 
 
 def sphere_points(
-    x1: Float[np.ndarray, " n_point"],
-    x2: Float[np.ndarray, " n_point"],
+    x1: Float[np.ndarray, " n_disc_point"],
+    x2: Float[np.ndarray, " n_disc_point"],
     *,
     s1: float,
     s2: float,
-) -> Float[np.ndarray, "n_lattice_point 3"]:
+) -> Float[np.ndarray, "n_point 3"]:
     """Disc points lifted to both hemispheres, with a ring on the rim `x3 = 0`.
 
     Args:

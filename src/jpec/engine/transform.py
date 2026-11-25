@@ -14,8 +14,8 @@ def weighted_excess_power_per_reference(
     sft_time_series: list[Complex[Array, "n_sft n_band"]],
     floor: list[Float[Array, "n_sft n_band"]],
     velocity_per_detector: list[Float[Array, "n_sft 3"]],
-    doppler_references: Float[Array, " n_doppler_reference"],
-    transformed_start_idxs: Int[Array, " n_doppler_reference"],
+    doppler_references: Float[Array, " n_ref"],
+    transformed_start_idxs: Int[Array, " n_ref"],
     *,
     n_transformed_bins: int,
     tsft: float,
@@ -23,7 +23,7 @@ def weighted_excess_power_per_reference(
     delta: float,
     sft_weights: Float[Array, " n_sft"],
     mean_power: list[Float[Array, " n_band"]],
-) -> Float[Array, "n_doppler_reference n_sft n_transformed_bin"]:
+) -> Float[Array, "n_ref n_sft n_transformed_bin"]:
     """The weighted excess power `P[n, k]` of one sky position, per Doppler reference.
 
         P[n, k] = w[n] (power[n, k] - mean power[n, k])
@@ -87,10 +87,10 @@ def weighted_excess_power_per_reference(
 @partial(jax.jit, static_argnames=("period_batch_size", "j_max"))
 def data_harmonics_per_sky_point(
     weighted_excess_power: Float[
-        Array, "n_sky n_doppler_reference n_sft n_transformed_bin"
+        Array, "n_sky n_ref n_sft n_transformed_bin"
     ],
-    orbital_phase: Float[Array, "n_omega2_class n_period n_sft"],
-    omega: Float[Array, "n_omega2_class n_period"],
+    orbital_phase: Float[Array, "n_class n_period n_sft"],
+    omega: Float[Array, "n_class n_period"],
     solar_roemer_delays: Float[Array, "n_sky n_sft"],
     omega2_class: Int[Array, ""],
     period_start_idx: Int[Array, ""],
@@ -98,7 +98,7 @@ def data_harmonics_per_sky_point(
     period_batch_size: int,
     j_max: int,
 ) -> Complex[
-    Array, "n_sky n_doppler_reference n_batch_period n_harmonic n_transformed_bin"
+    Array, "n_sky n_ref n_batch_period n_harmonic n_transformed_bin"
 ]:
     """`F[j, k]` of a sky batch at a run of trial periods.
 

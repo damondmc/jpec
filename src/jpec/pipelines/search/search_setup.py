@@ -74,7 +74,7 @@ def f0_interval_layout(
         bank,
         freq_low=freq_low,
         n_band_bins=n_band_bins,
-        n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
+        n_subbin_offsets=search_loop_config.n_subbin_offsets,
         period_batch_size=search_loop_config.period_batch_size,
         harmonic_fraction=search_loop_config.harmonic_fraction,
         phase_mismatch=search_loop_config.phase_mismatch,
@@ -108,9 +108,9 @@ def search_memory_gb(
     # every omega^2 class's trial periods
     orbital_phase_bytes = layout.omega.size * n_sfts * FLOAT32_BYTES
     n_padded_window_bins = layout.bin_offsets.shape[0] + layout.n_pad
-    n_doppler_references = int(layout.doppler_references.size)
+    n_doppler_refs = int(layout.doppler_references.size)
     n_transformed_bins = layout.n_transformed_bins
-    n_window_modulation_depths = layout.n_window_modulation_depths
+    n_batch_depths = layout.n_batch_depths
     # the most harmonics any period batch transforms and matches
     n_batch_harmonics = max(batch.n_harmonics for batch in layout.template_batches)
     n_groups, n_members = layout.group_f0_idxs.shape
@@ -119,7 +119,7 @@ def search_memory_gb(
     # the batch of sky points' transformed bins, at every reference
     stack_bytes = (
         sky_batch_size
-        * n_doppler_references
+        * n_doppler_refs
         * n_sfts
         * n_transformed_bins
         * FLOAT32_BYTES
@@ -136,22 +136,22 @@ def search_memory_gb(
         2 * sky_batch_size * n_batch_harmonics * n_sfts * FLOAT32_BYTES
         + 2
         * sky_batch_size
-        * n_doppler_references
+        * n_doppler_refs
         * n_batch_harmonics
         * n_transformed_bins
         * COMPLEX64_BYTES
         + n_matched_groups
-        * n_window_modulation_depths
+        * n_batch_depths
         * n_batch_harmonics
         * n_padded_window_bins
         * COMPLEX64_BYTES
         + n_matched_f0_points * n_batch_harmonics * n_padded_window_bins * COMPLEX64_BYTES
         + n_matched_f0_points
-        * n_window_modulation_depths
+        * n_batch_depths
         * n_batch_harmonics
         * COMPLEX64_BYTES
         + n_matched_f0_points
-        * n_window_modulation_depths
+        * n_batch_depths
         * layout.n_phi
         * FLOAT32_BYTES
     )
@@ -159,7 +159,7 @@ def search_memory_gb(
     transform_bytes = 2 * stack_bytes + layout.period_batch_size * per_period_bytes
     # building the template table: about three unplaced tables in flight
     unplaced_template_bytes = (
-        layout.sub_bin_offsets.size
+        layout.subbin_offsets.size
         * layout.bank.depth_shift_fractions.size
         * layout.bank.modulation_depth.size
         * layout.j_max
@@ -192,22 +192,22 @@ def search_hours(
     Returns:
         Hours.
     """
-    n_doppler_references = layout.doppler_references.size
+    n_doppler_refs = layout.doppler_references.size
     # once per sky point, at every reference
     doppler_seconds = (
-        n_doppler_references * n_sfts * n_band_bins * rates["doppler_correction"]
+        n_doppler_refs * n_sfts * n_band_bins * rates["doppler_correction"]
     )
     # every batch is a full run of its omega^2 class's periods, at its own harmonics
     n_batch_harmonics = sum(batch.n_harmonics for batch in layout.template_batches)
     n_batch_templates = (
         layout.period_batch_size
         * layout.window_start_idxs.size
-        * layout.n_window_modulation_depths
+        * layout.n_batch_depths
     )
     # the transform per period and harmonic, at one sky point and every reference
     transform_seconds = (
         layout.period_batch_size
-        * n_doppler_references
+        * n_doppler_refs
         * n_sfts
         * layout.n_transformed_bins
         * rates["data_harmonics"]

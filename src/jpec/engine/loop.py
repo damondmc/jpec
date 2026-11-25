@@ -33,18 +33,18 @@ class SkyShifts(NamedTuple):
     Attributes:
         whole_bin_shifts: Whole bins each (period, modulation depth) moves its f0
             grid by.
-        sub_bin_shifts: Sub-bin offsets each (period, modulation depth) moves its f0
+        subbin_shifts: Sub-bin offsets each (period, modulation depth) moves its f0
             grid by, past the whole bins.
         depth_classes: Depth class of each period.
         ap_in_range: Whether each (period, modulation depth) has ap in its ap block.
     """
 
     whole_bin_shifts: Int[
-        Array, "n_template_batch n_period n_matched_modulation_depth"
+        Array, "n_batch n_batch_period n_batch_depth"
     ]
-    sub_bin_shifts: Int[Array, "n_template_batch n_period n_matched_modulation_depth"]
-    depth_classes: Int[Array, "n_template_batch n_period"]
-    ap_in_range: Bool[Array, "n_template_batch n_period n_matched_modulation_depth"]
+    subbin_shifts: Int[Array, "n_batch n_batch_period n_batch_depth"]
+    depth_classes: Int[Array, "n_batch n_batch_period"]
+    ap_in_range: Bool[Array, "n_batch n_batch_period n_batch_depth"]
 
 
 class BandSearch:
@@ -96,7 +96,7 @@ class BandSearch:
             bank,
             freq_low=search_data.freq_low,
             n_band_bins=search_data.n_band_bins,
-            n_sub_bin_offsets=config.n_sub_bin_offsets,
+            n_subbin_offsets=config.n_subbin_offsets,
             period_batch_size=config.period_batch_size,
             harmonic_fraction=config.harmonic_fraction,
             phase_mismatch=config.phase_mismatch,
@@ -113,14 +113,14 @@ class BandSearch:
         templates = jnp.stack(
             [
                 template_harmonics_at_depths(
-                    jnp.asarray(layout.bin_offsets - sub_bin_offset),
+                    jnp.asarray(layout.bin_offsets - subbin_offset),
                     jnp.asarray(depth_bins.ravel()),
                     n_theta=layout.n_theta,
                     j_max=layout.j_max,
                     window=bank.window,
                     batch_size=config.modulation_depth_batch_size,
                 ).reshape(*depth_bins.shape, layout.j_max, -1)
-                for sub_bin_offset in layout.sub_bin_offsets
+                for subbin_offset in layout.subbin_offsets
             ]
         )
         self.placed_template_harmonics = placed_template_harmonics(
@@ -136,7 +136,7 @@ class BandSearch:
         ]
         self.ap_in_range_per_classes: dict[
             tuple[int, ...],
-            Bool[Array, "n_template_batch n_period n_matched_modulation_depth"],
+            Bool[Array, "n_batch n_batch_period n_batch_depth"],
         ] = {}
 
     def sky_shifts(self, sky_idx: int) -> SkyShifts:
@@ -150,7 +150,7 @@ class BandSearch:
         """
         layout = self.layout
         bank = layout.bank
-        n_offsets = layout.sub_bin_offsets.size
+        n_offsets = layout.subbin_offsets.size
         # the f0 shift in sub-bin units u: u // n whole bins and u % n sub-bin offsets
         units = np.rint(bank.f0_shift(sky_idx) * bank.tsft * n_offsets).astype(
             np.int32
@@ -166,7 +166,7 @@ class BandSearch:
             )
         return SkyShifts(
             whole_bin_shifts=jnp.asarray(units // n_offsets),
-            sub_bin_shifts=jnp.asarray(units % n_offsets),
+            subbin_shifts=jnp.asarray(units % n_offsets),
             depth_classes=jnp.asarray(
                 np.stack(layout.padded_runs(depth_class.astype(np.int32), 0))
             ),
@@ -175,7 +175,7 @@ class BandSearch:
 
     def doppler_correct(
         self, sky_idx: int
-    ) -> Float[Array, "n_doppler_reference n_sft n_transformed_bin"]:
+    ) -> Float[Array, "n_ref n_sft n_transformed_bin"]:
         """Correct the band toward one sky point at every Doppler reference.
 
         Args:
@@ -206,13 +206,13 @@ class BandSearch:
     def transform(
         self,
         weighted_excess_power: Float[
-            Array, "n_sky n_doppler_reference n_sft n_transformed_bin"
+            Array, "n_sky n_ref n_sft n_transformed_bin"
         ],
         solar_roemer_delays: Float[Array, "n_sky n_sft"],
         omega2_class: int,
         template_batch: TemplateBatch,
     ) -> Complex[
-        Array, "n_sky n_doppler_reference n_batch_period n_harmonic n_transformed_bin"
+        Array, "n_sky n_ref n_batch_period n_harmonic n_transformed_bin"
     ]:
         """Transform a sky batch at one template batch's periods.
 
@@ -240,7 +240,7 @@ class BandSearch:
     def match(
         self,
         data_harmonics: Complex[
-            Array, "n_doppler_reference n_batch_period n_harmonic n_transformed_bin"
+            Array, "n_ref n_batch_period n_harmonic n_transformed_bin"
         ],
         sky_shifts: SkyShifts,
         batch_idx: int,
@@ -269,14 +269,14 @@ class BandSearch:
             window_start_idxs=layout.window_start_idxs,
             group_f0_idxs=layout.group_f0_idxs,
             group_doppler_reference_idxs=layout.group_doppler_reference_idxs,
-            group_sub_bin_offset_idxs=layout.group_sub_bin_offset_idxs,
+            group_subbin_offset_idxs=layout.group_subbin_offset_idxs,
             modulation_depth_start_idx=layout.template_batches[
                 batch_idx
             ].modulation_depth_start_idx,
             whole_bin_shifts=sky_shifts.whole_bin_shifts[batch_idx],
-            sub_bin_shifts=sky_shifts.sub_bin_shifts[batch_idx],
+            subbin_shifts=sky_shifts.subbin_shifts[batch_idx],
             depth_classes=sky_shifts.depth_classes[batch_idx],
-            n_matched_modulation_depths=layout.n_window_modulation_depths,
+            n_batch_depths=layout.n_batch_depths,
             n_phi=layout.n_phi,
             f0_batch_size=self.config.f0_batch_size,
         )
@@ -315,7 +315,7 @@ class BandSearch:
         max_statistic, flat_idxs, phase_idxs = (np.asarray(array) for array in top_k)
         f0_idxs, period_offsets, modulation_depth_offsets = np.unravel_index(
             flat_idxs,
-            (n_f0, layout.period_batch_size, layout.n_window_modulation_depths),
+            (n_f0, layout.period_batch_size, layout.n_batch_depths),
         )
         for toplist_idx in range(max_statistic.shape[0]):
             yield TopTemplates(
@@ -333,7 +333,7 @@ class BandSearch:
             )
 
     def search_sky_batch(
-        self, sky_idxs: Int[np.ndarray, " n_batch_sky"]
+        self, sky_idxs: Int[np.ndarray, " n_sky"]
     ) -> Iterator[TopTemplates]:
         """Search a batch of sky points and yield each match's top templates.
 

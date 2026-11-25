@@ -12,20 +12,16 @@ from jpec.constant import DAY
 from jpec.detector.doppler import solar_roemer_delay
 from jpec.detector.site import Detector, Observation, reference_epoch
 from jpec.engine.data import SearchData, freq_band_edges
-from jpec.engine.loop import (
-    HarmonicBank,
-    data_harmonics_per_sky_point,
-    match_at_sky_point,
-    sft_weights_at_sky_point,
+from jpec.engine.loop import BandSearch
+from jpec.engine.match import (
+    matched_filter_grid,
     template_harmonics_at_depths,
     top_k_templates,
-    top_templates_at_sky_points,
-    weighted_excess_power_per_reference,
 )
 from jpec.noise.floor import noise_floor
 from jpec.noise.gaussian import gaussian_noise_sft
 from jpec.params import Prior
-from jpec.stat.matched_filter import barycenter_orbital_phase, max_over_phase
+from jpec.stat.matched_filter import max_over_phase
 from jpec.waveform.window import Window
 
 # the O4a start [GPS s], and the one sky point the small search is at [rad]
@@ -36,8 +32,12 @@ SKY_ALPHA, SKY_DELTA = 1.2, 0.3
 MULTI_REFERENCE_DOPPLER_MISMATCH = 1e-8
 # sky lattice indices of the three-sky-point bank, all of omega^2 class 0, sharing
 # one depth-class pattern and each with its own f0 shifts
-THREE_SKY_IDXS = np.array([[0, 0], [1, -1], [2, 1]])
+THREE_SKY_LATTICE_IDXS = np.array([[0, 0], [1, 1], [2, -1]])
 PERIOD_BATCH_SIZE = 4
+F0_BATCH_SIZE = 8
+N_TOP = 20
+# one toplist over the whole band [Hz]
+ONE_TOPLIST_F0_EDGES = np.array([-np.inf, np.inf])
 # every this many f0 points checked template by template
 F0_STRIDE = 16
 
@@ -75,25 +75,24 @@ def test_top_k_templates_is_the_sorted_ap_in_range_grid():
     )
 
 
-def harmonic_bank_on(
+def band_search_on(
     search_data: SearchData,
     bank: TemplateBank,
     *,
     doppler_mismatch: float = SearchLoopConfig().doppler_mismatch,
-) -> HarmonicBank:
-    """The loop's harmonic bank of a bank on the small search's band."""
-    search_loop_config = SearchLoopConfig()
-    return HarmonicBank(
+    toplist_f0_edges: np.ndarray = ONE_TOPLIST_F0_EDGES,
+) -> BandSearch:
+    """A bank searched on the small search's band."""
+    return BandSearch(
         bank,
-        times=search_data.times,
-        freq_low=search_data.freq_low,
-        n_band_bins=search_data.n_band_bins,
-        n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
-        period_batch_size=PERIOD_BATCH_SIZE,
-        harmonic_fraction=search_loop_config.harmonic_fraction,
-        phase_mismatch=search_loop_config.phase_mismatch,
-        doppler_mismatch=doppler_mismatch,
-        modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
+        search_data,
+        SearchLoopConfig(
+            period_batch_size=PERIOD_BATCH_SIZE,
+            f0_batch_size=F0_BATCH_SIZE,
+            doppler_mismatch=doppler_mismatch,
+        ),
+        n_top=N_TOP,
+        toplist_f0_edges=toplist_f0_edges,
     )
 
 
@@ -146,73 +145,37 @@ def small_search():
         batch_size=search_loop_config.floor_batch_size,
     )
     search_data = SearchData([sft], floor=[floor], t_ref=t_ref)
-    return search_data, harmonic_bank_on(search_data, bank)
+    return search_data, band_search_on(search_data, bank)
 
 
 @pytest.fixture(scope="module")
 def three_sky_search(small_search):
     """The small search at three sky points of one omega^2 class, each shifted."""
-    search_data, harmonic_bank = small_search
-    three_sky_bank = harmonic_bank.bank._replace(
+    search_data, band_search = small_search
+    three_sky_bank = band_search.layout.bank._replace(
         alpha=SKY_ALPHA + np.array([0.0, 0.05, 0.1]),
         delta=SKY_DELTA + np.array([0.0, -0.05, 0.05]),
-        sky_idxs=THREE_SKY_IDXS,
+        sky_lattice_idxs=THREE_SKY_LATTICE_IDXS,
     )
-    return search_data, harmonic_bank_on(search_data, three_sky_bank)
+    return search_data, band_search_on(search_data, three_sky_bank)
 
 
-def top_template_list(
-    search_data, harmonic_bank, sky_idxs=(0,), toplist_f0_edges=(-np.inf, np.inf)
-):
-    return list(
-        top_templates_at_sky_points(
-            search_data,
-            harmonic_bank,
-            sky_idxs=sky_idxs,
-            f0_batch_size=8,
-            n_top=20,
-            toplist_f0_edges=np.asarray(toplist_f0_edges),
-        )
-    )
+def top_template_list(band_search: BandSearch, sky_idxs=(0,)):
+    return list(band_search.search_sky_batch(np.asarray(sky_idxs)))
 
 
-def batch_data_harmonics(search_data, harmonic_bank, sky_idx, template_batch):
+def batch_data_harmonics(search_data, band_search, sky_idx, template_batch):
     """`F[j, k]` of a template batch at one sky point, as the loop transforms it."""
-    bank, layout = harmonic_bank.bank, harmonic_bank.layout
-    alpha, delta = float(bank.alpha[sky_idx]), float(bank.delta[sky_idx])
-    weighted_excess_power = weighted_excess_power_per_reference(
-        search_data.sft_time_series,
-        search_data.floor,
-        search_data.velocity_per_detector,
-        layout.doppler_references,
-        layout.transformed_start_idxs,
-        n_transformed_bins=layout.n_transformed_bins,
-        tsft=search_data.tsft,
-        alpha=alpha,
-        delta=delta,
-        sft_weights=sft_weights_at_sky_point(search_data, alpha=alpha, delta=delta),
-        mean_power=search_data.mean_power,
-    )
-    omega2_class = int(bank.omega2_class[sky_idx])
-    orbital_phase = barycenter_orbital_phase(
-        jax.lax.dynamic_slice_in_dim(
-            harmonic_bank.orbital_phase[omega2_class],
-            template_batch.period_start_idx,
-            layout.period_batch_size,
-        ),
-        jax.lax.dynamic_slice_in_dim(
-            harmonic_bank.omega[omega2_class],
-            template_batch.period_start_idx,
-            layout.period_batch_size,
-        ),
+    bank = band_search.layout.bank
+    return band_search.transform(
+        band_search.doppler_correct(sky_idx)[None],
         solar_roemer_delay(
             search_data.position,
-            alpha=jnp.asarray([alpha]),
-            delta=jnp.asarray([delta]),
+            alpha=jnp.asarray(bank.alpha[[sky_idx]]),
+            delta=jnp.asarray(bank.delta[[sky_idx]]),
         ),
-    )
-    return data_harmonics_per_sky_point(
-        weighted_excess_power[None], orbital_phase, j_max=template_batch.n_harmonics
+        int(bank.omega2_class[sky_idx]),
+        template_batch,
     )[0]
 
 
@@ -222,36 +185,45 @@ def test_each_shifted_template_scores_as_max_over_phase_alone(three_sky_search):
     Each template is built on its own at its shifted sub-bin offset and depth class,
     placed at its shifted bin in its f0 point's widened window.
     """
-    search_data, harmonic_bank = three_sky_search
-    bank, layout = harmonic_bank.bank, harmonic_bank.layout
-    n_sub_bin_offsets = layout.sub_bin_offsets.size
+    search_data, band_search = three_sky_search
+    layout = band_search.layout
+    bank = layout.bank
+    n_subbin_offsets = layout.subbin_offsets.size
     n_padded_bins = layout.bin_offsets.shape[0] + layout.n_pad
     window_start_idxs = np.asarray(layout.window_start_idxs)
     doppler_reference_idxs = np.asarray(layout.doppler_reference_idxs)
-    sub_bin_offset_idxs = np.asarray(layout.sub_bin_offset_idxs)
+    subbin_offset_idxs = np.asarray(layout.subbin_offset_idxs)
     # tau[j, k] at every base depth, per (shifted sub-bin offset, depth class)
     templates = {}
     batch_idx = 0
     template_batch = layout.template_batches[batch_idx]
     for sky_idx in range(bank.alpha.size):
         data_harmonics = batch_data_harmonics(
-            search_data, harmonic_bank, sky_idx, template_batch
+            search_data, band_search, sky_idx, template_batch
         )
-        sky_point = harmonic_bank.sky_point(sky_idx)
-        max_statistic, phase_idxs = match_at_sky_point(
-            harmonic_bank,
-            data_harmonics,
-            sky_point,
-            template_batch,
-            batch_idx,
-            f0_batch_size=4,
+        sky_shifts = band_search.sky_shifts(sky_idx)
+        max_statistic, phase_idxs = matched_filter_grid(
+            data_harmonics=data_harmonics,
+            placed_harmonics=band_search.placed_template_harmonics,
+            norms_squared=band_search.template_norms_squared,
+            window_start_idxs=layout.window_start_idxs,
+            group_f0_idxs=layout.group_f0_idxs,
+            group_doppler_reference_idxs=layout.group_doppler_reference_idxs,
+            group_subbin_offset_idxs=layout.group_subbin_offset_idxs,
+            modulation_depth_start_idx=template_batch.modulation_depth_start_idx,
+            whole_bin_shifts=sky_shifts.whole_bin_shifts[batch_idx],
+            subbin_shifts=sky_shifts.subbin_shifts[batch_idx],
+            depth_classes=sky_shifts.depth_classes[batch_idx],
+            n_batch_depths=layout.n_batch_depths,
+            n_phi=layout.n_phi,
+            f0_batch_size=F0_BATCH_SIZE,
         )
-        start_shifts, sub_bin_shifts, depth_classes = (
+        whole_bin_shifts, subbin_shifts, depth_classes = (
             np.asarray(shifts[batch_idx])
             for shifts in (
-                sky_point.start_shifts,
-                sky_point.sub_bin_shifts,
-                sky_point.depth_classes,
+                sky_shifts.whole_bin_shifts,
+                sky_shifts.subbin_shifts,
+                sky_shifts.depth_classes,
             )
         )
         for f0_idx in range(0, bank.f0.size, F0_STRIDE):
@@ -266,25 +238,26 @@ def test_each_shifted_template_scores_as_max_over_phase_alone(three_sky_search):
                     :,
                     window_start_idx : window_start_idx + n_padded_bins,
                 ]
-                for depth_offset in range(layout.n_window_modulation_depths):
+                for depth_offset in range(layout.n_batch_depths):
                     shifted_offset_idx = int(
-                        sub_bin_offset_idxs[f0_idx]
-                        + sub_bin_shifts[period_offset, depth_offset]
+                        subbin_offset_idxs[f0_idx]
+                        + subbin_shifts[period_offset, depth_offset]
                     )
-                    offset_idx = shifted_offset_idx % n_sub_bin_offsets
+                    offset_idx = shifted_offset_idx % n_subbin_offsets
                     placement = (
-                        int(start_shifts[period_offset, depth_offset])
-                        + shifted_offset_idx // n_sub_bin_offsets
+                        int(whole_bin_shifts[period_offset, depth_offset])
+                        + shifted_offset_idx // n_subbin_offsets
                     )
                     if (offset_idx, depth_class) not in templates:
                         templates[offset_idx, depth_class] = np.asarray(
                             template_harmonics_at_depths(
                                 jnp.asarray(
                                     layout.bin_offsets
-                                    - layout.sub_bin_offsets[offset_idx]
+                                    - layout.subbin_offsets[offset_idx]
                                 ),
                                 jnp.asarray(
-                                    bank.modulation_depth_at(depth_class) * bank.tsft
+                                    bank.modulation_depth_at(np.asarray(depth_class))
+                                    * bank.tsft
                                 ),
                                 n_theta=layout.n_theta,
                                 j_max=layout.j_max,
@@ -320,13 +293,16 @@ def test_each_shifted_template_scores_as_max_over_phase_alone(three_sky_search):
 
 def test_toplists_hold_the_single_toplists_templates_per_f0_interval(small_search):
     """Split into toplists, each f0 interval keeps what one toplist keeps of it."""
-    search_data, harmonic_bank = small_search
-    f0 = harmonic_bank.bank.f0
+    search_data, band_search = small_search
+    f0 = band_search.layout.bank.f0
     middle_f0 = 0.5 * (f0.min() + f0.max())
-    split = top_template_list(
-        search_data, harmonic_bank, toplist_f0_edges=(-np.inf, middle_f0, np.inf)
+    split_search = band_search_on(
+        search_data,
+        band_search.layout.bank,
+        toplist_f0_edges=np.array([-np.inf, middle_f0, np.inf]),
     )
-    single = top_template_list(search_data, harmonic_bank)
+    split = top_template_list(split_search)
+    single = top_template_list(band_search)
     assert len(split) == 2 * len(single)
     for single_grid, low_grid, high_grid in zip(single, split[::2], split[1::2]):
         assert (low_grid.toplist_idx, high_grid.toplist_idx) == (0, 1)
@@ -353,11 +329,11 @@ def test_toplists_hold_the_single_toplists_templates_per_f0_interval(small_searc
 
 def test_a_sky_batch_scores_as_each_sky_point_alone(three_sky_search):
     """Sky points transformed together score as each one transformed on its own."""
-    search_data, harmonic_bank = three_sky_search
-    assert np.unique(harmonic_bank.bank.omega2_class).size == 1
-    batched = top_template_list(search_data, harmonic_bank, sky_idxs=range(3))
+    _, band_search = three_sky_search
+    assert np.unique(band_search.layout.bank.omega2_class).size == 1
+    batched = top_template_list(band_search, sky_idxs=range(3))
     for sky_idx in range(3):
-        alone = top_template_list(search_data, harmonic_bank, sky_idxs=[sky_idx])
+        alone = top_template_list(band_search, sky_idxs=[sky_idx])
         batched_at_sky = [grid for grid in batched if grid.sky_idx == sky_idx]
         assert len(batched_at_sky) == len(alone)
         for batched_grid, alone_grid in zip(batched_at_sky, alone):
@@ -372,21 +348,21 @@ def test_a_sky_batch_scores_as_each_sky_point_alone(three_sky_search):
 
 def test_harmonics_per_batch_leave_the_statistic_unchanged(small_search):
     """Each batch at its own harmonics scores as every batch at the layout's j_max."""
-    search_data, harmonic_bank = small_search
-    layout = harmonic_bank.layout
+    _, band_search = small_search
+    layout = band_search.layout
     assert any(
         batch.n_harmonics < layout.j_max for batch in layout.template_batches
     ), "every batch needs j_max, so there is nothing to cut"
 
-    full_bank = copy.copy(harmonic_bank)
-    full_bank.layout = layout._replace(
+    full_search = copy.copy(band_search)
+    full_search.layout = layout._replace(
         template_batches=[
             batch._replace(n_harmonics=layout.j_max)
             for batch in layout.template_batches
         ]
     )
-    per_batch = top_template_list(search_data, harmonic_bank)
-    full = top_template_list(search_data, full_bank)
+    per_batch = top_template_list(band_search)
+    full = top_template_list(full_search)
     assert len(per_batch) == len(full)
     for per_batch_grid, full_grid in zip(per_batch, full):
         np.testing.assert_allclose(
@@ -401,19 +377,19 @@ def test_harmonics_per_batch_leave_the_statistic_unchanged(small_search):
 @pytest.fixture(scope="module")
 def multi_reference_search(small_search):
     """The small search with a Doppler mismatch small enough to need several refs."""
-    search_data, harmonic_bank = small_search
-    return search_data, harmonic_bank_on(
+    search_data, band_search = small_search
+    return search_data, band_search_on(
         search_data,
-        harmonic_bank.bank,
+        band_search.layout.bank,
         doppler_mismatch=MULTI_REFERENCE_DOPPLER_MISMATCH,
     )
 
 
 def test_band_trim_leaves_the_statistic_unchanged(multi_reference_search):
     """Each reference transforming only its windows' bins scores as the whole band."""
-    search_data, harmonic_bank = multi_reference_search
+    search_data, band_search = multi_reference_search
     n_band_bins = search_data.n_band_bins
-    layout = harmonic_bank.layout
+    layout = band_search.layout
     starts = np.asarray(layout.transformed_start_idxs)
     windows = np.asarray(layout.window_start_idxs)
     n_padded_bins = layout.bin_offsets.shape[0] + layout.n_pad
@@ -430,15 +406,15 @@ def test_band_trim_leaves_the_statistic_unchanged(multi_reference_search):
 
     # every reference transforms the whole band, each window counted from its first
     # bin
-    untrimmed_bank = copy.copy(harmonic_bank)
-    untrimmed_bank.layout = layout._replace(
+    untrimmed_search = copy.copy(band_search)
+    untrimmed_search.layout = layout._replace(
         transformed_start_idxs=jnp.zeros_like(layout.transformed_start_idxs),
         n_transformed_bins=n_band_bins,
         window_start_idxs=layout.window_start_idxs
         + layout.transformed_start_idxs[layout.doppler_reference_idxs],
     )
-    trimmed = top_template_list(search_data, harmonic_bank)
-    untrimmed = top_template_list(search_data, untrimmed_bank)
+    trimmed = top_template_list(band_search)
+    untrimmed = top_template_list(untrimmed_search)
     assert len(trimmed) == len(untrimmed)
     for trimmed_grid, untrimmed_grid in zip(trimmed, untrimmed):
         np.testing.assert_allclose(

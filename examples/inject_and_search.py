@@ -162,7 +162,7 @@ def main() -> None:
         times=noise_data.times,
         freq_low=noise_data.freq_low,
         n_band_bins=noise_data.n_band_bins,
-        n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
+        n_subbin_offsets=search_loop_config.n_subbin_offsets,
         period_batch_size=search_loop_config.period_batch_size,
         harmonic_fraction=search_loop_config.harmonic_fraction,
         phase_mismatch=search_loop_config.phase_mismatch,

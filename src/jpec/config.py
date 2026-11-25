@@ -113,7 +113,7 @@ class SearchLoopConfig(BaseModel):
     # f0 points matched at once
     f0_batch_size: int = Field(default=32, ge=1)
     # template offsets across one bin
-    n_sub_bin_offsets: int = Field(default=8, ge=1)
+    n_subbin_offsets: int = Field(default=8, ge=1)
     # share of each modulation depth's harmonics matched
     harmonic_fraction: float = Field(default=1.0, gt=0.0, le=1.0)
     # largest mismatch the orbital phase grid may leave

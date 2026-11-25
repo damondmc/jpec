@@ -14,13 +14,13 @@ from jpec.waveform.window import Window
 @partial(jax.jit, static_argnames=("n_theta", "j_max", "window", "batch_size"))
 def template_harmonics_at_depths(
     bin_offsets: Float[Array, " n_freq"],
-    modulation_depth_bins: Float[Array, " n_modulation_depth"],
+    modulation_depth_bins: Float[Array, " n_depth"],
     *,
     n_theta: int,
     j_max: int,
     window: Window,
     batch_size: int,
-) -> Complex[Array, "n_modulation_depth n_harmonic n_freq"]:
+) -> Complex[Array, "n_depth n_harmonic n_freq"]:
     """`tau[j, k]` at every modulation depth on one grid, `batch_size` at a time.
 
     Args:
@@ -52,17 +52,17 @@ def template_harmonics_at_depths(
 @partial(jax.jit, static_argnames="n_pad")
 def placed_template_harmonics(
     template_harmonics: Complex[
-        Array, "n_sub_bin_offset n_depth_class n_modulation_depth n_harmonic n_freq"
+        Array, "n_subbin_offset n_class n_depth n_harmonic n_freq"
     ],
     *,
     n_pad: int,
 ) -> Complex[
-    Array, "n_placed n_depth_class n_modulation_depth n_harmonic n_padded_freq"
+    Array, "n_placement n_class n_depth n_harmonic n_padded_freq"
 ]:
     """Template harmonics at every sub-bin offset and placement in a widened window.
 
-    Index `s` holds the templates of offset index `s % n_sub_bin_offset` placed
-    `s // n_sub_bin_offset` bins into a window `n_pad` bins wider, zero elsewhere.
+    Index `s` holds the templates of offset index `s % n_subbin_offset` placed
+    `s // n_subbin_offset` bins into a window `n_pad` bins wider, zero elsewhere.
 
     Args:
         template_harmonics: `tau[j, k]` per sub-bin offset, depth class and
@@ -86,9 +86,9 @@ def placed_template_harmonics(
 @jax.jit
 def template_norms_squared(
     template_harmonics: Complex[
-        Array, "n_sub_bin_offset n_depth_class n_modulation_depth n_harmonic n_freq"
+        Array, "n_subbin_offset n_class n_depth n_harmonic n_freq"
     ],
-) -> Float[Array, "n_sub_bin_offset n_depth_class n_modulation_depth n_harmonic"]:
+) -> Float[Array, "n_subbin_offset n_class n_depth n_harmonic"]:
     """Squared norm of each template over its first harmonics, harmonic by harmonic.
 
         norms_squared[j] = sum_{j' <= j} sum_k |tau[j', k]|^2
@@ -105,33 +105,33 @@ def template_norms_squared(
 
 @partial(
     jax.jit,
-    static_argnames=("n_matched_modulation_depths", "n_phi", "f0_batch_size"),
+    static_argnames=("n_batch_depths", "n_phi", "f0_batch_size"),
 )
 def matched_filter_grid(
     data_harmonics: Complex[
-        Array, "n_doppler_reference n_period n_harmonic n_transformed_bin"
+        Array, "n_ref n_batch_period n_harmonic n_transformed_bin"
     ],
     placed_harmonics: Complex[
-        Array, "n_placed n_depth_class n_modulation_depth n_harmonic n_padded_freq"
+        Array, "n_placement n_class n_depth n_harmonic n_padded_freq"
     ],
     norms_squared: Float[
-        Array, "n_sub_bin_offset n_depth_class n_modulation_depth n_harmonic"
+        Array, "n_subbin_offset n_class n_depth n_harmonic"
     ],
     window_start_idxs: Int[Array, " n_f0"],
     group_f0_idxs: Int[Array, "n_group n_member"],
     group_doppler_reference_idxs: Int[Array, " n_group"],
-    group_sub_bin_offset_idxs: Int[Array, " n_group"],
+    group_subbin_offset_idxs: Int[Array, " n_group"],
     modulation_depth_start_idx: Int[Array, ""],
-    whole_bin_shifts: Int[Array, "n_period n_matched_modulation_depth"],
-    sub_bin_shifts: Int[Array, "n_period n_matched_modulation_depth"],
-    depth_classes: Int[Array, " n_period"],
+    whole_bin_shifts: Int[Array, "n_batch_period n_batch_depth"],
+    subbin_shifts: Int[Array, "n_batch_period n_batch_depth"],
+    depth_classes: Int[Array, " n_batch_period"],
     *,
-    n_matched_modulation_depths: int,
+    n_batch_depths: int,
     n_phi: int,
     f0_batch_size: int,
 ) -> tuple[
-    Float[Array, "n_f0 n_period n_matched_modulation_depth"],
-    Int[Array, "n_f0 n_period n_matched_modulation_depth"],
+    Float[Array, "n_f0 n_batch_period n_batch_depth"],
+    Int[Array, "n_f0 n_batch_period n_batch_depth"],
 ]:
     """Matched filter on every (f0, period, modulation depth), maximized over phase.
 
@@ -147,14 +147,14 @@ def matched_filter_grid(
             reference's transformed bins.
         group_f0_idxs: The f0 points of each (reference, offset) group.
         group_doppler_reference_idxs: The reference each group reads.
-        group_sub_bin_offset_idxs: The sub-bin offset each group takes.
+        group_subbin_offset_idxs: The sub-bin offset each group takes.
         modulation_depth_start_idx: First modulation depth matched.
         whole_bin_shifts: Whole bins each (period, modulation depth) moves the f0
             grid by.
-        sub_bin_shifts: Sub-bin offsets each (period, modulation depth) moves the f0
+        subbin_shifts: Sub-bin offsets each (period, modulation depth) moves the f0
             grid by.
         depth_classes: The depth class of each period.
-        n_matched_modulation_depths: Number of modulation depths matched.
+        n_batch_depths: Number of modulation depths matched.
         n_phi: Number of orbital phases the statistic is evaluated at.
         f0_batch_size: Number of f0 points matched at once.
 
@@ -163,13 +163,13 @@ def matched_filter_grid(
             per f0 point.
     """
     n_periods, n_harmonics = data_harmonics.shape[1], data_harmonics.shape[2]
-    n_sub_bin_offsets = norms_squared.shape[0]
+    n_subbin_offsets = norms_squared.shape[0]
     n_padded_bins = placed_harmonics.shape[-1]
-    depth_idxs = modulation_depth_start_idx + jnp.arange(n_matched_modulation_depths)
+    depth_idxs = modulation_depth_start_idx + jnp.arange(n_batch_depths)
 
     def window_data_harmonics(
         reference_idx: Int[Array, ""], window_start_idx: Int[Array, ""]
-    ) -> Complex[Array, "n_period n_harmonic n_padded_freq"]:
+    ) -> Complex[Array, "n_batch_period n_harmonic n_padded_freq"]:
         return jax.lax.dynamic_slice(
             data_harmonics[reference_idx],
             (0, 0, window_start_idx),
@@ -195,8 +195,8 @@ def matched_filter_grid(
     def match_group(
         group: tuple[Int[Array, " n_member"], Int[Array, ""], Int[Array, ""]],
     ) -> tuple[
-        Float[Array, "n_member n_period n_matched_modulation_depth"],
-        Int[Array, "n_member n_period n_matched_modulation_depth"],
+        Float[Array, "n_member n_batch_period n_batch_depth"],
+        Int[Array, "n_member n_batch_period n_batch_depth"],
     ]:
         f0_idxs, reference_idx, offset_idx = group
         member_data_harmonics = jax.vmap(window_data_harmonics, in_axes=(None, 0))(
@@ -206,11 +206,11 @@ def matched_filter_grid(
         # offset index i moved by u sub-bin offsets and s whole bins, it is offset
         # (i + u) % n placed s + (i + u) // n bins into the widened window, which is
         # placed_harmonics[i + u + n s]
-        placed_idxs = offset_idx + sub_bin_shifts + n_sub_bin_offsets * whole_bin_shifts
+        placed_idxs = offset_idx + subbin_shifts + n_subbin_offsets * whole_bin_shifts
         templates = period_templates(placed_idxs, depth_classes, depth_idxs)
         norms = jnp.sqrt(
             norms_squared[
-                placed_idxs % n_sub_bin_offsets,
+                placed_idxs % n_subbin_offsets,
                 depth_classes[:, None],
                 depth_idxs[None, :],
                 n_harmonics - 1,
@@ -231,7 +231,7 @@ def matched_filter_grid(
     # f0_batch_size rounded down to whole groups, at least one
     group_max_statistic, group_phase_idxs = jax.lax.map(
         match_group,
-        (group_f0_idxs, group_doppler_reference_idxs, group_sub_bin_offset_idxs),
+        (group_f0_idxs, group_doppler_reference_idxs, group_subbin_offset_idxs),
         batch_size=max(f0_batch_size // n_members, 1),
     )
     # each f0 point back in its own row; a repeated member writes the same values
@@ -252,9 +252,9 @@ def matched_filter_grid(
 
 @partial(jax.jit, static_argnames="n_top")
 def top_k_templates(
-    max_statistic: Float[Array, "n_f0 n_period n_matched_modulation_depth"],
-    phase_idxs: Int[Array, "n_f0 n_period n_matched_modulation_depth"],
-    ap_in_range: Bool[Array, "n_period n_matched_modulation_depth"],
+    max_statistic: Float[Array, "n_f0 n_batch_period n_batch_depth"],
+    phase_idxs: Int[Array, "n_f0 n_batch_period n_batch_depth"],
+    ap_in_range: Bool[Array, "n_batch_period n_batch_depth"],
     toplist_f0_idxs: Int[Array, "n_toplist n_member"],
     *,
     n_top: int,
