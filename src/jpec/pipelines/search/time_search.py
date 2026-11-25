@@ -14,22 +14,14 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jaxtyping import Array, Complex, Float, Int
 
 from jpec.bank.template_bank import TemplateBank
 from jpec.bank.tiling import LatticeTiling
 from jpec.config import SearchSetup, read_json
 from jpec.detector.doppler import solar_roemer_delay
 from jpec.engine.data import SearchData
-from jpec.engine.layout import f0_idxs_per_toplist
-from jpec.engine.loop import HarmonicBank, match_at_sky_point
-from jpec.engine.match import top_k_templates
-from jpec.engine.transform import (
-    data_harmonics_per_sky_point,
-    weighted_excess_power_per_reference,
-)
+from jpec.engine.loop import BandSearch
 from jpec.pipelines.monitor import RunLogger
-from jpec.stat.matched_filter import barycenter_orbital_phase
 
 
 def mean_seconds(function: Callable[..., Any], *args: Any, repeats: int) -> float:
@@ -78,23 +70,15 @@ def run(args: argparse.Namespace) -> None:
         velocity=search_data.velocity,
         window=setup.data.window,
     )
-    harmonic_bank = HarmonicBank(
+    # the job's band search, toplists included, as jpec search builds it
+    band_search = BandSearch(
         bank,
-        times=search_data.times,
-        freq_low=search_data.freq_low,
-        n_band_bins=search_data.n_band_bins,
-        n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
-        period_batch_size=search_loop_config.period_batch_size,
-        harmonic_fraction=search_loop_config.harmonic_fraction,
-        phase_mismatch=search_loop_config.phase_mismatch,
-        doppler_mismatch=search_loop_config.doppler_mismatch,
-        modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
+        search_data,
+        search_loop_config,
+        n_top=setup.n_toplist,
+        toplist_f0_edges=np.asarray(setup.toplist_f0_edges(job_setup)),
     )
-    layout = harmonic_bank.layout
-    # the job's toplists over the bank's f0 points, as the search keeps them
-    toplist_f0_idxs = jnp.asarray(
-        f0_idxs_per_toplist(bank.f0, np.asarray(setup.toplist_f0_edges(job_setup)))
-    )
+    layout = band_search.layout
 
     j_max = layout.j_max
     n_window_bins = layout.bin_offsets.shape[0]
@@ -106,33 +90,14 @@ def run(args: argparse.Namespace) -> None:
     sky_idxs = layout.sky_batches(search_loop_config.sky_batch_size)[0]
     sky_batch_size = int(sky_idxs.size)
     omega2_class = int(bank.omega2_class[sky_idxs[0]])
-    sky_point = harmonic_bank.sky_point(int(sky_idxs[0]))
+    sky_shifts = band_search.sky_shifts(int(sky_idxs[0]))
     n_period_batches = len(layout.template_batches)
 
-    def doppler_correction(
-        sky_idx: int,
-    ) -> Float[Array, "n_doppler_reference n_sft n_transformed_bin"]:
-        return weighted_excess_power_per_reference(
-            search_data.sft_time_series,
-            search_data.floor,
-            search_data.velocity_per_detector,
-            layout.doppler_references,
-            layout.transformed_start_idxs,
-            n_transformed_bins=layout.n_transformed_bins,
-            tsft=search_data.tsft,
-            alpha=float(bank.alpha[sky_idx]),
-            delta=float(bank.delta[sky_idx]),
-            sft_weights=search_data.sft_weights(
-                float(bank.alpha[sky_idx]), float(bank.delta[sky_idx])
-            ),
-            mean_power=search_data.mean_power,
-        )
-
     doppler_seconds = mean_seconds(
-        doppler_correction, int(sky_idxs[0]), repeats=args.repeats
+        band_search.doppler_correct, int(sky_idxs[0]), repeats=args.repeats
     )
     weighted_excess_power = jnp.stack(
-        [doppler_correction(int(sky_idx)) for sky_idx in sky_idxs]
+        [band_search.doppler_correct(int(sky_idx)) for sky_idx in sky_idxs]
     )
     n_transformed_bins = int(weighted_excess_power.shape[-1])
 
@@ -152,65 +117,35 @@ def run(args: argparse.Namespace) -> None:
     for batch_idx, batch in enumerate(
         layout.template_batches[: args.n_period_batches_timed]
     ):
-
-        def transform() -> Complex[
-            Array, "n_sky n_doppler_reference n_period n_harmonic n_transformed_bin"
-        ]:
-            batch_orbital_phase = jax.lax.dynamic_slice_in_dim(
-                harmonic_bank.orbital_phase[omega2_class],
-                batch.period_start_idx,
-                period_batch_size,
-            )
-            batch_omega = jax.lax.dynamic_slice_in_dim(
-                harmonic_bank.omega[omega2_class],
-                batch.period_start_idx,
-                period_batch_size,
-            )
-            batch_barycenter_orbital_phase = barycenter_orbital_phase(
-                batch_orbital_phase, batch_omega, solar_roemer_delays
-            )
-            return data_harmonics_per_sky_point(
-                weighted_excess_power,
-                batch_barycenter_orbital_phase,
-                j_max=batch.n_harmonics,
-            )
-
-        transform_seconds.append(mean_seconds(transform, repeats=args.repeats))
-        batch_data_harmonics = transform()[0]
+        transform_args = (
+            weighted_excess_power,
+            solar_roemer_delays,
+            omega2_class,
+            batch,
+        )
+        transform_seconds.append(
+            mean_seconds(band_search.transform, *transform_args, repeats=args.repeats)
+        )
+        batch_data_harmonics = band_search.transform(*transform_args)[0]
 
         # the match and the device-side cut to the top k, as the search runs them
-        def match(
-            data_harmonics: Complex[
-                Array, "n_doppler_reference n_period n_harmonic n_transformed_bin"
-            ],
-        ) -> tuple[
-            Float[Array, "n_toplist n_kept"],
-            Int[Array, "n_toplist n_kept"],
-            Int[Array, "n_toplist n_kept"],
-        ]:
-            max_statistic, phase_idxs = match_at_sky_point(
-                harmonic_bank,
-                data_harmonics,
-                sky_point,
-                batch,
-                batch_idx,
-                f0_batch_size=search_loop_config.f0_batch_size,
-            )
-            return top_k_templates(
-                max_statistic,
-                phase_idxs,
-                sky_point.ap_in_range[batch_idx],
-                toplist_f0_idxs,
-                n_top=setup.n_toplist,
-            )
-
         match_seconds.append(
-            mean_seconds(match, batch_data_harmonics, repeats=args.repeats)
+            mean_seconds(
+                band_search.match,
+                batch_data_harmonics,
+                sky_shifts,
+                batch_idx,
+                repeats=args.repeats,
+            )
         )
         half_harmonics = max(batch.n_harmonics // 2, 1)
         half_data_harmonics = batch_data_harmonics[:, :, :half_harmonics]
         half_match_seconds = mean_seconds(
-            match, half_data_harmonics, repeats=args.repeats
+            band_search.match,
+            half_data_harmonics,
+            sky_shifts,
+            batch_idx,
+            repeats=args.repeats,
         )
         for n_harmonics, seconds in [
             (batch.n_harmonics, match_seconds[-1]),

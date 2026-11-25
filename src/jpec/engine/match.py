@@ -123,7 +123,7 @@ def matched_filter_grid(
     group_doppler_reference_idxs: Int[Array, " n_group"],
     group_sub_bin_offset_idxs: Int[Array, " n_group"],
     modulation_depth_start_idx: Int[Array, ""],
-    start_shifts: Int[Array, "n_period n_matched_modulation_depth"],
+    whole_bin_shifts: Int[Array, "n_period n_matched_modulation_depth"],
     sub_bin_shifts: Int[Array, "n_period n_matched_modulation_depth"],
     depth_classes: Int[Array, " n_period"],
     *,
@@ -148,8 +148,8 @@ def matched_filter_grid(
         group_doppler_reference_idxs: The reference each group reads.
         group_sub_bin_offset_idxs: The sub-bin offset each group takes.
         modulation_depth_start_idx: First modulation depth matched.
-        start_shifts: Whole bins each (period, modulation depth) moves the f0 grid
-            by.
+        whole_bin_shifts: Whole bins each (period, modulation depth) moves the f0
+            grid by.
         sub_bin_shifts: Sub-bin offsets each (period, modulation depth) moves the f0
             grid by.
         depth_classes: The depth class of each period.
@@ -205,7 +205,7 @@ def matched_filter_grid(
         # offset index i moved by u sub-bin offsets and s whole bins, it is offset
         # (i + u) % n placed s + (i + u) // n bins into the widened window, which is
         # placed_harmonics[i + u + n s]
-        placed_idxs = offset_idx + sub_bin_shifts + n_sub_bin_offsets * start_shifts
+        placed_idxs = offset_idx + sub_bin_shifts + n_sub_bin_offsets * whole_bin_shifts
         templates = period_templates(placed_idxs, depth_classes, depth_idxs)
         norms = jnp.sqrt(
             norms_squared[

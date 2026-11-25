@@ -18,7 +18,7 @@ from jpec.bank.tiling import LatticeTiling
 from jpec.config import InjectionSetup, read_json
 from jpec.constant import DAY
 from jpec.engine.data import SearchData, freq_band_edges
-from jpec.engine.loop import HarmonicBank, top_templates_at_sky_points
+from jpec.engine.loop import BandSearch
 from jpec.injection.population import draw_injections
 from jpec.injection.signal import (
     sft_with_simulated_signal,
@@ -106,18 +106,6 @@ def measure_sensitivity_depth(
                 tsft=bank.tsft,
             )
         )
-        harmonic_bank = HarmonicBank(
-            bank,
-            times=band_data.times,
-            freq_low=band_data.freq_low,
-            n_band_bins=band_data.n_band_bins,
-            n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
-            period_batch_size=search_loop_config.period_batch_size,
-            harmonic_fraction=search_loop_config.harmonic_fraction,
-            phase_mismatch=search_loop_config.phase_mismatch,
-            doppler_mismatch=search_loop_config.doppler_mismatch,
-            modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
-        )
         injected_data = SearchData(
             [
                 sft_with_simulated_signal(
@@ -132,20 +120,20 @@ def measure_sensitivity_depth(
             floor=band_data.floor,
             t_ref=band_data.t_ref,
         )
+        band_search = BandSearch(
+            bank,
+            injected_data,
+            search_loop_config,
+            n_top=1,
+            # one toplist over every f0 point
+            toplist_f0_edges=np.array([-np.inf, np.inf]),
+        )
         top_statistic[injection_idx] = max(
             float(top.max_statistic[0])
-            for sky_idxs in harmonic_bank.layout.sky_batches(
+            for sky_idxs in band_search.layout.sky_batches(
                 search_loop_config.sky_batch_size
             )
-            for top in top_templates_at_sky_points(
-                injected_data,
-                harmonic_bank,
-                sky_idxs=sky_idxs,
-                f0_batch_size=search_loop_config.f0_batch_size,
-                n_top=1,
-                # one toplist over every f0 point
-                toplist_f0_edges=np.array([-np.inf, np.inf]),
-            )
+            for top in band_search.search_sky_batch(sky_idxs)
         )
         n_searched = injection_idx + 1
         if n_searched % N_INJECTIONS_PER_PROGRESS_LINE == 0:

@@ -16,7 +16,7 @@ from jpec.bank.tiling import LatticeTiling
 from jpec.config import JobSetup, SearchSetup, read_json
 from jpec.engine.candidates import Toplist
 from jpec.engine.data import SearchData
-from jpec.engine.loop import HarmonicBank, top_templates_at_sky_points
+from jpec.engine.loop import BandSearch
 from jpec.pipelines.monitor import RunLogger
 
 
@@ -54,26 +54,20 @@ def search_job(
         velocity=search_data.velocity,
         window=setup.data.window,
     )
-    # tau[j, k] and orbital phases, shared by every sky point
-    harmonic_bank = HarmonicBank(
+    # one toplist per toplist_f0_width of the job's f0 interval
+    toplist_f0_edges = np.asarray(setup.toplist_f0_edges(job_setup))
+    band_search = BandSearch(
         bank,
-        times=search_data.times,
-        freq_low=search_data.freq_low,
-        n_band_bins=search_data.n_band_bins,
-        n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
-        period_batch_size=search_loop_config.period_batch_size,
-        harmonic_fraction=search_loop_config.harmonic_fraction,
-        phase_mismatch=search_loop_config.phase_mismatch,
-        doppler_mismatch=search_loop_config.doppler_mismatch,
-        modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
+        search_data,
+        search_loop_config,
+        n_top=setup.n_toplist,
+        toplist_f0_edges=toplist_f0_edges,
     )
-    layout = harmonic_bank.layout
+    layout = band_search.layout
     run_logger.search_summary(
         setup, job_setup, search_data, layout, setup_path=args.setup
     )
 
-    # one toplist per toplist_f0_width of the job's f0 interval
-    toplist_f0_edges = np.asarray(setup.toplist_f0_edges(job_setup))
     n_toplists = toplist_f0_edges.size - 1
     toplists = [Toplist(setup.n_toplist) for _ in range(n_toplists)]
     run_logger.start_progress(
@@ -82,14 +76,7 @@ def search_job(
     n_sky_points = int(bank.alpha.size)
     n_sky_points_done = 0
     for sky_idxs in layout.sky_batches(search_loop_config.sky_batch_size):
-        for top in top_templates_at_sky_points(
-            search_data,
-            harmonic_bank,
-            sky_idxs=sky_idxs,
-            f0_batch_size=search_loop_config.f0_batch_size,
-            n_top=setup.n_toplist,
-            toplist_f0_edges=toplist_f0_edges,
-        ):
+        for top in band_search.search_sky_batch(sky_idxs):
             run_logger.progress(n_sky_points_done)
             toplists[top.toplist_idx].add_top(top, bank)
         n_sky_points_done += sky_idxs.size
