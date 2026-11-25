@@ -198,7 +198,12 @@ def split_periods(
             start_idx, stop_idx = int(depth_idxs[0]), int(depth_idxs[-1]) + 1
             n_harmonics = int(n_harmonics_per_depth[depth_idxs].max())
             template_batches.append(
-                TemplateBatch(period_start_idx, period_stop_idx, start_idx, n_harmonics)
+                TemplateBatch(
+                    period_start_idx=period_start_idx,
+                    period_stop_idx=period_stop_idx,
+                    modulation_depth_start_idx=start_idx,
+                    n_harmonics=n_harmonics,
+                )
             )
             n_batch_depths = max(
                 n_batch_depths, stop_idx - start_idx
@@ -448,7 +453,8 @@ def bank_layout(
         np.abs(subbin_offsets[None, :] - subbin_remainder[:, None]), axis=1
     )
     group_f0_idxs, group_doppler_reference_idxs, group_subbin_offset_idxs = f0_groups(
-        doppler_reference_idxs, subbin_offset_idxs
+        doppler_reference_idxs=doppler_reference_idxs,
+        subbin_offset_idxs=subbin_offset_idxs,
     )
     # no wider than the bank, as a bank around one source is
     n_periods = bank.omega2.size

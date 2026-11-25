@@ -130,6 +130,8 @@ def data_harmonics_per_sky_point(
     run_omega = jax.lax.dynamic_slice(
         omega, (omega2_class, period_start_idx), (1, period_batch_size)
     )[0]
-    phase = barycenter_orbital_phase(run_phase, run_omega, solar_roemer_delays)
+    phase = barycenter_orbital_phase(
+        orbital_phase=run_phase, omega=run_omega, solar_roemer_delays=solar_roemer_delays
+    )
     per_reference = jax.vmap(partial(data_harmonics, j_max=j_max), in_axes=(0, None))
     return jax.vmap(per_reference)(weighted_excess_power, phase)

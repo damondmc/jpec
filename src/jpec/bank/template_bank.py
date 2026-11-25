@@ -256,7 +256,8 @@ class TemplateBank(NamedTuple):
             The depth class per period.
         """
         depth_class, _ = self._split_depth_shift(
-            self.sky_lattice_idxs[sky_idx], self.period_lattice_idxs(sky_idx)
+            sky_lattice_idxs=self.sky_lattice_idxs[sky_idx],
+            period_lattice_idxs=self.period_lattice_idxs(sky_idx),
         )
         return depth_class
 
@@ -274,13 +275,17 @@ class TemplateBank(NamedTuple):
         sky_lattice_idxs = self.sky_lattice_idxs[sky_idx]
         period_lattice_idxs = self.period_lattice_idxs(sky_idx)
         _, depth_whole_steps = self._split_depth_shift(
-            sky_lattice_idxs, period_lattice_idxs
+            sky_lattice_idxs=sky_lattice_idxs, period_lattice_idxs=period_lattice_idxs
         )
-        return self._f0_shift(
-            sky_lattice_idxs,
-            period_lattice_idxs[:, None],
-            self.modulation_depth_lattice_idxs[None, :] - depth_whole_steps[:, None],
+        depth_lattice_idxs = (
+            self.modulation_depth_lattice_idxs[None, :] - depth_whole_steps[:, None]
         )
+        f0_shift = self._f0_shift(
+            sky_lattice_idxs=sky_lattice_idxs,
+            period_lattice_idxs=period_lattice_idxs[:, None],
+            depth_lattice_idxs=depth_lattice_idxs,
+        )
+        return f0_shift
 
     def modulation_depth_at(
         self, depth_class: Int[np.ndarray, "..."]
@@ -368,17 +373,17 @@ class TemplateBank(NamedTuple):
         omega2_class, omega2_whole_steps = self._split_omega2_shift(sky_lattice_idxs)
         period_lattice_idx = self.omega2_lattice_idxs[period_idx] - omega2_whole_steps
         depth_class, depth_whole_steps = self._split_depth_shift(
-            sky_lattice_idxs, period_lattice_idx
+            sky_lattice_idxs=sky_lattice_idxs, period_lattice_idxs=period_lattice_idx
         )
-        f0 = float(
-            self.f0[f0_idx]
-            + self._f0_shift(
-                sky_lattice_idxs,
-                period_lattice_idx,
-                self.modulation_depth_lattice_idxs[modulation_depth_idx]
-                - depth_whole_steps,
-            )
+        depth_lattice_idx = (
+            self.modulation_depth_lattice_idxs[modulation_depth_idx] - depth_whole_steps
         )
+        f0_shift = self._f0_shift(
+            sky_lattice_idxs=sky_lattice_idxs,
+            period_lattice_idxs=period_lattice_idx,
+            depth_lattice_idxs=depth_lattice_idx,
+        )
+        f0 = float(self.f0[f0_idx] + f0_shift)
         modulation_depth = np.asarray(
             self.modulation_depth_at(depth_class)[modulation_depth_idx]
         )
@@ -424,12 +429,13 @@ class TemplateBank(NamedTuple):
         metrics = tiling.lattice_metric(
             velocity, f0=f0_centre, sky_eigenvectors=sky_eigenvectors
         )
-        generators = np.stack(
-            [
-                triangular_generator(metric, tiling.mismatch, a5star_generator())
-                for metric in metrics
-            ]
-        )
+        generator_per_block = []
+        for metric in metrics:
+            block_generator = triangular_generator(
+                metric=metric, mismatch=tiling.mismatch, generator=a5star_generator()
+            )
+            generator_per_block.append(block_generator)
+        generators = np.stack(generator_per_block)
         alpha_low, alpha_high = prior.alpha
         delta_low, delta_high = prior.delta
         is_point_sky = alpha_low == alpha_high and delta_low == delta_high

@@ -60,7 +60,11 @@ def test_top_k_templates_is_the_sorted_ap_in_range_grid():
     # one toplist over every f0 point
     all_f0_idxs = jnp.arange(N_F0_POINTS)[None]
     top_max_statistic, flat_idxs, top_phase_idxs = top_k_templates(
-        max_statistic, phase_idxs, ap_in_range, all_f0_idxs, n_top=n_top
+        max_statistic=max_statistic,
+        phase_idxs=phase_idxs,
+        ap_in_range=ap_in_range,
+        toplist_f0_idxs=all_f0_idxs,
+        n_top=n_top,
     )
     ap_in_range_max_statistic = np.where(
         np.asarray(ap_in_range)[None], np.asarray(max_statistic), -np.inf

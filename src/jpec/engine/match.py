@@ -304,4 +304,5 @@ def top_k_templates(
         f0_idxs * n_templates_per_f0 + member_flat_idxs % n_templates_per_f0,
         n_f0 * n_templates_per_f0 - 1,
     )
-    return top_max_statistic, flat_idxs, phase_idxs.ravel()[flat_idxs]
+    top_phase_idxs = phase_idxs.ravel()[flat_idxs]
+    return top_max_statistic, flat_idxs, top_phase_idxs

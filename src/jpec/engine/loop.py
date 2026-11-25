@@ -1,6 +1,7 @@
 """The search loop: a template bank searched on one band, sky batch by sky batch."""
 
 from collections.abc import Iterator
+from functools import partial
 from typing import NamedTuple
 
 import jax.numpy as jnp
@@ -226,12 +227,12 @@ class BandSearch:
             `F[j, k]` at each sky point, Doppler reference and trial period.
         """
         return data_harmonics_per_sky_point(
-            weighted_excess_power,
-            self.orbital_phase,
-            self.omega,
-            solar_roemer_delays,
-            omega2_class,
-            template_batch.period_start_idx,
+            weighted_excess_power=weighted_excess_power,
+            orbital_phase=self.orbital_phase,
+            omega=self.omega,
+            solar_roemer_delays=solar_roemer_delays,
+            omega2_class=omega2_class,
+            period_start_idx=template_batch.period_start_idx,
             period_batch_size=self.layout.period_batch_size,
             j_max=template_batch.n_harmonics,
         )
@@ -317,17 +318,21 @@ class BandSearch:
             (n_f0, layout.period_batch_size, layout.n_batch_depths),
         )
         for toplist_idx in range(max_statistic.shape[0]):
+            period_idxs = template_batch.period_start_idx + period_offsets[toplist_idx]
+            modulation_depth_idxs = (
+                template_batch.modulation_depth_start_idx
+                + modulation_depth_offsets[toplist_idx]
+            )
+            doppler_references = self.f0_doppler_references[f0_idxs[toplist_idx]]
             yield TopTemplates(
                 sky_idx=sky_idx,
                 toplist_idx=toplist_idx,
                 max_statistic=max_statistic[toplist_idx],
                 f0_idxs=f0_idxs[toplist_idx],
-                period_idxs=template_batch.period_start_idx
-                + period_offsets[toplist_idx],
-                modulation_depth_idxs=template_batch.modulation_depth_start_idx
-                + modulation_depth_offsets[toplist_idx],
+                period_idxs=period_idxs,
+                modulation_depth_idxs=modulation_depth_idxs,
                 phase_idxs=phase_idxs[toplist_idx],
-                doppler_references=self.f0_doppler_references[f0_idxs[toplist_idx]],
+                doppler_references=doppler_references,
                 n_phi=layout.n_phi,
             )
 
@@ -353,7 +358,7 @@ class BandSearch:
             [self.doppler_correct(int(sky_idx)) for sky_idx in sky_idxs]
         )
         sky_shifts = [self.sky_shifts(int(sky_idx)) for sky_idx in sky_idxs]
-        previous_match = None
+        previous_unpack = None
         for batch_idx, template_batch in enumerate(self.layout.template_batches):
             data_harmonics = self.transform(
                 weighted_excess_power, solar_roemer_delays, omega2_class, template_batch
@@ -364,10 +369,15 @@ class BandSearch:
                 )
                 for array in top_k:
                     array.copy_to_host_async()
-                if previous_match is not None:
+                if previous_unpack is not None:
                     # work on the host while the device runs this match
-                    yield from self._unpack_top_k(*previous_match)
-                previous_match = (top_k, batch_idx, int(sky_idx))
+                    yield from previous_unpack()
+                previous_unpack = partial(
+                    self._unpack_top_k,
+                    top_k=top_k,
+                    batch_idx=batch_idx,
+                    sky_idx=int(sky_idx),
+                )
         # the last match
-        if previous_match is not None:
-            yield from self._unpack_top_k(*previous_match)
+        if previous_unpack is not None:
+            yield from previous_unpack()

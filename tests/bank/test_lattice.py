@@ -99,7 +99,9 @@ def test_triangular_generator_whitens_to_the_scaled_generator():
     root = rng.normal(size=(5, 5))
     metric = root @ root.T + 5.0 * np.eye(5)
     generator = a5star_generator()
-    triangular = triangular_generator(metric, MISMATCH, generator)
+    triangular = triangular_generator(
+        metric=metric, mismatch=MISMATCH, generator=generator
+    )
     assert np.allclose(np.tril(triangular, k=-1), 0.0)
     np.testing.assert_allclose(
         triangular.T @ metric @ triangular,
@@ -137,7 +139,9 @@ def test_sky_lattice_covers_the_sphere_within_its_share_of_the_mismatch():
     curvature, sky_eigenvectors = sky_metric(velocity, f0=F0, g_f0f0=tiling.g_f0f0)
     metrics = tiling.lattice_metric(velocity, f0=F0, sky_eigenvectors=sky_eigenvectors)
     generator = a5star_generator()
-    triangular = triangular_generator(metrics[0], MISMATCH, generator)
+    triangular = triangular_generator(
+        metric=metrics[0], mismatch=MISMATCH, generator=generator
+    )
     alpha, delta, _ = sky_lattice(
         triangular[3:, 3:],
         sky_eigenvectors=sky_eigenvectors,
