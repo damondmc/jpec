@@ -52,25 +52,25 @@ def template_harmonics_at_depths(
 @partial(jax.jit, static_argnames="n_pad")
 def placed_template_harmonics(
     template_harmonics: Complex[
-        Array, "n_subbin_offset n_class n_depth n_harmonic n_freq"
+        Array, "n_f0_bin_fraction n_class n_depth n_harmonic n_freq"
     ],
     *,
     n_pad: int,
 ) -> Complex[
     Array, "n_placement n_class n_depth n_harmonic n_padded_freq"
 ]:
-    """Template harmonics at every sub-bin offset and placement in a widened window.
+    """Template harmonics at every bin fraction and placement in a widened window.
 
-    Index `s` holds the templates of offset index `s % n_subbin_offset` placed
-    `s // n_subbin_offset` bins into a window `n_pad` bins wider, zero elsewhere.
+    Index `s` holds the templates of bin fraction index `s % n_f0_bin_fraction` placed
+    `s // n_f0_bin_fraction` bins into a window `n_pad` bins wider, zero elsewhere.
 
     Args:
-        template_harmonics: `tau[j, k]` per sub-bin offset, depth class and
+        template_harmonics: `tau[j, k]` per bin fraction, depth class and
             modulation depth.
         n_pad: Number of bins the window is widened by.
 
     Returns:
-        The templates at every sub-bin offset and whole-bin placement.
+        The templates at every bin fraction and whole-bin placement.
     """
     return jnp.concatenate(
         [
@@ -86,15 +86,15 @@ def placed_template_harmonics(
 @jax.jit
 def template_norms_squared(
     template_harmonics: Complex[
-        Array, "n_subbin_offset n_class n_depth n_harmonic n_freq"
+        Array, "n_f0_bin_fraction n_class n_depth n_harmonic n_freq"
     ],
-) -> Float[Array, "n_subbin_offset n_class n_depth n_harmonic"]:
+) -> Float[Array, "n_f0_bin_fraction n_class n_depth n_harmonic"]:
     """Squared norm of each template over its first harmonics, harmonic by harmonic.
 
         norms_squared[j] = sum_{j' <= j} sum_k |tau[j', k]|^2
 
     Args:
-        template_harmonics: `tau[j, k]` per sub-bin offset, depth class and
+        template_harmonics: `tau[j, k]` per bin fraction, depth class and
             modulation depth.
 
     Returns:
@@ -115,15 +115,15 @@ def matched_filter_grid(
         Array, "n_placement n_class n_depth n_harmonic n_padded_freq"
     ],
     norms_squared: Float[
-        Array, "n_subbin_offset n_class n_depth n_harmonic"
+        Array, "n_f0_bin_fraction n_class n_depth n_harmonic"
     ],
     window_start_idxs: Int[Array, " n_f0"],
     group_f0_idxs: Int[Array, "n_group n_member"],
     group_doppler_reference_idxs: Int[Array, " n_group"],
-    group_subbin_offset_idxs: Int[Array, " n_group"],
+    group_f0_bin_fraction_idxs: Int[Array, " n_group"],
     modulation_depth_start_idx: Int[Array, ""],
     whole_bin_shifts: Int[Array, "n_batch_period n_batch_depth"],
-    subbin_shifts: Int[Array, "n_batch_period n_batch_depth"],
+    f0_bin_fraction_shifts: Int[Array, "n_batch_period n_batch_depth"],
     depth_classes: Int[Array, " n_batch_period"],
     *,
     n_batch_depths: int,
@@ -138,21 +138,21 @@ def matched_filter_grid(
     Args:
         data_harmonics: `F[j, k]` at each period over the transformed bins, per
             Doppler reference.
-        placed_harmonics: Each template's harmonics `tau[j, k]` at every sub-bin
-            offset and whole-bin placement in a widened window, zero outside it, per
-            depth class and modulation depth.
+        placed_harmonics: Each template's harmonics `tau[j, k]` at every bin
+            fraction and whole-bin placement in a widened window, zero outside it,
+            per depth class and modulation depth.
         norms_squared: Each template's squared norm over harmonics 1 to `j + 1` at
-            index `j`, per sub-bin offset, depth class and modulation depth.
+            index `j`, per bin fraction, depth class and modulation depth.
         window_start_idxs: First bin of each f0 point's template window, among its
             reference's transformed bins.
-        group_f0_idxs: The f0 points of each (reference, offset) group.
+        group_f0_idxs: The f0 points of each (reference, bin fraction) group.
         group_doppler_reference_idxs: The reference each group reads.
-        group_subbin_offset_idxs: The sub-bin offset each group takes.
+        group_f0_bin_fraction_idxs: The bin fraction each group takes.
         modulation_depth_start_idx: First modulation depth matched.
         whole_bin_shifts: Whole bins each (period, modulation depth) moves the f0
             grid by.
-        subbin_shifts: Sub-bin offsets each (period, modulation depth) moves the f0
-            grid by.
+        f0_bin_fraction_shifts: Bin fractions each (period, modulation depth) moves the
+            f0 grid by, past the whole bins.
         depth_classes: The depth class of each period.
         n_batch_depths: Number of modulation depths matched.
         n_phi: Number of orbital phases the statistic is evaluated at.
@@ -163,7 +163,7 @@ def matched_filter_grid(
             per f0 point.
     """
     n_periods, n_harmonics = data_harmonics.shape[1], data_harmonics.shape[2]
-    n_subbin_offsets = norms_squared.shape[0]
+    n_f0_bin_fractions = norms_squared.shape[0]
     n_padded_bins = placed_harmonics.shape[-1]
     depth_idxs = modulation_depth_start_idx + jnp.arange(n_batch_depths)
 
@@ -198,19 +198,20 @@ def matched_filter_grid(
         Float[Array, "n_member n_batch_period n_batch_depth"],
         Int[Array, "n_member n_batch_period n_batch_depth"],
     ]:
-        f0_idxs, reference_idx, offset_idx = group
+        f0_idxs, reference_idx, fraction_idx = group
         member_data_harmonics = jax.vmap(window_data_harmonics, in_axes=(None, 0))(
             reference_idx, window_start_idxs[f0_idxs]
         )
         # a group's f0 points share one template per (period, modulation depth): at
-        # offset index i moved by u sub-bin offsets and s whole bins, it is offset
-        # (i + u) % n placed s + (i + u) // n bins into the widened window, which is
-        # placed_harmonics[i + u + n s]
-        placed_idxs = offset_idx + subbin_shifts + n_subbin_offsets * whole_bin_shifts
+        # bin fraction index i moved by u bin fractions and s whole bins, it is bin
+        # fraction (i + u) % n placed s + (i + u) // n bins into the widened window,
+        # which is placed_harmonics[i + u + n s]
+        shifted_fraction_idxs = fraction_idx + f0_bin_fraction_shifts
+        placed_idxs = shifted_fraction_idxs + n_f0_bin_fractions * whole_bin_shifts
         templates = period_templates(placed_idxs, depth_classes, depth_idxs)
         norms = jnp.sqrt(
             norms_squared[
-                placed_idxs % n_subbin_offsets,
+                placed_idxs % n_f0_bin_fractions,
                 depth_classes[:, None],
                 depth_idxs[None, :],
                 n_harmonics - 1,
@@ -231,7 +232,7 @@ def matched_filter_grid(
     # f0_batch_size rounded down to whole groups, at least one
     group_max_statistic, group_phase_idxs = jax.lax.map(
         match_group,
-        (group_f0_idxs, group_doppler_reference_idxs, group_subbin_offset_idxs),
+        (group_f0_idxs, group_doppler_reference_idxs, group_f0_bin_fraction_idxs),
         batch_size=max(f0_batch_size // n_members, 1),
     )
     # each f0 point back in its own row; a repeated member writes the same values

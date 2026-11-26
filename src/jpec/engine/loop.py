@@ -85,8 +85,8 @@ class SkyShifts(NamedTuple):
     Attributes:
         whole_bin_shifts: Whole bins each (period, modulation depth) moves its f0
             grid by.
-        subbin_shifts: Sub-bin offsets each (period, modulation depth) moves its f0
-            grid by, past the whole bins.
+        f0_bin_fraction_shifts: Bin fractions each (period, modulation depth) moves
+            its f0 grid by, past the whole bins.
         depth_classes: Depth class of each period.
         ap_in_range: Whether each (period, modulation depth) has ap in its ap block.
     """
@@ -94,7 +94,7 @@ class SkyShifts(NamedTuple):
     whole_bin_shifts: Int[
         Array, "n_batch n_batch_period n_batch_depth"
     ]
-    subbin_shifts: Int[Array, "n_batch n_batch_period n_batch_depth"]
+    f0_bin_fraction_shifts: Int[Array, "n_batch n_batch_period n_batch_depth"]
     depth_classes: Int[Array, "n_batch n_batch_period"]
     ap_in_range: Bool[Array, "n_batch n_batch_period n_batch_depth"]
 
@@ -109,7 +109,7 @@ class BandSearch:
         layout: Where the bank's templates read from the band, and their batches.
         toplist_f0_idxs: The base f0 points of each toplist, padded with `n_f0`.
         placed_template_harmonics: Each template's harmonics `tau[j, k]` at every
-            sub-bin offset and whole-bin placement in a window `n_pad` bins wider,
+            bin fraction and whole-bin placement in a window `n_pad` bins wider,
             zero outside it, on the device.
         template_norms_squared: Each template's squared norm over its first
             harmonics, harmonic by harmonic, on the device.
@@ -148,7 +148,7 @@ class BandSearch:
             bank,
             freq_low=search_data.freq_low,
             n_band_bins=search_data.n_band_bins,
-            n_subbin_offsets=config.n_subbin_offsets,
+            n_f0_bin_fractions=config.n_f0_bin_fractions,
             period_batch_size=config.period_batch_size,
             harmonic_fraction=config.harmonic_fraction,
             phase_mismatch=config.phase_mismatch,
@@ -161,21 +161,21 @@ class BandSearch:
         # every depth of every depth class, in bins, one row per class
         depth_classes = np.arange(bank.depth_shift_fractions.size)
         depth_bins = bank.modulation_depth_at(depth_classes) * bank.tsft
-        # tau[j, k] per (sub-bin offset, depth class, modulation depth)
-        templates_per_offset = []
-        for subbin_offset in layout.subbin_offsets:
-            offset_templates = template_harmonics_at_depths(
-                bin_offsets=jnp.asarray(layout.bin_offsets - subbin_offset),
+        # tau[j, k] per (bin fraction, depth class, modulation depth)
+        templates_per_fraction = []
+        for f0_bin_fraction in layout.f0_bin_fractions:
+            fraction_templates = template_harmonics_at_depths(
+                bin_offsets=jnp.asarray(layout.bin_offsets - f0_bin_fraction),
                 modulation_depth_bins=jnp.asarray(depth_bins.ravel()),
                 n_theta=layout.n_theta,
                 j_max=layout.j_max,
                 window=bank.window,
                 batch_size=config.modulation_depth_batch_size,
             )
-            templates_per_offset.append(
-                offset_templates.reshape(*depth_bins.shape, layout.j_max, -1)
+            templates_per_fraction.append(
+                fraction_templates.reshape(*depth_bins.shape, layout.j_max, -1)
             )
-        templates = jnp.stack(templates_per_offset)
+        templates = jnp.stack(templates_per_fraction)
         self.placed_template_harmonics = placed_template_harmonics(
             templates, n_pad=layout.n_pad
         )
@@ -203,24 +203,25 @@ class BandSearch:
         """
         layout = self.layout
         bank = layout.bank
-        n_offsets = layout.subbin_offsets.size
-        # the f0 shift counted in sub-bins of 1 / n_offsets bin, rounded:
-        # s // n_offsets whole bins and s % n_offsets sub-bin offsets
-        f0_shift_subbins = np.rint(
-            bank.f0_shift(sky_idx) * bank.tsft * n_offsets
+        n_f0_bin_fractions = layout.f0_bin_fractions.size
+        # the f0 shift [Hz] counted in steps of 1 / n_f0_bin_fractions bin, rounded
+        # (one bin is 1 / tsft Hz): s // n_f0_bin_fractions whole bins and
+        # s % n_f0_bin_fractions bin fractions
+        f0_fraction_steps = np.rint(
+            bank.f0_shift(sky_idx) * bank.tsft * n_f0_bin_fractions
         ).astype(np.int32)  # (n_period, n_depth)
         period_start_idxs = layout.batch_period_start_idxs
         # each batch's run of periods, padded past the last period:
         # (n_batch, period_batch_size, n_depth)
-        batch_f0_shift_subbins = padded_windows(
-            f0_shift_subbins,
+        batch_f0_fraction_steps = padded_windows(
+            f0_fraction_steps,
             start_idxs=period_start_idxs,
             window_size=layout.period_batch_size,
             fill_value=0,
         )
         # cut to each batch's depth window: (n_batch, period_batch_size, n_batch_depths)
-        batch_f0_shift_subbins = window_columns(
-            batch_f0_shift_subbins,
+        batch_f0_fraction_steps = window_columns(
+            batch_f0_fraction_steps,
             start_idxs=layout.batch_depth_start_idxs,
             window_size=layout.n_batch_depths,
         )
@@ -241,9 +242,11 @@ class BandSearch:
             self.ap_in_range_per_classes[classes] = jnp.asarray(
                 layout.ap_in_range(omega2_class, depth_class)
             )
+        whole_bin_shifts = batch_f0_fraction_steps // n_f0_bin_fractions
+        f0_bin_fraction_shifts = batch_f0_fraction_steps % n_f0_bin_fractions
         return SkyShifts(
-            whole_bin_shifts=jnp.asarray(batch_f0_shift_subbins // n_offsets),
-            subbin_shifts=jnp.asarray(batch_f0_shift_subbins % n_offsets),
+            whole_bin_shifts=jnp.asarray(whole_bin_shifts),
+            f0_bin_fraction_shifts=jnp.asarray(f0_bin_fraction_shifts),
             depth_classes=jnp.asarray(depth_classes),
             ap_in_range=self.ap_in_range_per_classes[classes],
         )
@@ -344,12 +347,12 @@ class BandSearch:
             window_start_idxs=layout.window_start_idxs,
             group_f0_idxs=layout.group_f0_idxs,
             group_doppler_reference_idxs=layout.group_doppler_reference_idxs,
-            group_subbin_offset_idxs=layout.group_subbin_offset_idxs,
+            group_f0_bin_fraction_idxs=layout.group_f0_bin_fraction_idxs,
             modulation_depth_start_idx=layout.template_batches[
                 batch_idx
             ].modulation_depth_start_idx,
             whole_bin_shifts=sky_shifts.whole_bin_shifts[batch_idx],
-            subbin_shifts=sky_shifts.subbin_shifts[batch_idx],
+            f0_bin_fraction_shifts=sky_shifts.f0_bin_fraction_shifts[batch_idx],
             depth_classes=sky_shifts.depth_classes[batch_idx],
             n_batch_depths=layout.n_batch_depths,
             n_phi=layout.n_phi,

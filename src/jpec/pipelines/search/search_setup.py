@@ -74,7 +74,7 @@ def f0_interval_layout(
         bank,
         freq_low=freq_low,
         n_band_bins=n_band_bins,
-        n_subbin_offsets=search_loop_config.n_subbin_offsets,
+        n_f0_bin_fractions=search_loop_config.n_f0_bin_fractions,
         period_batch_size=search_loop_config.period_batch_size,
         harmonic_fraction=search_loop_config.harmonic_fraction,
         phase_mismatch=search_loop_config.phase_mismatch,
@@ -157,9 +157,9 @@ def search_memory_gb(
     )
     # transforming: the stack twice, and a full run of periods
     transform_bytes = 2 * stack_bytes + layout.period_batch_size * per_period_bytes
-    # one template per (subbin offset, depth class, depth)
+    # one template per (bin fraction, depth class, depth)
     n_templates = (
-        layout.subbin_offsets.size
+        layout.f0_bin_fractions.size
         * layout.bank.depth_shift_fractions.size
         * layout.bank.modulation_depth.size
     )

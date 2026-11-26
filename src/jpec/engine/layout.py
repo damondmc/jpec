@@ -39,7 +39,7 @@ class TemplateBatch(NamedTuple):
 
 
 class BankLayout(NamedTuple):
-    """A bank's layout on one band: f0 windows, references, offsets and batches.
+    """A bank's layout on one band: f0 windows, references, bin fractions and batches.
 
     Attributes:
         bank: The template bank laid out.
@@ -49,11 +49,12 @@ class BankLayout(NamedTuple):
             its reference's transformed start.
         doppler_references: Frequency of each Doppler reference [Hz].
         doppler_reference_idxs: Which Doppler reference each f0 point reads.
-        subbin_offsets: The sub-bin offsets template harmonics are built at [bins].
-        subbin_offset_idxs: Which sub-bin offset each f0 point takes.
-        group_f0_idxs: The f0 points of each (reference, offset) group.
+        f0_bin_fractions: Where in its frequency bin a template's f0 is built, from
+            the bin's centre [bins].
+        f0_bin_fraction_idxs: Which f0 bin fraction each f0 point takes.
+        group_f0_idxs: The f0 points of each (reference, bin fraction) group.
         group_doppler_reference_idxs: The reference each group reads.
-        group_subbin_offset_idxs: The offset each group takes before any shift.
+        group_f0_bin_fraction_idxs: The bin fraction each group takes before any shift.
         bin_offsets: Bin centres of every template window, offsets from f0 [bins].
         j_max: Highest harmonic a template is built with.
         n_theta: Number of orbital phases a template is sampled at for its harmonics.
@@ -73,11 +74,11 @@ class BankLayout(NamedTuple):
     window_start_idxs: Int[Array, " n_f0"]
     doppler_references: Float[Array, " n_ref"]
     doppler_reference_idxs: Int[Array, " n_f0"]
-    subbin_offsets: Float[np.ndarray, " n_subbin_offset"]
-    subbin_offset_idxs: Int[Array, " n_f0"]
+    f0_bin_fractions: Float[np.ndarray, " n_f0_bin_fraction"]
+    f0_bin_fraction_idxs: Int[Array, " n_f0"]
     group_f0_idxs: Int[Array, "n_group n_member"]
     group_doppler_reference_idxs: Int[Array, " n_group"]
-    group_subbin_offset_idxs: Int[Array, " n_group"]
+    group_f0_bin_fraction_idxs: Int[Array, " n_group"]
     bin_offsets: Float[np.ndarray, " n_freq"]
     j_max: int
     n_theta: int
@@ -214,27 +215,27 @@ def split_periods(
 
 def f0_groups(
     doppler_reference_idxs: Int[np.ndarray, " n_f0"],
-    subbin_offset_idxs: Int[np.ndarray, " n_f0"],
+    f0_bin_fraction_idxs: Int[np.ndarray, " n_f0"],
 ) -> tuple[
     Int[np.ndarray, "n_group n_member"],
     Int[np.ndarray, " n_group"],
     Int[np.ndarray, " n_group"],
 ]:
-    """The f0 points that read one reference and take one offset, padded to one size.
+    """The f0 points that read one reference at one bin fraction, padded to one size.
 
     Args:
         doppler_reference_idxs: The reference each f0 point reads.
-        subbin_offset_idxs: The sub-bin offset each f0 point takes.
+        f0_bin_fraction_idxs: The bin fraction each f0 point takes.
 
     Returns:
         Each group's f0 points, its last repeated to the largest group's size, and
-            each group's reference and offset.
+            each group's reference and bin fraction.
     """
     group_keys = sorted(
         set(
             zip(
                 doppler_reference_idxs.tolist(),
-                subbin_offset_idxs.tolist(),
+                f0_bin_fraction_idxs.tolist(),
                 strict=True,
             )
         )
@@ -242,9 +243,9 @@ def f0_groups(
     members = [
         np.flatnonzero(
             (doppler_reference_idxs == reference_idx)
-            & (subbin_offset_idxs == offset_idx)
+            & (f0_bin_fraction_idxs == fraction_idx)
         )
-        for reference_idx, offset_idx in group_keys
+        for reference_idx, fraction_idx in group_keys
     ]
     n_members = max(member.size for member in members)
     group_f0_idxs = np.stack(
@@ -256,8 +257,10 @@ def f0_groups(
     group_doppler_reference_idxs = np.array(
         [reference_idx for reference_idx, _ in group_keys]
     )
-    group_subbin_offset_idxs = np.array([offset_idx for _, offset_idx in group_keys])
-    return group_f0_idxs, group_doppler_reference_idxs, group_subbin_offset_idxs
+    group_f0_bin_fraction_idxs = np.array(
+        [fraction_idx for _, fraction_idx in group_keys]
+    )
+    return group_f0_idxs, group_doppler_reference_idxs, group_f0_bin_fraction_idxs
 
 
 def f0_idxs_per_toplist(
@@ -337,7 +340,7 @@ def bank_layout(
     *,
     freq_low: float,
     n_band_bins: int,
-    n_subbin_offsets: int,
+    n_f0_bin_fractions: int,
     period_batch_size: int,
     harmonic_fraction: float,
     phase_mismatch: float,
@@ -349,7 +352,8 @@ def bank_layout(
         bank: The template bank to lay out.
         freq_low: First frequency of the loaded band [Hz].
         n_band_bins: Number of bins the loaded band holds.
-        n_subbin_offsets: Number of sub-bin template offsets across one bin.
+        n_f0_bin_fractions: Number of bin fractions across one bin the templates are
+            built at.
         period_batch_size: Number of trial periods per transform call.
         harmonic_fraction: Share of each modulation depth's harmonics matched.
         phase_mismatch: Largest mismatch the orbital phase grid may leave.
@@ -358,7 +362,7 @@ def bank_layout(
 
     Returns:
         The bank with its base f0 points placed on the band, their references and
-            offsets chosen, and its periods batched.
+            bin fractions chosen, and its periods batched.
     """
     tsft = bank.tsft
     f0 = bank.f0
@@ -368,15 +372,16 @@ def bank_layout(
     j_max = harmonic_count(deepest_depth_bins)
     n_theta = theta_sample_count(j_max)
     bin_offsets = np.asarray(arc_bin_offsets(deepest_depth_bins, pad_bins=ARC_PAD_BINS))
-    # a template at offset index i < n moved by u = rint(f0_shift tsft n) sub-bin
-    # units, f0_shift in [0, f0_step], sits (i + u) // n bins past its window start;
+    # a template at bin fraction index i < n moved by u = rint(f0_shift tsft n) bin
+    # fractions, f0_shift in [0, f0_step], sits (i + u) // n bins past its window start;
     # u <= f0_step tsft n + 1/2, so (i + u) / n < f0_step tsft + 1 and the placement
     # is at most ceil(f0_step tsft)
     n_pad = math.ceil(bank.f0_step * tsft)
-    # an f0 point is a whole-bin slice of the band plus a remainder the template carries
+    # an f0 point is a whole-bin slice of the band plus a bin fraction the template
+    # carries
     bins_from_freq_low = (f0 - freq_low) * tsft
     nearest_bin_idx = np.round(bins_from_freq_low).astype(int)
-    subbin_remainder = bins_from_freq_low - nearest_bin_idx  # in [-0.5, 0.5]
+    exact_f0_bin_fractions = bins_from_freq_low - nearest_bin_idx  # in [-0.5, 0.5]
     band_window_start_idxs = nearest_bin_idx + int(bin_offsets[0])
     n_window_bins = bin_offsets.shape[0]
     # each window is read n_pad bins wider; dynamic_slice clamps a window that runs
@@ -437,15 +442,15 @@ def bank_layout(
         band_window_start_idxs - transformed_start_idxs[doppler_reference_idxs]
     )
 
-    # sub-bin offsets on one fixed grid across a bin; each f0 point takes the nearest
-    # to its remainder, and a shift moves it along the whole grid
-    subbin_offsets = (np.arange(n_subbin_offsets) + 0.5) / n_subbin_offsets - 0.5
-    subbin_offset_idxs = np.argmin(
-        np.abs(subbin_offsets[None, :] - subbin_remainder[:, None]), axis=1
+    # bin fractions on one fixed grid across a bin; each f0 point takes the nearest to
+    # its exact one, and a shift moves it along the whole grid
+    f0_bin_fractions = (np.arange(n_f0_bin_fractions) + 0.5) / n_f0_bin_fractions - 0.5
+    f0_bin_fraction_idxs = np.argmin(
+        np.abs(f0_bin_fractions[None, :] - exact_f0_bin_fractions[:, None]), axis=1
     )
-    group_f0_idxs, group_doppler_reference_idxs, group_subbin_offset_idxs = f0_groups(
+    group_f0_idxs, group_doppler_reference_idxs, group_f0_bin_fraction_idxs = f0_groups(
         doppler_reference_idxs=doppler_reference_idxs,
-        subbin_offset_idxs=subbin_offset_idxs,
+        f0_bin_fraction_idxs=f0_bin_fraction_idxs,
     )
     # no wider than the bank, as a bank around one source is
     n_periods = bank.omega2.size
@@ -513,11 +518,11 @@ def bank_layout(
         window_start_idxs=jnp.asarray(window_start_idxs),
         doppler_references=jnp.asarray(doppler_references),
         doppler_reference_idxs=jnp.asarray(doppler_reference_idxs),
-        subbin_offsets=subbin_offsets,
-        subbin_offset_idxs=jnp.asarray(subbin_offset_idxs),
+        f0_bin_fractions=f0_bin_fractions,
+        f0_bin_fraction_idxs=jnp.asarray(f0_bin_fraction_idxs),
         group_f0_idxs=jnp.asarray(group_f0_idxs),
         group_doppler_reference_idxs=jnp.asarray(group_doppler_reference_idxs),
-        group_subbin_offset_idxs=jnp.asarray(group_subbin_offset_idxs),
+        group_f0_bin_fraction_idxs=jnp.asarray(group_f0_bin_fraction_idxs),
         bin_offsets=bin_offsets,
         j_max=j_max,
         n_theta=n_theta,

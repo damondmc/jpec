@@ -191,18 +191,18 @@ def batch_data_harmonics(search_data, band_search, sky_idx, template_batch):
 def test_each_shifted_template_scores_as_max_over_phase_alone(three_sky_search):
     """The match gives every template what max_over_phase() gives it alone.
 
-    Each template is built on its own at its shifted sub-bin offset and depth class,
+    Each template is built on its own at its shifted bin fraction and depth class,
     placed at its shifted bin in its f0 point's widened window.
     """
     search_data, band_search = three_sky_search
     layout = band_search.layout
     bank = layout.bank
-    n_subbin_offsets = layout.subbin_offsets.size
+    n_f0_bin_fractions = layout.f0_bin_fractions.size
     n_padded_bins = layout.bin_offsets.shape[0] + layout.n_pad
     window_start_idxs = np.asarray(layout.window_start_idxs)
     doppler_reference_idxs = np.asarray(layout.doppler_reference_idxs)
-    subbin_offset_idxs = np.asarray(layout.subbin_offset_idxs)
-    # tau[j, k] at every base depth, per (shifted sub-bin offset, depth class)
+    f0_bin_fraction_idxs = np.asarray(layout.f0_bin_fraction_idxs)
+    # tau[j, k] at every base depth, per (shifted bin fraction, depth class)
     templates = {}
     batch_idx = 0
     template_batch = layout.template_batches[batch_idx]
@@ -218,20 +218,20 @@ def test_each_shifted_template_scores_as_max_over_phase_alone(three_sky_search):
             window_start_idxs=layout.window_start_idxs,
             group_f0_idxs=layout.group_f0_idxs,
             group_doppler_reference_idxs=layout.group_doppler_reference_idxs,
-            group_subbin_offset_idxs=layout.group_subbin_offset_idxs,
+            group_f0_bin_fraction_idxs=layout.group_f0_bin_fraction_idxs,
             modulation_depth_start_idx=template_batch.modulation_depth_start_idx,
             whole_bin_shifts=sky_shifts.whole_bin_shifts[batch_idx],
-            subbin_shifts=sky_shifts.subbin_shifts[batch_idx],
+            f0_bin_fraction_shifts=sky_shifts.f0_bin_fraction_shifts[batch_idx],
             depth_classes=sky_shifts.depth_classes[batch_idx],
             n_batch_depths=layout.n_batch_depths,
             n_phi=layout.n_phi,
             f0_batch_size=F0_BATCH_SIZE,
         )
-        whole_bin_shifts, subbin_shifts, depth_classes = (
+        whole_bin_shifts, f0_bin_fraction_shifts, depth_classes = (
             np.asarray(shifts[batch_idx])
             for shifts in (
                 sky_shifts.whole_bin_shifts,
-                sky_shifts.subbin_shifts,
+                sky_shifts.f0_bin_fraction_shifts,
                 sky_shifts.depth_classes,
             )
         )
@@ -248,21 +248,21 @@ def test_each_shifted_template_scores_as_max_over_phase_alone(three_sky_search):
                     window_start_idx : window_start_idx + n_padded_bins,
                 ]
                 for depth_offset in range(layout.n_batch_depths):
-                    shifted_offset_idx = int(
-                        subbin_offset_idxs[f0_idx]
-                        + subbin_shifts[period_offset, depth_offset]
+                    shifted_fraction_idx = int(
+                        f0_bin_fraction_idxs[f0_idx]
+                        + f0_bin_fraction_shifts[period_offset, depth_offset]
                     )
-                    offset_idx = shifted_offset_idx % n_subbin_offsets
+                    fraction_idx = shifted_fraction_idx % n_f0_bin_fractions
                     placement = (
                         int(whole_bin_shifts[period_offset, depth_offset])
-                        + shifted_offset_idx // n_subbin_offsets
+                        + shifted_fraction_idx // n_f0_bin_fractions
                     )
-                    if (offset_idx, depth_class) not in templates:
-                        templates[offset_idx, depth_class] = np.asarray(
+                    if (fraction_idx, depth_class) not in templates:
+                        templates[fraction_idx, depth_class] = np.asarray(
                             template_harmonics_at_depths(
                                 jnp.asarray(
                                     layout.bin_offsets
-                                    - layout.subbin_offsets[offset_idx]
+                                    - layout.f0_bin_fractions[fraction_idx]
                                 ),
                                 jnp.asarray(
                                     bank.modulation_depth_at(np.asarray(depth_class))
@@ -274,7 +274,7 @@ def test_each_shifted_template_scores_as_max_over_phase_alone(three_sky_search):
                                 batch_size=16,
                             )
                         )
-                    template = templates[offset_idx, depth_class][
+                    template = templates[fraction_idx, depth_class][
                         template_batch.modulation_depth_start_idx + depth_offset,
                         : template_batch.n_harmonics,
                     ]
