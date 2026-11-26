@@ -107,39 +107,19 @@ class BankLayout(NamedTuple):
             )
         return batches
 
-    def padded_runs(
-        self, per_period: np.ndarray, fill_value: int
-    ) -> list[np.ndarray]:
-        """A per-(period, modulation depth) or per-period array over each batch's run.
+    @property
+    def batch_period_start_idxs(self) -> Int[np.ndarray, " n_batch"]:
+        """First trial period of each template batch."""
+        period_start_idxs = [batch.period_start_idx for batch in self.template_batches]
+        return np.array(period_start_idxs)
 
-        Args:
-            per_period: The array, periods first and modulation depths second if any.
-            fill_value: What the rows past the last period read.
-
-        Returns:
-            Each batch's run of `period_batch_size` periods, cut to its modulation-depth
-                window when the array has that axis.
-        """
-        n_periods = per_period.shape[0]
-        padded = np.full(
-            (n_periods + self.period_batch_size - 1, *per_period.shape[1:]),
-            fill_value,
-            dtype=per_period.dtype,
-        )
-        padded[:n_periods] = per_period
-        runs = []
-        for batch in self.template_batches:
-            run = padded[
-                batch.period_start_idx : batch.period_start_idx + self.period_batch_size
-            ]
-            if per_period.ndim == 2:
-                run = run[
-                    :,
-                    batch.modulation_depth_start_idx : batch.modulation_depth_start_idx
-                    + self.n_batch_depths,
-                ]
-            runs.append(run)
-        return runs
+    @property
+    def batch_depth_start_idxs(self) -> Int[np.ndarray, " n_batch"]:
+        """First modulation depth of each template batch's window."""
+        depth_start_idxs = [
+            batch.modulation_depth_start_idx for batch in self.template_batches
+        ]
+        return np.array(depth_start_idxs)
 
     def ap_in_range(
         self, omega2_class: int, depth_class: Int[np.ndarray, " n_period"]

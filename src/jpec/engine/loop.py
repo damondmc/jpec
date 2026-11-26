@@ -28,6 +28,57 @@ from jpec.engine.transform import (
 from jpec.stat.matched_filter import orbital_phase_mod_2pi
 
 
+def padded_windows(
+    values: Int[np.ndarray, "n_row n_col"],
+    *,
+    start_idxs: Int[np.ndarray, " n_window"],
+    window_size: int,
+    fill_value: int,
+) -> Int[np.ndarray, "n_window window_size n_col"]:
+    """Windows of `window_size` rows, one per start, padded past the last row.
+
+    Args:
+        values: The array, windowed along its rows.
+        start_idxs: First row of each window.
+        window_size: Number of rows in each window.
+        fill_value: What the rows past the array's last row read.
+
+    Returns:
+        The windows, stacked.
+    """
+    n_rows, n_cols = values.shape
+    padded = np.full(
+        (n_rows + window_size - 1, n_cols), fill_value, dtype=values.dtype
+    )
+    padded[:n_rows] = values
+    windows = []
+    for start_idx in start_idxs:
+        windows.append(padded[start_idx : start_idx + window_size])
+    return np.stack(windows)
+
+
+def window_columns(
+    values: Int[np.ndarray, "n_window n_row n_col"],
+    *,
+    start_idxs: Int[np.ndarray, " n_window"],
+    window_size: int,
+) -> Int[np.ndarray, "n_window n_row window_size"]:
+    """Each window's own `window_size` columns, from its own start.
+
+    Args:
+        values: One array per window.
+        start_idxs: First column of each window.
+        window_size: Number of columns in each window.
+
+    Returns:
+        The windows, stacked.
+    """
+    windows = []
+    for window_idx, start_idx in enumerate(start_idxs):
+        windows.append(values[window_idx, :, start_idx : start_idx + window_size])
+    return np.stack(windows)
+
+
 class SkyShifts(NamedTuple):
     """One sky point's grid shifts, depth classes and ap mask, per template batch.
 
@@ -153,14 +204,37 @@ class BandSearch:
         layout = self.layout
         bank = layout.bank
         n_offsets = layout.subbin_offsets.size
-        # the f0 shift in sub-bin units u: u // n whole bins and u % n sub-bin offsets
-        units = np.rint(bank.f0_shift(sky_idx) * bank.tsft * n_offsets).astype(
-            np.int32
+        # the f0 shift counted in sub-bins of 1 / n_offsets bin, rounded:
+        # s // n_offsets whole bins and s % n_offsets sub-bin offsets
+        f0_shift_subbins = np.rint(
+            bank.f0_shift(sky_idx) * bank.tsft * n_offsets
+        ).astype(np.int32)  # (n_period, n_depth)
+        period_start_idxs = layout.batch_period_start_idxs
+        # each batch's run of periods, padded past the last period:
+        # (n_batch, period_batch_size, n_depth)
+        batch_f0_shift_subbins = padded_windows(
+            f0_shift_subbins,
+            start_idxs=period_start_idxs,
+            window_size=layout.period_batch_size,
+            fill_value=0,
         )
-        units = np.stack(layout.padded_runs(units, 0))
+        # cut to each batch's depth window: (n_batch, period_batch_size, n_batch_depths)
+        batch_f0_shift_subbins = window_columns(
+            batch_f0_shift_subbins,
+            start_idxs=layout.batch_depth_start_idxs,
+            window_size=layout.n_batch_depths,
+        )
         omega2_class = int(bank.omega2_class[sky_idx])
-        depth_class = bank.depth_class(sky_idx)
-        depth_classes = np.stack(layout.padded_runs(depth_class.astype(np.int32), 0))
+        depth_class = bank.depth_class(sky_idx)  # (n_period,)
+        # each batch's run of periods, padded past the last period:
+        # (n_batch, period_batch_size, 1)
+        depth_class_windows = padded_windows(
+            depth_class.astype(np.int32)[:, None],
+            start_idxs=period_start_idxs,
+            window_size=layout.period_batch_size,
+            fill_value=0,
+        )
+        depth_classes = depth_class_windows[:, :, 0]  # (n_batch, period_batch_size)
         # the mask depends on the sky point only through its classes
         classes = (omega2_class, *depth_class.tolist())
         if classes not in self.ap_in_range_per_classes:
@@ -168,8 +242,8 @@ class BandSearch:
                 layout.ap_in_range(omega2_class, depth_class)
             )
         return SkyShifts(
-            whole_bin_shifts=jnp.asarray(units // n_offsets),
-            subbin_shifts=jnp.asarray(units % n_offsets),
+            whole_bin_shifts=jnp.asarray(batch_f0_shift_subbins // n_offsets),
+            subbin_shifts=jnp.asarray(batch_f0_shift_subbins % n_offsets),
             depth_classes=jnp.asarray(depth_classes),
             ap_in_range=self.ap_in_range_per_classes[classes],
         )
