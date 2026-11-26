@@ -9,6 +9,7 @@ Usage:
 import argparse
 import time
 from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 import jax
@@ -24,21 +25,21 @@ from jpec.engine.loop import BandSearch
 from jpec.pipelines.monitor import RunLogger
 
 
-def mean_seconds(function: Callable[..., Any], *args: Any, repeats: int) -> float:
+def mean_seconds(function: Callable[[], Any], *, repeats: int) -> float:
     """The mean wall time of a call, its device work finished.
 
     Args:
-        function: What to time; whatever it returns is waited on.
-        *args: What it is called with.
+        function: What to time, called with no arguments; whatever it returns is
+            waited on.
         repeats: Timed calls, after one untimed call that compiles.
 
     Returns:
         Mean seconds per call.
     """
-    jax.block_until_ready(function(*args))
+    jax.block_until_ready(function())
     began = time.perf_counter()
     for _ in range(repeats):
-        jax.block_until_ready(function(*args))
+        jax.block_until_ready(function())
     return (time.perf_counter() - began) / repeats
 
 
@@ -93,9 +94,8 @@ def run(args: argparse.Namespace) -> None:
     sky_shifts = band_search.sky_shifts(int(sky_idxs[0]))
     n_period_batches = len(layout.template_batches)
 
-    doppler_seconds = mean_seconds(
-        band_search.doppler_correct, int(sky_idxs[0]), repeats=args.repeats
-    )
+    doppler_correct = partial(band_search.doppler_correct, sky_idx=int(sky_idxs[0]))
+    doppler_seconds = mean_seconds(doppler_correct, repeats=args.repeats)
     weighted_excess_power = jnp.stack(
         [band_search.doppler_correct(int(sky_idx)) for sky_idx in sky_idxs]
     )
@@ -117,36 +117,33 @@ def run(args: argparse.Namespace) -> None:
     for batch_idx, batch in enumerate(
         layout.template_batches[: args.n_period_batches_timed]
     ):
-        transform_args = (
-            weighted_excess_power,
-            solar_roemer_delays,
-            omega2_class,
-            batch,
+        transform = partial(
+            band_search.transform,
+            weighted_excess_power=weighted_excess_power,
+            solar_roemer_delays=solar_roemer_delays,
+            omega2_class=omega2_class,
+            template_batch=batch,
         )
-        transform_seconds.append(
-            mean_seconds(band_search.transform, *transform_args, repeats=args.repeats)
-        )
-        batch_data_harmonics = band_search.transform(*transform_args)[0]
+        transform_seconds.append(mean_seconds(transform, repeats=args.repeats))
+        batch_data_harmonics = transform()[0]
 
         # the match and the device-side cut to the top k, as the search runs them
-        match_seconds.append(
-            mean_seconds(
-                band_search.match,
-                batch_data_harmonics,
-                sky_shifts,
-                batch_idx,
-                repeats=args.repeats,
-            )
+        match = partial(
+            band_search.match,
+            data_harmonics=batch_data_harmonics,
+            sky_shifts=sky_shifts,
+            batch_idx=batch_idx,
         )
+        match_seconds.append(mean_seconds(match, repeats=args.repeats))
         half_harmonics = max(batch.n_harmonics // 2, 1)
         half_data_harmonics = batch_data_harmonics[:, :, :half_harmonics]
-        half_match_seconds = mean_seconds(
+        half_match = partial(
             band_search.match,
-            half_data_harmonics,
-            sky_shifts,
-            batch_idx,
-            repeats=args.repeats,
+            data_harmonics=half_data_harmonics,
+            sky_shifts=sky_shifts,
+            batch_idx=batch_idx,
         )
+        half_match_seconds = mean_seconds(half_match, repeats=args.repeats)
         for n_harmonics, seconds in [
             (batch.n_harmonics, match_seconds[-1]),
             (half_harmonics, half_match_seconds),

@@ -65,7 +65,11 @@ def search_job(
     )
     layout = band_search.layout
     run_logger.search_summary(
-        setup, job_setup, search_data, layout, setup_path=args.setup
+        setup=setup,
+        job_setup=job_setup,
+        search_data=search_data,
+        layout=layout,
+        setup_path=args.setup,
     )
 
     n_toplists = toplist_f0_edges.size - 1

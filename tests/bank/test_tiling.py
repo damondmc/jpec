@@ -27,7 +27,8 @@ BOX = Prior(
 )
 MISMATCH = 0.2
 N_AP_BLOCKS = 2
-BAND = (150.0, 150.02)  # narrow enough to check template by template
+# the f0 band, narrow enough to check template by template
+F0_LOW, F0_HIGH = 150.0, 150.02
 N_SAMPLED_SKY_POINTS = 20
 N_SAMPLED_TEMPLATES = 20
 SOURCE = Parameters(
@@ -61,7 +62,11 @@ def tiling(observation: Observation) -> LatticeTiling:
 def bank(tiling: LatticeTiling, observation: Observation) -> TemplateBank:
     """The bank over the narrow band and the whole sky."""
     return TemplateBank.over_f0_interval(
-        tiling, *BAND, velocity=observation.velocity, window=Window()
+        tiling,
+        f0_low=F0_LOW,
+        f0_high=F0_HIGH,
+        velocity=observation.velocity,
+        window=Window(),
     )
 
 
@@ -105,7 +110,11 @@ def test_a_point_sky_gives_the_point(
         tiling, prior=BOX._replace(alpha=(1.2, 1.2), delta=(0.3, 0.3))
     )
     bank = TemplateBank.over_f0_interval(
-        point_tiling, *BAND, velocity=observation.velocity, window=Window()
+        point_tiling,
+        f0_low=F0_LOW,
+        f0_high=F0_HIGH,
+        velocity=observation.velocity,
+        window=Window(),
     )
     assert bank.alpha.tolist() == [1.2]
     assert bank.delta.tolist() == [0.3]
@@ -208,7 +217,7 @@ def test_every_template_is_a_lattice_point(
             # theta - origin on the orbital axes, then n by back substitution
             offset = np.array(
                 [
-                    template.f0 - BAND[0],
+                    template.f0 - F0_LOW,
                     float(template.modulation_depth) - modulation_depth_low,
                     float(template.omega) ** 2 - omega2_low,
                 ]
@@ -228,8 +237,13 @@ def test_around_point_is_a_subset_of_the_full_bank(
     tiling: LatticeTiling, observation: Observation
 ):
     """The bank around a source holds the full bank's templates at the same indices."""
+    f0_low, f0_high = tiling.prior.f0
     full_bank = TemplateBank.over_f0_interval(
-        tiling, *tiling.prior.f0, velocity=observation.velocity, window=Window()
+        tiling,
+        f0_low=f0_low,
+        f0_high=f0_high,
+        velocity=observation.velocity,
+        window=Window(),
     )
     around_bank = TemplateBank.around_point(
         tiling,

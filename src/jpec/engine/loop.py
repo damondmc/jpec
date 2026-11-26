@@ -111,19 +111,20 @@ class BandSearch:
         depth_classes = np.arange(bank.depth_shift_fractions.size)
         depth_bins = bank.modulation_depth_at(depth_classes) * bank.tsft
         # tau[j, k] per (sub-bin offset, depth class, modulation depth)
-        templates = jnp.stack(
-            [
-                template_harmonics_at_depths(
-                    jnp.asarray(layout.bin_offsets - subbin_offset),
-                    jnp.asarray(depth_bins.ravel()),
-                    n_theta=layout.n_theta,
-                    j_max=layout.j_max,
-                    window=bank.window,
-                    batch_size=config.modulation_depth_batch_size,
-                ).reshape(*depth_bins.shape, layout.j_max, -1)
-                for subbin_offset in layout.subbin_offsets
-            ]
-        )
+        templates_per_offset = []
+        for subbin_offset in layout.subbin_offsets:
+            offset_templates = template_harmonics_at_depths(
+                bin_offsets=jnp.asarray(layout.bin_offsets - subbin_offset),
+                modulation_depth_bins=jnp.asarray(depth_bins.ravel()),
+                n_theta=layout.n_theta,
+                j_max=layout.j_max,
+                window=bank.window,
+                batch_size=config.modulation_depth_batch_size,
+            )
+            templates_per_offset.append(
+                offset_templates.reshape(*depth_bins.shape, layout.j_max, -1)
+            )
+        templates = jnp.stack(templates_per_offset)
         self.placed_template_harmonics = placed_template_harmonics(
             templates, n_pad=layout.n_pad
         )
@@ -156,10 +157,10 @@ class BandSearch:
         units = np.rint(bank.f0_shift(sky_idx) * bank.tsft * n_offsets).astype(
             np.int32
         )
-        units = layout.padded_runs(units, 0)
+        units = np.stack(layout.padded_runs(units, 0))
         omega2_class = int(bank.omega2_class[sky_idx])
         depth_class = bank.depth_class(sky_idx)
-        depth_classes = layout.padded_runs(depth_class.astype(np.int32), 0)
+        depth_classes = np.stack(layout.padded_runs(depth_class.astype(np.int32), 0))
         # the mask depends on the sky point only through its classes
         classes = (omega2_class, *depth_class.tolist())
         if classes not in self.ap_in_range_per_classes:
@@ -281,10 +282,10 @@ class BandSearch:
             f0_batch_size=self.config.f0_batch_size,
         )
         return top_k_templates(
-            max_statistic,
-            phase_idxs,
-            sky_shifts.ap_in_range[batch_idx],
-            self.toplist_f0_idxs,
+            max_statistic=max_statistic,
+            phase_idxs=phase_idxs,
+            ap_in_range=sky_shifts.ap_in_range[batch_idx],
+            toplist_f0_idxs=self.toplist_f0_idxs,
             n_top=self.n_top,
         )
 
@@ -361,11 +362,16 @@ class BandSearch:
         previous_unpack = None
         for batch_idx, template_batch in enumerate(self.layout.template_batches):
             data_harmonics = self.transform(
-                weighted_excess_power, solar_roemer_delays, omega2_class, template_batch
+                weighted_excess_power=weighted_excess_power,
+                solar_roemer_delays=solar_roemer_delays,
+                omega2_class=omega2_class,
+                template_batch=template_batch,
             )
             for batch_sky_idx, sky_idx in enumerate(sky_idxs):
                 top_k = self.match(
-                    data_harmonics[batch_sky_idx], sky_shifts[batch_sky_idx], batch_idx
+                    data_harmonics=data_harmonics[batch_sky_idx],
+                    sky_shifts=sky_shifts[batch_sky_idx],
+                    batch_idx=batch_idx,
                 )
                 for array in top_k:
                     array.copy_to_host_async()

@@ -169,7 +169,9 @@ class SearchJobConfig(BaseModel):
     def job_f0_edges(self) -> list[float]:
         """Edges of the jobs' f0 intervals [Hz], low to high."""
         f0_low, f0_high = self.parameter_space.f0
-        return _interval_edges(f0_low, f0_high, self.compute.job_f0_width)
+        return _interval_edges(
+            low=f0_low, high=f0_high, width=self.compute.job_f0_width
+        )
 
     def job_period_edges(self) -> list[float]:
         """Edges of the jobs' period ranges [days], low to high."""
@@ -431,7 +433,7 @@ class SearchSetup(BaseModel):
     def toplist_f0_edges(self, job_setup: JobSetup) -> list[float]:
         """Edges of a job's toplists' f0 intervals [Hz], low to high."""
         return _interval_edges(
-            job_setup.f0_low, job_setup.f0_high, self.toplist_f0_width
+            low=job_setup.f0_low, high=job_setup.f0_high, width=self.toplist_f0_width
         )
 
 

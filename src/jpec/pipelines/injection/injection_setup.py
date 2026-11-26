@@ -59,9 +59,11 @@ def run(args: argparse.Namespace) -> None:
 
     # the band every source's bank reads, each a subset of the bank over the box, and
     # the files holding it
+    f0_low, f0_high = box_config.f0
     box_bank = TemplateBank.over_f0_interval(
         tiling,
-        *box_config.f0,
+        f0_low=f0_low,
+        f0_high=f0_high,
         velocity=observation.velocity,
         window=sft_metadata.window,
     )

@@ -557,8 +557,9 @@ class TemplateBank(NamedTuple):
         Returns:
             The bank's subset, its lattice indices and shifts those of the full bank.
         """
+        f0_low, f0_high = tiling.prior.f0
         bank = cls.over_f0_interval(
-            tiling, *tiling.prior.f0, velocity=velocity, window=window
+            tiling, f0_low=f0_low, f0_high=f0_high, velocity=velocity, window=window
         )
         # the sky lattice points nearest the source in mismatch, not in angle: near the
         # ecliptic a cell is many times taller in latitude than it is wide

@@ -1,5 +1,7 @@
 """The metric of the statistic: physical, projected, orbital and on the sky."""
 
+from functools import partial
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -42,9 +44,8 @@ def physical_metric(
             "physical_metric needs JAX in float64; "
             'set jax.config.update("jax_enable_x64", True)'
         )
-    flat, unravel = ravel_pytree(
-        Parameters(*(jnp.asarray(x, dtype=float) for x in point))
-    )
+    point_arrays = jax.tree.map(partial(jnp.asarray, dtype=float), point)
+    flat, unravel = ravel_pytree(point_arrays)
 
     times = jnp.asarray(observation.times)
     velocity = jnp.asarray(observation.velocity)

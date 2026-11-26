@@ -124,8 +124,13 @@ def small_search():
         n_ap_blocks=1,
         window=window,
     )
+    f0_low, f0_high = prior.f0
     bank = TemplateBank.over_f0_interval(
-        tiling, *prior.f0, velocity=observation.velocity, window=window
+        tiling,
+        f0_low=f0_low,
+        f0_high=f0_high,
+        velocity=observation.velocity,
+        window=window,
     )
     freq_low, freq_high = freq_band_edges(
         bank.f0[0],

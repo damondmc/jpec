@@ -108,27 +108,38 @@ class BankLayout(NamedTuple):
         return batches
 
     def padded_runs(
-        self, per_period: Int[np.ndarray, " n_period"], fill_value: int
-    ) -> Int[np.ndarray, "n_batch n_batch_period"]:
-        """A per-period array over each batch's run of periods.
+        self, per_period: np.ndarray, fill_value: int
+    ) -> list[np.ndarray]:
+        """A per-(period, modulation depth) or per-period array over each batch's run.
 
         Args:
-            per_period: The array over the trial periods.
-            fill_value: What the entries past the last period read.
+            per_period: The array, periods first and modulation depths second if any.
+            fill_value: What the rows past the last period read.
 
         Returns:
-            Each batch's run of `period_batch_size` periods.
+            Each batch's run of `period_batch_size` periods, cut to its modulation-depth
+                window when the array has that axis.
         """
-        n_periods = per_period.size
+        n_periods = per_period.shape[0]
         padded = np.full(
-            n_periods + self.period_batch_size - 1, fill_value, dtype=per_period.dtype
+            (n_periods + self.period_batch_size - 1, *per_period.shape[1:]),
+            fill_value,
+            dtype=per_period.dtype,
         )
         padded[:n_periods] = per_period
         runs = []
         for batch in self.template_batches:
-            start_idx = batch.period_start_idx
-            runs.append(padded[start_idx : start_idx + self.period_batch_size])
-        return np.stack(runs)
+            run = padded[
+                batch.period_start_idx : batch.period_start_idx + self.period_batch_size
+            ]
+            if per_period.ndim == 2:
+                run = run[
+                    :,
+                    batch.modulation_depth_start_idx : batch.modulation_depth_start_idx
+                    + self.n_batch_depths,
+                ]
+            runs.append(run)
+        return runs
 
     def ap_in_range(
         self, omega2_class: int, depth_class: Int[np.ndarray, " n_period"]
@@ -485,9 +496,9 @@ def bank_layout(
                 omega2_class, np.full(n_periods, depth_class)
             )
     template_batches, n_batch_depths = split_periods(
-        ap_in_range,
-        bank.ap_block_idxs,
-        n_harmonics_per_depth,
+        ap_in_range=ap_in_range,
+        ap_block_idxs=bank.ap_block_idxs,
+        n_harmonics_per_depth=n_harmonics_per_depth,
         batch_size=period_batch_size,
     )
     # the most harmonics any batch matches
