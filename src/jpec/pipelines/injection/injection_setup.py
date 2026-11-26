@@ -11,6 +11,7 @@ import argparse
 import importlib.metadata
 from pathlib import Path
 
+from jpec.bank.template_bank import TemplateBank
 from jpec.bank.tiling import LatticeTiling
 from jpec.config import (
     DataSetup,
@@ -21,7 +22,7 @@ from jpec.config import (
     read_json,
 )
 from jpec.detector.site import Observation, reference_epoch
-from jpec.engine.data import band_edges_for_f0
+from jpec.engine.data import freq_band_edges
 from jpec.pipelines.monitor import RunLogger
 
 
@@ -43,11 +44,8 @@ def run(args: argparse.Namespace) -> None:
     t_ref = reference_epoch(sft_metadata.timestamps, tsft=tsft)
     observation = Observation(sft_metadata.timestamps, tsft=tsft, t_ref=t_ref)
 
-    # the band the sources land in, and the files holding it
-    injection_prior = box_config.prior()
-    freq_low, freq_high = band_edges_for_f0(injection_prior, *box_config.f0, tsft=tsft)
-
     # the lattice, at the flag's mismatch if one is given
+    injection_prior = box_config.prior()
     mismatch = (
         args.mismatch if args.mismatch is not None else config.template_bank.mismatch
     )
@@ -58,7 +56,24 @@ def run(args: argparse.Namespace) -> None:
         n_ap_blocks=config.template_bank.n_ap_blocks,
         window=sft_metadata.window,
     )
-    run_logger.info(f"Mismatch {mismatch:g}: f0 step {tiling.f0_step:.3e} Hz")
+
+    # the band every source's bank reads, each a subset of the bank over the box, and
+    # the files holding it
+    f0_low, f0_high = box_config.f0
+    box_bank = TemplateBank.over_f0_interval(
+        tiling,
+        f0_low=f0_low,
+        f0_high=f0_high,
+        velocity=observation.velocity,
+        window=sft_metadata.window,
+    )
+    run_logger.info(f"Mismatch {mismatch:g}: f0 step {box_bank.f0_step:.3e} Hz")
+    freq_low, freq_high = freq_band_edges(
+        box_bank.f0[0],
+        box_bank.f0_high,
+        max_modulation_depth=box_bank.max_modulation_depth,
+        tsft=box_bank.tsft,
+    )
 
     setup = InjectionSetup(
         jpec=importlib.metadata.version("jpec"),
@@ -78,9 +93,9 @@ def run(args: argparse.Namespace) -> None:
         parameter_space=box_config,
         tiling=tiling.to_dict(),
         trials=config.trials,
-        recovery_curve=config.recovery_curve,
         search_loop=config.search_loop,
         thresholds=config.thresholds,
+        efficiency=config.efficiency,
     )
     run_logger.save_setup(output.stem, setup)
 

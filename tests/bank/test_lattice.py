@@ -1,58 +1,155 @@
+import itertools
+
 import jax.numpy as jnp
 import numpy as np
+import pytest
 from scipy.spatial import KDTree
 
 from jpec.bank.lattice import (
-    BCC_SUBGRID_OFFSETS,
-    ApBlock,
-    orbital_subgrid,
+    a5star_generator,
+    cubic_step,
+    shift_fractions,
     sky_lattice,
+    split_shift,
+    triangular_generator,
 )
-from jpec.bank.metric import (
-    freq_bin_curvature,
-    physical_metric,
-    project_out,
-    sky_metric,
-)
-from jpec.constant import DAY, N_CURVATURE_POSITIONS
+from jpec.bank.metric import sky_metric
+from jpec.bank.tiling import LatticeTiling
+from jpec.constant import DAY
 from jpec.detector.doppler import sky_direction
 from jpec.detector.site import Observation
-from jpec.params import Parameters
+from jpec.params import Prior
 from jpec.waveform.window import Window
 
 T0 = 1368975618.0
 TSFT = 1024.0
 DAYS = 60.0
-F0, AP, PERIOD = 150.0, 5.0, 15.0 * DAY
-MISMATCH_PER_AXIS = 0.04
-WHOLE_SKY = (0.0, 2.0 * np.pi, -0.5 * np.pi, 0.5 * np.pi)
+F0 = 150.0
+MISMATCH = 0.2
+WHOLE_SKY_ALPHA = (0.0, 2.0 * np.pi)
+WHOLE_SKY_DELTA = (-0.5 * np.pi, 0.5 * np.pi)
+# lattice indices each side of the origin enumerated for the covering check
+N_COVERING_STEPS = 4
 
 
-def test_sky_lattice_covers_the_sphere_within_the_mismatch():
-    """Every sky point is within two axes' budget of a template, on the sky metric."""
+def test_a5star_offsets_are_exact_fractions_of_each_step():
+    """R is upper triangular, each row's offsets fifths to halves of its step."""
+    generator = a5star_generator()
+    assert np.allclose(np.tril(generator, k=-1), 0.0)
+    assert (np.diag(generator) > 0.0).all()
+    np.testing.assert_allclose(
+        generator[0, 1:] / generator[0, 0], [0.8, 0.6, 0.4, 0.2], atol=1e-12
+    )
+    np.testing.assert_allclose(
+        generator[1, 2:] / generator[1, 1], [0.75, 0.5, 0.25], atol=1e-12
+    )
+    np.testing.assert_allclose(
+        generator[2, 3:] / generator[2, 2], [2.0 / 3.0, 1.0 / 3.0], atol=1e-12
+    )
+    # the sky block is hexagonal
+    assert generator[3, 4] / generator[3, 3] == pytest.approx(0.5)
+    assert generator[4, 4] / generator[3, 3] == pytest.approx(np.sqrt(3.0) / 2.0)
+
+
+def test_a5star_covers_at_radius_one():
+    """Every point of a cell lies within distance 1 of a lattice point, some near 1."""
+    generator = a5star_generator()
+    idxs = np.array(
+        list(
+            itertools.product(
+                range(-N_COVERING_STEPS, N_COVERING_STEPS + 1), repeat=5
+            )
+        )
+    )
+    rng = np.random.default_rng(0)
+    points = rng.uniform(0.0, 1.0, (20000, 5)) @ generator.T
+    distance, _ = KDTree(idxs @ generator.T).query(points)
+    assert distance.max() <= 1.0 + 1e-9
+    assert distance.max() > 0.95
+    assert np.mean(distance**2) == pytest.approx(0.55, abs=0.02)
+
+
+def test_shift_fractions_are_the_rows_classes():
+    """Rows 0 to 3 give 5, 4, 3 and 2 shift fractions, evenly spaced from 0."""
+    generator = a5star_generator()
+    for row, n_fractions in zip(range(4), (5, 4, 3, 2), strict=True):
+        fractions = shift_fractions(generator[row, row + 1 :] / generator[row, row])
+        np.testing.assert_allclose(
+            fractions, np.arange(n_fractions) / n_fractions, atol=1e-12
+        )
+
+
+def test_a_shift_splits_into_its_fraction_and_whole_steps():
+    """A row's shift at integer indices is one of its fractions plus whole steps."""
+    generator = a5star_generator()
+    rng = np.random.default_rng(0)
+    for row in range(4):
+        ratios = generator[row, row + 1 :] / generator[row, row]
+        fractions = shift_fractions(ratios)
+        shift = rng.integers(-50, 51, (1000, ratios.size)) @ ratios
+        fraction_idxs, whole_steps = split_shift(shift, fractions)
+        np.testing.assert_allclose(
+            fractions[fraction_idxs] + whole_steps, shift, atol=1e-9
+        )
+
+
+def test_triangular_generator_whitens_to_the_scaled_generator():
+    """T is upper triangular and `T^T g T = mu R^T R`, so it covers `g` to `mu`."""
+    rng = np.random.default_rng(0)
+    root = rng.normal(size=(5, 5))
+    metric = root @ root.T + 5.0 * np.eye(5)
+    generator = a5star_generator()
+    triangular = triangular_generator(
+        metric=metric, mismatch=MISMATCH, generator=generator
+    )
+    assert np.allclose(np.tril(triangular, k=-1), 0.0)
+    np.testing.assert_allclose(
+        triangular.T @ metric @ triangular,
+        MISMATCH * generator.T @ generator,
+        atol=1e-12,
+    )
+
+
+def test_sky_lattice_covers_the_sphere_within_its_share_of_the_mismatch():
+    """Every sky point is within `mu R_33^2 / 3`, the hexagonal sky block's covering.
+
+    The mismatch is on the sky metric, f0 projected out, which is the Schur
+    complement the sky block of `T` covers.
+    """
     starts = T0 + np.arange(0.0, DAYS * DAY, TSFT)
     observation = Observation(
         {"H1": starts}, tsft=TSFT, t_ref=float(np.mean(starts + TSFT / 2.0))
     )
     velocity = observation.velocity
-    reference = Parameters(f0=F0, ap=AP, period=PERIOD, phi_b=1.0, alpha=1.2, delta=0.3)
-    metric = project_out(
-        physical_metric(
-            reference,
-            observation,
-            g_freq_bin=freq_bin_curvature(Window(), n_positions=N_CURVATURE_POSITIONS),
-        )
+    prior = Prior(
+        f0=(F0 - 0.01, F0),
+        ap=(5.0, 5.0),
+        period=(15.0 * DAY, 15.0 * DAY),
+        phi_b=(0.0, 2.0 * np.pi),
+        alpha=(0.0, 2.0 * np.pi),
+        delta=(-0.5 * np.pi, 0.5 * np.pi),
     )
-    g_f0f0 = metric[0, 0]
-
-    alpha, delta = sky_lattice(
-        velocity,
-        f0=F0,
-        g_f0f0=float(g_f0f0),
-        mismatch=MISMATCH_PER_AXIS,
-        box=WHOLE_SKY,
+    tiling = LatticeTiling.from_metric(
+        prior,
+        observation=observation,
+        mismatch=MISMATCH,
+        n_ap_blocks=1,
+        window=Window(),
     )
-    curvature, sky_eigenvectors = sky_metric(velocity, f0=F0, g_f0f0=float(g_f0f0))
+    curvature, sky_eigenvectors = sky_metric(velocity, f0=F0, g_f0f0=tiling.g_f0f0)
+    metrics = tiling.lattice_metric(velocity, f0=F0, sky_eigenvectors=sky_eigenvectors)
+    generator = a5star_generator()
+    triangular = triangular_generator(
+        metric=metrics[0], mismatch=MISMATCH, generator=generator
+    )
+    alpha, delta, _ = sky_lattice(
+        triangular[3:, 3:],
+        sky_eigenvectors=sky_eigenvectors,
+        cubic_steps=cubic_step(curvature[:2], tiling.mismatch_per_axis),
+        alpha_interval=WHOLE_SKY_ALPHA,
+        delta_interval=WHOLE_SKY_DELTA,
+        margin=0.0,
+    )
 
     def scaled(directions: np.ndarray) -> np.ndarray:
         """Directions in the eigenbasis, scaled so squared distance is mismatch."""
@@ -68,93 +165,4 @@ def test_sky_lattice_covers_the_sphere_within_the_mismatch():
         )
     ).T
     distance, _ = KDTree(scaled(templates)).query(scaled(signals))
-    assert np.max(distance**2) <= 2.0 * MISMATCH_PER_AXIS
-
-
-def test_orbital_lattice_covers_band_edges_blocks_and_faces_within_the_budget():
-    """Any point of two neighbouring f0 bands has an in-range template in budget.
-
-    The budget is that of the three orbital axes. In cubic steps a template `u`
-    away costs `4 mu_axis |u|^2`, so the budget `3 mu_axis` is `|u|^2 <= 3/4`. The
-    omega^2 step is the lower band's, the larger of the two, so a template within
-    the budget in its own band's step is within it in this one.
-    """
-    period_low, period_high = 7.0 * DAY, 15.0 * DAY
-    omega_low, omega_high = 2.0 * np.pi / period_high, 2.0 * np.pi / period_low
-    ap_edges = np.linspace(5.0, 15.0, 4)
-    f0_step, modulation_depth_step = 2e-4, 1.0
-    omega2_steps = (omega_high**2 - omega_low**2) / np.array([40.0, 50.0, 60.0])
-    # orbital_subgrid reads only the ap range and the omega^2 step
-    ap_blocks = [
-        ApBlock(
-            ap_low=float(low),
-            ap_high=float(high),
-            modulation_depth_step=modulation_depth_step,
-            omega2_step=float(step),
-            g_f0f0=0.0,
-        )
-        for low, high, step in zip(ap_edges[:-1], ap_edges[1:], omega2_steps)
-    ]
-    bands = ((F0, F0 + 0.01), (F0 + 0.01, F0 + 0.02))
-    f0_reference = bands[1][1]
-
-    # every in-range template of both bands and both subgrids, in
-    # (f0, modulation depth, omega^2)
-    lattice = []
-    for band in bands:
-        for offset in BCC_SUBGRID_OFFSETS:
-            band_orbital_subgrid = orbital_subgrid(
-                *band,
-                ap_low=5.0,
-                ap_high=15.0,
-                period_low=period_low,
-                period_high=period_high,
-                f0_step=f0_step,
-                modulation_depth_step=modulation_depth_step,
-                ap_blocks=ap_blocks,
-                f0_reference=f0_reference,
-                tsft=TSFT,
-                offset=offset,
-            )
-            period_idxs, modulation_depth_idxs = np.nonzero(
-                band_orbital_subgrid.ap_in_range
-            )
-            pairs = np.column_stack(
-                [
-                    band_orbital_subgrid.modulation_depth_bins[modulation_depth_idxs],
-                    (2.0 * np.pi / band_orbital_subgrid.period[period_idxs]) ** 2,
-                ]
-            )
-            lattice.append(
-                np.column_stack(
-                    [
-                        np.repeat(band_orbital_subgrid.f0, len(pairs)),
-                        np.tile(pairs, (band_orbital_subgrid.f0.size, 1)),
-                    ]
-                )
-            )
-    lattice = np.concatenate(lattice)
-
-    # signals over both bands, the whole box in ap and P: the outer f0 edges, the
-    # shared one, the ap block boundaries and every face of the box are all inside it
-    rng = np.random.default_rng(0)
-    n = 20000
-    f0 = rng.uniform(bands[0][0], bands[1][1], n)
-    ap = rng.uniform(5.0, 15.0, n)
-    omega = 2.0 * np.pi / rng.uniform(period_low, period_high, n)
-    signals = np.column_stack([f0, f0 * ap * omega * TSFT, omega**2])
-    ap_block_idxs = np.digitize(ap, ap_edges[1:-1])
-
-    lower_centre = 0.5 * sum(bands[0])
-    for block_idx, ap_block in enumerate(ap_blocks):
-        scale = np.array(
-            [
-                1.0 / f0_step,
-                1.0 / modulation_depth_step,
-                1.0 / (ap_block.omega2_step * f0_reference / lower_centre),
-            ]
-        )
-        distance, _ = KDTree(lattice * scale).query(
-            signals[ap_block_idxs == block_idx] * scale
-        )
-        assert np.max(distance**2) <= 0.75
+    assert np.max(distance**2) <= MISMATCH * generator[3, 3] ** 2 / 3.0

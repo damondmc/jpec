@@ -45,8 +45,12 @@ def simulated_signal_sft_data(
 ) -> Complex[Array, "n_sft n_freq"]:
     """The SFT data a simulated source leaves at unit strain, in closed form.
 
-        s[n, k] = (A_+ F_+[n] - i A_x F_x[n]) (tsft / 2)
+        s[n, k] = (A_+ F_+[n] - i A_x F_x[n]) (tsft / 2) centre_amplitude
                   W(k - arc[n]) exp(-i pi (k - arc[n]))
+
+    with `W` the window's response, 1 on the centre, and `centre_amplitude` the
+    window's amplitude on the centre in SFTs normalized to the same noise power
+    whatever the window.
 
     Args:
         sft: The SFTs whose bins, times, detector and window the signal is laid on.
@@ -87,7 +91,11 @@ def simulated_signal_sft_data(
     )
     cos_iota = float(orientation.cos_iota)
     a_plus, a_cross = 0.5 * (1.0 + cos_iota**2), cos_iota
-    polarization = (a_plus * f_plus - 1j * a_cross * f_cross) * (sft.tsft / 2.0)
+    polarization = (
+        (a_plus * f_plus - 1j * a_cross * f_cross)
+        * (sft.tsft / 2.0)
+        * sft.window.centre_amplitude()
+    )
     return response * polarization[:, None]
 
 
@@ -111,51 +119,3 @@ def sft_with_simulated_signal(
     added = h0 * unit_sft_data / sft.strain_unit
     sft_data = (sft.sft_data + added).astype(sft.sft_data.dtype)
     return replace(sft, sft_data=sft_data)
-
-
-class SimulatedSource(NamedTuple):
-    """One source and its unit-strain SFT data, the same at any amplitude and mismatch.
-
-    Attributes:
-        injection: The source.
-        unit_sft_data: Its SFT data at unit strain on the SFTs it was simulated on, per
-            detector.
-    """
-
-    injection: Injection
-    unit_sft_data: list[Complex[np.ndarray, "n_sft n_freq"]]
-
-    def injected_sfts(self, sfts: list[SFTData], *, h0: float) -> list[SFTData]:
-        """The SFTs it was simulated on, with it added at amplitude `h0`.
-
-        Args:
-            sfts: The SFTs, per detector, on the bins and times it was simulated on.
-            h0: Strain amplitude.
-
-        Returns:
-            The SFTs holding the source.
-        """
-        return [
-            sft_with_simulated_signal(sft, unit_sft_data, h0=h0)
-            for sft, unit_sft_data in zip(sfts, self.unit_sft_data, strict=True)
-        ]
-
-
-def simulated_source(
-    injection: Injection, sfts: list[SFTData], *, t_ref: float
-) -> SimulatedSource:
-    """One source simulated on the bins and at the times of some SFTs, at unit strain.
-
-    Args:
-        injection: The source, its `phi_b` quoted at `t_ref`.
-        sfts: The SFTs per detector, real or simulated noise, it is laid on.
-        t_ref: Epoch `phi_b` is quoted at, absolute GPS [s].
-
-    Returns:
-        The source, to be scaled by h0 and added to those SFTs.
-    """
-    unit_sft_data = [
-        np.asarray(simulated_signal_sft_data(sft, injection, t_ref=t_ref))
-        for sft in sfts
-    ]
-    return SimulatedSource(injection=injection, unit_sft_data=unit_sft_data)

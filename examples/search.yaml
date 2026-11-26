@@ -23,10 +23,10 @@ search_loop:
   period_batch_size: 16         # trial periods per transform; the orbital basis, a job's largest
                                 # memory term, grows with it
   f0_batch_size: 32             # f0 points matched at once, which caps the S(phi_b) held
-  n_sub_bin_offsets: 8          # template offsets across one bin; an f0 point takes the nearest
+  n_f0_bin_fractions: 8         # f0 bin fractions across one bin; an f0 point takes the nearest
   harmonic_fraction: 0.6        # share of each depth's harmonic_count matched; 0.6 loses 1e-3
                                 # of a matched signal's S
-  phase_mismatch: 0.01          # largest mismatch the orbital phase grid leaves
+  phase_mismatch: 0.04          # largest mismatch the orbital phase grid leaves
   doppler_mismatch: 0.001       # largest mismatch an f0 point's offset from its Doppler
                                 # reference leaves
 

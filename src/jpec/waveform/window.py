@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Complex, Float
 
@@ -153,6 +154,27 @@ class Window:
         beta = 1.0 if self.kind == "hann" else self.beta
         return tukey_spectrum(offset, beta=beta) / (1.0 - 0.5 * beta)
 
+    def centre_amplitude(self) -> float:
+        """Amplitude a unit sinusoid on a bin's centre gets in a noise-normalized SFT.
+
+        The SFTs are normalized to the same noise power for any window, as
+        lalpulsar's MakeSFTs and gaussian_noise_sft() make them, so, against the
+        rectangular window:
+
+            centre_amplitude = mean(w) / sqrt(mean(w^2))
+
+        with, for a Tukey window, `mean(w) = 1 - beta/2` and
+        `mean(w^2) = 1 - 5 beta/8`.
+
+        Returns:
+            The amplitude: 1 for the rectangular window, 0.905 for Tukey 0.5,
+            0.816 for Hann.
+        """
+        if self.kind == "rectangular":
+            return 1.0
+        beta = 1.0 if self.kind == "hann" else self.beta
+        return (1.0 - 0.5 * beta) / (1.0 - 0.625 * beta) ** 0.5
+
     def power(self, offset: Float[Array, "..."]) -> Float[Array, "..."]:
         """Power a bin receives from a sinusoid `offset` bins from its centre.
 
@@ -163,3 +185,41 @@ class Window:
             Response, same shape as `offset`, 1 on the centre.
         """
         return self.amplitude(offset) ** 2
+
+
+def freq_bin_curvature(
+    window: Window, *, n_positions: int = 200, n_side_bins: int = 40
+) -> float:
+    """Mismatch per squared frequency bin of track error, `g_freq_bin`, for a window.
+
+        1 - <sum_k W(k - x) W(k - x - d)>_x / <sum_k W(k - x)^2>_x  ~  g_freq_bin d^2
+
+    with `d` the track's error in frequency bins and `x` the track's fractional
+    position in its bin.
+
+    Args:
+        window: The window the SFTs were made with.
+        n_positions: Number of fractional positions averaged over.
+        n_side_bins: Number of bins summed on each side of the track's bin.
+
+    Returns:
+        `g_freq_bin` [1 / frequency bins^2].
+    """
+    # x: the track's position in its bin, at the centres of n_positions equal slices
+    # of [0, 1)
+    position = (jnp.arange(n_positions) + 0.5) / n_positions
+    # k: each bin counted from the bin the track is in
+    bin_offsets = jnp.arange(-n_side_bins, n_side_bins + 1)
+    # k - x: each bin's centre from the track [bins], one row per position
+    offsets = bin_offsets[None, :] - position[:, None]
+    # W(k - x): the power each bin takes from a signal on the track
+    centred = window.power(offsets)
+
+    def overlap(shift: Float[Array, ""]) -> Float[Array, ""]:
+        # W(k - x - d): the same for a track off by d = shift bins
+        shifted = window.power(offsets - shift)
+        return jnp.sum(centred * shifted) / jnp.sum(centred * centred)
+
+    # the second derivative at d = 0 by autodiff, which a float32 difference cannot
+    # resolve
+    return -0.5 * float(jax.grad(jax.grad(overlap))(0.0))

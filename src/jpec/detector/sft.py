@@ -2,7 +2,7 @@
 
 import glob
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, Optional
 
 import lal as _lal
 import lalpulsar as _lalpulsar
@@ -89,7 +89,7 @@ class SFTData:
             strain_unit=self.strain_unit * strain_unit,
         )
 
-    def narrowed(self, bin_idxs: slice) -> "SFTData":
+    def subband(self, bin_idxs: slice) -> "SFTData":
         """These SFTs over a narrower band.
 
         Args:
@@ -122,7 +122,7 @@ def read_sft_band(
     freq_low: float,
     freq_high: float,
     *,
-    unrecorded_window: Window | None = None,
+    unrecorded_window: Optional[Window] = None,
 ) -> dict[str, SFTData]:
     """A band read from exactly these files, one entry per detector.
 

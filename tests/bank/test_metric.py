@@ -4,12 +4,8 @@ import numpy as np
 import pytest
 from signals import DAY, Case, search_data_harmonics, search_template_harmonics
 
-from jpec.bank.metric import freq_bin_curvature, physical_metric, project_out
-from jpec.constant import (
-    N_CURVATURE_POSITIONS,
-    SHIFT_MARGIN_BINS,
-    V_MAX,
-)
+from jpec.bank.metric import physical_metric, project_out
+from jpec.constant import V_MAX
 from jpec.detector.site import Detector, Observation
 from jpec.injection.signal import (
     Injection,
@@ -21,11 +17,14 @@ from jpec.noise.gaussian import gaussian_noise_sft
 from jpec.params import Parameters
 from jpec.stat.matched_filter import max_over_phase
 from jpec.waveform.harmonics import harmonic_count
+from jpec.waveform.window import freq_bin_curvature
 
 T0 = 1238166018.0
 ALPHA, DELTA = 1.1, 0.3
 MISMATCH = 0.05
 N_ORBIT = 4
+# bins the band runs past the Doppler shift and the arc on each side
+SHIFT_MARGIN_BINS = 16
 N_PHI = 4096  # fine enough that the phase grid adds nothing to the measured mismatch
 PHI_B_IDX = Parameters._fields.index("phi_b")
 WITHOUT_PHI_B_IDXS = [i for i in range(6) if i != PHI_B_IDX]
@@ -103,9 +102,7 @@ class ObservedSignal:
             physical_metric(
                 true,
                 observation,
-                g_freq_bin=freq_bin_curvature(
-                    self.case.window, n_positions=N_CURVATURE_POSITIONS
-                ),
+                g_freq_bin=freq_bin_curvature(self.case.window),
             )
         )
 

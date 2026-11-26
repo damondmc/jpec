@@ -9,6 +9,7 @@ Usage:
 import argparse
 import os
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
@@ -24,7 +25,7 @@ READ_WIDTH = 0.1
 
 
 def checked_sft_metadata(
-    run_logger: RunLogger, sft_glob: str, *, unrecorded_window: Window | None
+    run_logger: RunLogger, sft_glob: str, *, unrecorded_window: Optional[Window]
 ) -> SFTMetadata:
     """Read every band, check they agree, and return the metadata.
 
@@ -113,23 +114,22 @@ def checked_sft_metadata(
             f"{span / 86400.0:.1f} days, "
             f"duty cycle {covered / span:.1%}"
         )
+    bands = []
+    for freq_low, freq_high in sorted(files_per_band):
+        files = files_per_band[(freq_low, freq_high)]
+        bands.append(SFTBand(freq_low=freq_low, freq_high=freq_high, files=files))
+    detectors = sorted(first_band_sfts)
+    timestamps = {
+        detector_name: first_band_sfts[detector_name].timestamps.tolist()
+        for detector_name in detectors
+    }
     return SFTMetadata(
         sft_glob=sft_glob,
         tsft=tsft,
         window=window,
-        bands=[
-            SFTBand(
-                freq_low=freq_low,
-                freq_high=freq_high,
-                files=files_per_band[(freq_low, freq_high)],
-            )
-            for freq_low, freq_high in sorted(files_per_band)
-        ],
-        detectors=sorted(first_band_sfts),
-        timestamps={
-            detector_name: first_band_sfts[detector_name].timestamps.tolist()
-            for detector_name in sorted(first_band_sfts)
-        },
+        bands=bands,
+        detectors=detectors,
+        timestamps=timestamps,
     )
 
 

@@ -2,9 +2,8 @@
 
 import json
 import math
-from itertools import takewhile
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, Optional, TypeVar
 
 import yaml
 from pydantic import (
@@ -112,12 +111,12 @@ class SearchLoopConfig(BaseModel):
     period_batch_size: int = Field(default=16, ge=1)
     # f0 points matched at once
     f0_batch_size: int = Field(default=32, ge=1)
-    # template offsets across one bin
-    n_sub_bin_offsets: int = Field(default=8, ge=1)
+    # f0 bin fractions across one bin the templates are built at
+    n_f0_bin_fractions: int = Field(default=8, ge=1)
     # share of each modulation depth's harmonics matched
     harmonic_fraction: float = Field(default=1.0, gt=0.0, le=1.0)
     # largest mismatch the orbital phase grid may leave
-    phase_mismatch: float = Field(default=0.01, gt=0.0, lt=1.0)
+    phase_mismatch: float = Field(default=0.04, gt=0.0, lt=1.0)
     # largest mismatch an f0 point's offset from its Doppler reference may leave
     doppler_mismatch: float = Field(default=1e-3, gt=0.0, lt=1.0)
     # modulation depths whose templates are built at once
@@ -170,7 +169,9 @@ class SearchJobConfig(BaseModel):
     def job_f0_edges(self) -> list[float]:
         """Edges of the jobs' f0 intervals [Hz], low to high."""
         f0_low, f0_high = self.parameter_space.f0
-        return _interval_edges(f0_low, f0_high, self.compute.job_f0_width)
+        return _interval_edges(
+            low=f0_low, high=f0_high, width=self.compute.job_f0_width
+        )
 
     def job_period_edges(self) -> list[float]:
         """Edges of the jobs' period ranges [days], low to high."""
@@ -204,12 +205,14 @@ class SearchJobConfig(BaseModel):
 
 
 class InjectionTrialConfig(BaseModel):
-    """Trials of an injection run: how many sources, searched how far around each."""
+    """Trials of an injection run: how many sources, how loud, how far around each."""
 
     model_config = ConfigDict(extra="forbid")
 
-    # sources drawn once and reused at every amplitude
-    n_injections: int = Field(default=200, ge=1)
+    # sources drawn, each injected at one amplitude
+    n_injections: int = Field(default=500, ge=1)
+    # sqrt(Sn) / h0 range each source's amplitude is drawn over, uniform in log
+    sensitivity_depth: tuple[float, float] = (15.0, 45.0)
     # lattice steps each side of the source, per orbital axis
     n_steps: int = Field(default=2, ge=1)
     # sky lattice points searched around it, nearest in mismatch
@@ -232,29 +235,8 @@ class InjectionTrialConfig(BaseModel):
         return self
 
 
-class RecoveryCurveConfig(BaseModel):
-    """The sigmoid of the recovered fraction against amplitude.
-
-    Where it is sampled, and when the amplitude fitted at the efficiency is good enough.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    # sqrt(Sn) / h0 range the first scan spans
-    sensitivity_depth: tuple[float, float] = (15.0, 45.0)
-    # h0 points of the first scan, evenly spaced in log over that range
-    n_amplitudes: int = Field(default=4, ge=2)
-    # the recovered fraction the quoted amplitude h0_ul is read at
-    efficiency: float = Field(default=0.95, gt=0.0, lt=1.0)
-    # standard error of the fitted amplitude, relative to it, that ends the refinement
-    tolerance: float = Field(default=0.05, gt=0.0)
-    # h0 points each threshold may add, one at a time, before its fit meets the
-    # tolerance
-    n_refinements: int = Field(default=4, ge=0)
-
-
 class InjectionConfig(BaseModel):
-    """An injection run: box, banks, trials, recovery curve, and what counts as found.
+    """An injection run: box, banks, trials, and what counts as found.
 
     The box is the one the sources are drawn from and searched over.
     """
@@ -264,9 +246,10 @@ class InjectionConfig(BaseModel):
     parameter_space: ParameterSpaceConfig
     template_bank: TemplateBankConfig = Field(default_factory=TemplateBankConfig)
     trials: InjectionTrialConfig = Field(default_factory=InjectionTrialConfig)
-    recovery_curve: RecoveryCurveConfig = Field(default_factory=RecoveryCurveConfig)
     search_loop: SearchLoopConfig = Field(default_factory=SearchLoopConfig)
     thresholds: list[float] = Field(min_length=1)  # thresholds on the statistic S
+    # the recovered fraction the quoted amplitude h0_ul is read at
+    efficiency: float = Field(default=0.95, gt=0.0, lt=1.0)
     sft_glob: str  # glob of the SFT files, as the run will find them
 
 
@@ -342,12 +325,15 @@ class SFTMetadata(BaseModel):
             The files, at least one per detector.
         """
         # the directory above each glob's first wildcard
-        checked_root, read_root = (
-            Path(
-                *takewhile(lambda part: not set("*?[") & set(part), Path(pattern).parts)
-            )
-            for pattern in (self.sft_glob, sft_glob)
-        )
+        roots = []
+        for pattern in (self.sft_glob, sft_glob):
+            root = Path()
+            for part in Path(pattern).parts:
+                if set("*?[") & set(part):
+                    break
+                root /= part
+            roots.append(root)
+        checked_root, read_root = roots
         for band in sorted(self.bands, key=lambda band: band.freq_low):
             if band.freq_low <= freq_low and freq_high <= band.freq_high:
                 return [
@@ -355,7 +341,7 @@ class SFTMetadata(BaseModel):
                     for file in band.files
                 ]
         raise SystemExit(
-            f"{freq_low:.4f} to {freq_high:.4f} Hz is not inside one checked band of "
+            f"[{freq_low:.4f}, {freq_high:.4f}] Hz is not in one checked band of "
             f"{self.sft_glob}"
         )
 
@@ -416,7 +402,7 @@ class JobSetup(BaseModel):
     n_sky_points: int
     n_templates: int
     memory_gb: float
-    hours: float | None
+    hours: Optional[float]
 
 
 class SearchSetup(BaseModel):
@@ -447,7 +433,7 @@ class SearchSetup(BaseModel):
     def toplist_f0_edges(self, job_setup: JobSetup) -> list[float]:
         """Edges of a job's toplists' f0 intervals [Hz], low to high."""
         return _interval_edges(
-            job_setup.f0_low, job_setup.f0_high, self.toplist_f0_width
+            low=job_setup.f0_low, high=job_setup.f0_high, width=self.toplist_f0_width
         )
 
 
@@ -462,11 +448,10 @@ class InjectionSetup(BaseModel):
         files: The files holding the band, at least one per detector.
         parameter_space: The box the sources are drawn from and searched over.
         tiling: LatticeTiling.to_dict() of the lattice.
-        trials: How many sources, searched how far around each.
-        recovery_curve: Where the recovered fraction is sampled, and when its fit is
-            good enough.
+        trials: How many sources, how loud, searched how far around each.
         search_loop: How the search loop batches its work.
         thresholds: Thresholds on the statistic `S`, one sensitivity depth each.
+        efficiency: The recovered fraction the quoted amplitude is read at.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -479,9 +464,9 @@ class InjectionSetup(BaseModel):
     parameter_space: ParameterSpaceConfig
     tiling: dict[str, Any]
     trials: InjectionTrialConfig
-    recovery_curve: RecoveryCurveConfig
     search_loop: SearchLoopConfig
     thresholds: list[float]
+    efficiency: float
 
 
 def read_config(path: str, model: type[ConfigT]) -> ConfigT:

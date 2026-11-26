@@ -43,20 +43,18 @@ class TopTemplates(NamedTuple):
     """The top in-range templates of one toplist's f0 points in one match.
 
     Attributes:
-        subgrid_idx: Index of the subgrid in the bank.
         sky_idx: Index of the sky point in the bank.
         toplist_idx: Index of the toplist whose f0 points they are.
-        max_statistic: Maximum of `S` over the orbital phase, loudest first;
+        max_statistic: Maximum of `S` over the orbital phase, top first;
             `-inf` once the in-range templates run out.
-        f0_idxs: Index of each template's f0 point in the subgrid.
-        period_idxs: Index of its trial period.
-        modulation_depth_idxs: Index of its modulation depth.
+        f0_idxs: Index of each template's point on the bank's base f0 grid.
+        period_idxs: Index of its point on the base omega^2 grid.
+        modulation_depth_idxs: Index of its point on the base modulation-depth grid.
         phase_idxs: Index of the orbital phase its maximum sits at.
         doppler_references: Frequency its band was Doppler-corrected at [Hz].
         n_phi: Number of orbital phases the statistic was read at.
     """
 
-    subgrid_idx: int
     sky_idx: int
     toplist_idx: int
     max_statistic: Float[np.ndarray, " n_top"]
@@ -72,28 +70,28 @@ class TopTemplates(NamedTuple):
 
         Args:
             bank: The bank the templates were scored on.
-            rank: Rank of the template, 0 for the loudest.
+            rank: Rank of the template, 0 for the top one.
 
         Returns:
             The template's statistic and parameters.
         """
+        parameters = bank.parameters(
+            sky_idx=self.sky_idx,
+            f0_idx=int(self.f0_idxs[rank]),
+            period_idx=int(self.period_idxs[rank]),
+            modulation_depth_idx=int(self.modulation_depth_idxs[rank]),
+            phase_idx=int(self.phase_idxs[rank]),
+            n_phi=self.n_phi,
+        )
         return Candidate(
             statistic=float(self.max_statistic[rank]),
-            parameters=bank.parameters(
-                subgrid_idx=self.subgrid_idx,
-                sky_idx=self.sky_idx,
-                f0_idx=int(self.f0_idxs[rank]),
-                period_idx=int(self.period_idxs[rank]),
-                modulation_depth_idx=int(self.modulation_depth_idxs[rank]),
-                phase_idx=int(self.phase_idxs[rank]),
-                n_phi=self.n_phi,
-            ),
+            parameters=parameters,
             doppler_reference=float(self.doppler_references[rank]),
         )
 
 
 class Toplist:
-    """A heap queue of the loudest templates, at most `n_toplist` of them."""
+    """A heap queue of the top templates, at most `n_toplist` of them."""
 
     def __init__(self, n_toplist: int) -> None:
         """Start the toplist empty.
@@ -122,16 +120,16 @@ class Toplist:
         """Keep every one of the top templates that beats the lowest kept.
 
         Args:
-            top: The top templates, loudest first.
+            top: The top templates, top first.
             bank: The bank they were scored on.
         """
         for rank, statistic in enumerate(top.max_statistic.tolist()):
-            # loudest first, so once one fails to beat the lowest kept every later
-            # one does
+            # top first, so once one fails to beat the lowest kept every later one
+            # does
             if statistic <= self.lowest_kept_statistic:
                 break
             self.add(top.candidate(bank, rank))
 
     def descending(self) -> list[Candidate]:
-        """What it kept, loudest first."""
+        """What it kept, top first."""
         return sorted(self.kept, reverse=True)

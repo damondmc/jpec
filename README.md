@@ -48,17 +48,20 @@ steps, each a stage of the pipeline.
 **1. Doppler correction.** The complex amplitudes of SFT $n$, at midpoint $t_n$, are
 shifted by $f_0 T_{\mathrm{SFT}}\, \vec v(t_n)\cdot\hat n$ bins, so the arc depends on time
 through the orbital phase $\theta = \Omega t - \phi_b$ alone. The power $p_k(t_n)$ at bin
-offset $k$ from $f_0$ is then normalized by a running-median floor.
+offset $k$ from $f_0$ is then normalized by a running-median floor, its mean over the SFTs
+is subtracted, and each SFT is weighted by its antenna response and noise level.
 
 **2. The data's harmonics.** The power is decomposed in orbital phase over the $N$ SFTs,
 
 $$
-F_{jk} = \big\langle p_k(t_n)\, e^{-i j \Omega t_n} \big\rangle_n,
+F_{jk} = \big\langle p_k(t_n)\, e^{-i j x_n} \big\rangle_n,
+\qquad x_n = \Omega\,(t_n + R_n),
 \qquad 1 \le j \le j_{\max} = \lceil 2\pi\,\Delta k \rceil,
 $$
 
-a direct average over the SFTs at their own timestamps, so gaps and uneven sampling cost
-nothing; $j = 0$, the mean power, is dropped. It depends on $(f_0, \alpha, \delta, P)$ and
+with $x_n$ the orbital phase of SFT $n$ in barycenter time and $R_n$ the Solar System
+Roemer delay toward the sky point at $t_n$. It is a direct average over the SFTs at their
+own timestamps, so gaps and uneven sampling cost nothing; $j = 0$, the mean power, is dropped. It depends on $(f_0, \alpha, \delta, P)$ and
 is shared by every $a_p$ and $\phi_b$.
 
 **3. The template's harmonics.** The arc's power response
@@ -82,9 +85,10 @@ $$
 and the unknown orbital phase is a linear phase on the harmonics, so one inverse FFT over
 $j$ gives $S$ at every $\phi_b$.
 
-The template bank grids the five axes other than $\phi_b$: a body-centred cubic lattice on
-$(f_0, \Delta k, \Omega^2)$ and a hexagonal lattice on the sky, laid in the eigenbasis of
-the detector velocity's covariance. Both are spaced by the mismatch metric
+The template bank is one $A_5^*$ lattice on the five axes other than $\phi_b$:
+$(f_0, \Delta k, \Omega^2)$ and the sky, laid in the eigenbasis of the detector velocity's
+covariance, in triangular form under the full mismatch metric, the $f_0$-sky correlation
+included. It is spaced by the mismatch metric
 
 $$
 g_{\mu\nu} = g_{\mathrm{bin}} \, T_{\mathrm{SFT}}^2 \,
@@ -122,7 +126,7 @@ Match one template against a simulated signal in noise, over every orbital phase
 import jax.numpy as jnp
 import numpy as np
 
-from jpec.constant import ARC_PAD_BINS, DAY, THETA_OVERSAMPLE
+from jpec.constant import ARC_PAD_BINS, DAY
 from jpec.params import Parameters
 from jpec.stat.matched_filter import (
     data_harmonics,
@@ -158,7 +162,7 @@ sft_power = signal_power + 0.35 * signal_power.std() * noise
 
 # the template: its harmonics at the signal's modulation depth
 j_max = harmonic_count(modulation_depth_bins)
-n_theta = theta_sample_count(j_max, oversample=THETA_OVERSAMPLE)
+n_theta = theta_sample_count(j_max)
 tau = template_harmonics(
     bin_offsets,
     modulation_depth_bins=modulation_depth_bins,
@@ -174,13 +178,13 @@ F = data_harmonics(sft_power, jnp.asarray(phase), j_max=j_max)
 # the matched filter, over every orbital phase, read on the template's own phase grid
 S, phase_idx = max_over_phase(F, tau, n_phi=n_theta)
 phi_b = 2.0 * np.pi * int(phase_idx) / n_theta
-print(f"loudest at phi_b = {phi_b:.2f} rad; injected {signal.phi_b:.2f} rad")
+print(f"top template at phi_b = {phi_b:.2f} rad; injected {signal.phi_b:.2f} rad")
 ```
 
 It prints
 
 ```
-loudest at phi_b = 2.29 rad; injected 2.30 rad
+top template at phi_b = 2.29 rad; injected 2.30 rad
 ```
 
 [`examples/`](examples/) has a search over $(f_0, a_p, P)$ at a fixed sky position, on

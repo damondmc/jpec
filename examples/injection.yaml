@@ -11,7 +11,7 @@ template_bank:
   mismatch: 0.4                 # the search's; jpec injection-setup --mismatch sets another
 
 trials:
-  n_injections: 500             # sources drawn once and reused at every amplitude
+  n_injections: 500             # sources drawn, each injected at one amplitude
   n_steps: 2                    # lattice steps each side of the injection, per orbital axis
   n_sky_neighbours: 10          # sky lattice points searched around it
   cos_iota: [-1.0, 1.0]         # inclination the sources are drawn over, isotropic
@@ -30,7 +30,7 @@ search_loop:
   period_batch_size: 16         # trial periods per transform; the orbital basis, a job's largest
                                 # memory term, grows with it
   f0_batch_size: 32             # f0 points matched at once, which caps the S(phi_b) held
-  n_sub_bin_offsets: 8          # template offsets across one bin; an f0 point takes the nearest
+  n_f0_bin_fractions: 8         # f0 bin fractions across one bin; an f0 point takes the nearest
   harmonic_fraction: 1.0        # share of each depth's harmonic_count matched; 0.6 loses 1e-3
                                 # of a matched signal's S
 

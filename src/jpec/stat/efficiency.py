@@ -1,4 +1,4 @@
-"""Detection efficiency against amplitude: its sigmoid fit and the recovery curve."""
+"""Detection efficiency against amplitude, and its sigmoid fit."""
 
 from typing import NamedTuple
 
@@ -35,15 +35,13 @@ def detection_efficiency(
 
 def _penalized_negative_log_likelihood(
     theta: Float[Array, " 2"],
-    log_h0: Float[Array, " n_h0"],
-    n_recovered: Float[Array, " n_h0"],
-    n_injections: float,
+    log_h0: Float[Array, " n_injection"],
+    recovered: Bool[Array, " n_injection"],
 ) -> Scalar:
-    """Binomial negative log-likelihood with a weak ridge, convex in `theta`."""
+    """Bernoulli negative log-likelihood with a weak ridge, convex in `theta`."""
     z = theta[0] + theta[1] * log_h0
     likelihood = -jnp.sum(
-        n_recovered * jax.nn.log_sigmoid(z)
-        + (n_injections - n_recovered) * jax.nn.log_sigmoid(-z)
+        jnp.where(recovered, jax.nn.log_sigmoid(z), jax.nn.log_sigmoid(-z))
     )
     return likelihood + RIDGE * jnp.sum(theta**2)
 
@@ -99,118 +97,39 @@ class EfficiencyFit(NamedTuple):
 
 @jax.jit
 def _maximize(
-    log_h0: Float[Array, " n_h0"],
-    n_recovered: Float[Array, " n_h0"],
-    n_injections: float,
-    start: Float[Array, " 2"],
+    log_h0: Float[Array, " n_injection"],
+    recovered: Bool[Array, " n_injection"],
 ) -> tuple[Float[Array, " 2"], Float[Array, "2 2"]]:
     """Newton on the penalized likelihood, and its curvature at the maximum."""
 
     def step(_: int, theta: Float[Array, " 2"]) -> Float[Array, " 2"]:
         gradient = jax.grad(_penalized_negative_log_likelihood)(
-            theta, log_h0, n_recovered, n_injections
+            theta, log_h0, recovered
         )
         curvature = jax.hessian(_penalized_negative_log_likelihood)(
-            theta, log_h0, n_recovered, n_injections
+            theta, log_h0, recovered
         )
         return theta - jnp.linalg.solve(curvature, gradient)
 
-    theta = jax.lax.fori_loop(0, NEWTON_STEPS, step, start)
+    theta = jax.lax.fori_loop(0, NEWTON_STEPS, step, jnp.zeros(2, log_h0.dtype))
     curvature = jax.hessian(_penalized_negative_log_likelihood)(
-        theta, log_h0, n_recovered, n_injections
+        theta, log_h0, recovered
     )
     return theta, jnp.linalg.inv(curvature)
 
 
 def fit_efficiency(
-    h0: Float[np.ndarray, " n_h0"],
-    recovered: Bool[np.ndarray, "n_draw n_h0"],
+    h0: Float[np.ndarray, " n_injection"],
+    recovered: Bool[np.ndarray, " n_injection"],
 ) -> EfficiencyFit:
     """The efficiency curve the recoveries imply, by maximum likelihood.
 
     Args:
-        h0: Strain amplitudes injected.
-        recovered: Whether each injection was recovered at each amplitude.
+        h0: Strain amplitude each injection was made at.
+        recovered: Whether each injection was recovered.
 
     Returns:
         The fit, its covariance from the likelihood's curvature at the maximum.
     """
-    log_h0 = jnp.log(jnp.asarray(h0))
-    n_recovered = jnp.sum(jnp.asarray(recovered), axis=0).astype(float)
-    n_injections = float(recovered.shape[0])
-
-    # a straight line through the two ends of the measured log odds, which Newton
-    # then sharpens
-    fraction = jnp.clip(
-        n_recovered / n_injections, 0.5 / n_injections, 1.0 - 0.5 / n_injections
-    )
-    odds = jnp.log(fraction / (1.0 - fraction))
-    slope = (odds[-1] - odds[0]) / (log_h0[-1] - log_h0[0])
-    start = jnp.stack([odds[0] - slope * log_h0[0], slope])
-
-    theta, covariance = _maximize(log_h0, n_recovered, n_injections, start)
+    theta, covariance = _maximize(jnp.log(jnp.asarray(h0)), jnp.asarray(recovered))
     return EfficiencyFit(intercept=theta[0], slope=theta[1], covariance=covariance)
-
-
-class RecoveryCurve:
-    """The fraction of sources recovered against the amplitude they were injected at."""
-
-    def __init__(self, *, efficiency: float) -> None:
-        """Start the curve with no amplitude tried.
-
-        Args:
-            efficiency: The recovered fraction the quoted amplitude is taken at.
-        """
-        self.efficiency = efficiency
-        self.h0_values: Float[np.ndarray, " n_h0"] = np.empty(0)
-        self.recovered: Bool[np.ndarray, "n_source n_h0"] = np.empty((0, 0), dtype=bool)
-
-    def add(self, h0: float, recovered: Bool[np.ndarray, " n_source"]) -> None:
-        """Record whether each source was recovered at one amplitude, h0 kept sorted.
-
-        Args:
-            h0: Strain amplitude the sources were injected at.
-            recovered: Whether each source's loudest statistic beat the threshold.
-        """
-        if self.h0_values.size == 0:
-            self.recovered = np.empty((recovered.size, 0), dtype=bool)
-        insert_idx = int(np.searchsorted(self.h0_values, h0))
-        self.h0_values = np.insert(self.h0_values, insert_idx, h0)
-        self.recovered = np.insert(self.recovered, insert_idx, recovered, axis=1)
-
-    @property
-    def fraction(self) -> Float[np.ndarray, " n_h0"]:
-        """The fraction of sources recovered at each amplitude."""
-        return self.recovered.mean(axis=0)
-
-    def fit(self) -> tuple[float, float]:
-        """The amplitude recovered the wanted fraction of the time, and its error.
-
-        Returns:
-            `h0` at the efficiency and its error, both NaN while the amplitudes tried
-            do not bracket the efficiency.
-        """
-        fraction = self.fraction
-        if fraction.max() < self.efficiency or fraction.min() > self.efficiency:
-            return float("nan"), float("nan")
-        fit = fit_efficiency(self.h0_values, self.recovered)
-        h0_at_efficiency, h0_error = fit.h0_at(self.efficiency)
-        return float(h0_at_efficiency), float(h0_error)
-
-    def next_h0(self, h0_at_efficiency: float) -> float:
-        """The one amplitude to add next: the fit itself, or a step out to bracket it.
-
-        Args:
-            h0_at_efficiency: The fit from `fit`, NaN while unbracketed.
-
-        Returns:
-            Twice the loudest amplitude tried while every one falls short of the
-            efficiency, half the weakest while every one exceeds it, and the fit
-            otherwise.
-        """
-        fraction = self.fraction
-        if fraction.max() < self.efficiency:
-            return 2.0 * float(self.h0_values[-1])
-        if fraction.min() > self.efficiency:
-            return 0.5 * float(self.h0_values[0])
-        return h0_at_efficiency

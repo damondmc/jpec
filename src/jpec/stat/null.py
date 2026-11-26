@@ -106,8 +106,8 @@ def detection_threshold(
 def toplist_threshold(
     n_candidates: float,
     *,
-    n_templates: Float[Array, " n_modulation_depth"],
-    j_rms: Float[Array, " n_modulation_depth"],
+    n_templates: Float[Array, " n_depth"],
+    j_rms: Float[Array, " n_depth"],
     n_sfts: int,
     power_variance: float,
 ) -> Scalar:

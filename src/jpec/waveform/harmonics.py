@@ -23,7 +23,7 @@ def harmonic_count(modulation_depth_bins: float) -> int:
     return max(math.ceil(2.0 * jnp.pi * modulation_depth_bins), 1)
 
 
-def theta_sample_count(j_max: int, *, oversample: int) -> int:
+def theta_sample_count(j_max: int, *, oversample: int = 4) -> int:
     """How many orbital phases `theta` to sample a template at for `j_max` harmonics.
 
     Nyquist needs more than `2*j_max`, but the cutoff is soft, so bare Nyquist

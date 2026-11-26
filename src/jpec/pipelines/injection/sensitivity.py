@@ -17,12 +17,18 @@ from jpec.bank.template_bank import TemplateBank
 from jpec.bank.tiling import LatticeTiling
 from jpec.config import InjectionSetup, read_json
 from jpec.constant import DAY
-from jpec.engine.data import SearchData
-from jpec.engine.loop import HarmonicBank, top_templates_at_sky_points
+from jpec.engine.data import SearchData, freq_band_edges
+from jpec.engine.loop import BandSearch
 from jpec.injection.population import draw_injections
-from jpec.injection.signal import simulated_source
+from jpec.injection.signal import (
+    sft_with_simulated_signal,
+    simulated_signal_sft_data,
+)
 from jpec.pipelines.monitor import RunLogger
-from jpec.stat.efficiency import RecoveryCurve
+from jpec.stat.efficiency import fit_efficiency
+
+# injections searched between two progress lines of the log
+N_INJECTIONS_PER_PROGRESS_LINE = 100
 
 
 def measure_sensitivity_depth(
@@ -37,7 +43,6 @@ def measure_sensitivity_depth(
     """
     started = time.perf_counter()
     trials_config = setup.trials
-    curve_config = setup.recovery_curve
     search_loop_config = setup.search_loop
 
     search_data = SearchData.load(
@@ -51,124 +56,103 @@ def measure_sensitivity_depth(
 
     # sample the injection population
     prior = setup.parameter_space.prior()
+    key = jax.random.key(args.seed)
     injections = draw_injections(
         prior,
         cos_iota=trials_config.cos_iota,
         psi=trials_config.psi,
-        key=jax.random.key(args.seed),
+        key=key,
         n_injections=trials_config.n_injections,
     )
-
-    # the part of the band each source's search reads, and the source simulated on it
-    source_data = [
-        search_data.around_f0(prior, float(injection.parameters.f0))
-        for injection in injections
-    ]
-    sources = [
-        simulated_source(injection, band_data.sfts, t_ref=band_data.t_ref)
-        for injection, band_data in zip(injections, source_data, strict=True)
-    ]
-
-    # a template bank near each source laid out on the source's band, built once per
-    # source, not once per h0
-    tiling = LatticeTiling.from_dict(setup.tiling)
-    source_harmonic_banks = [
-        HarmonicBank(
-            TemplateBank.around_point(
-                tiling,
-                injection.parameters,
-                velocity=search_data.velocity,
-                window=setup.data.window,
-                n_sky_neighbours=trials_config.n_sky_neighbours,
-                n_steps=trials_config.n_steps,
+    # one h0 per injection, its sensitivity depth uniform in log over the range
+    low_depth, high_depth = trials_config.sensitivity_depth
+    h0 = search_data.sqrt_sn / np.exp(
+        np.asarray(
+            jax.random.uniform(
+                jax.random.fold_in(key, 1),
+                (len(injections),),
+                minval=np.log(low_depth),
+                maxval=np.log(high_depth),
             ),
-            times=band_data.times,
-            freq_low=band_data.freq_low,
-            n_band_bins=band_data.n_band_bins,
-            n_sub_bin_offsets=search_loop_config.n_sub_bin_offsets,
-            period_batch_size=search_loop_config.period_batch_size,
-            harmonic_fraction=search_loop_config.harmonic_fraction,
-            phase_mismatch=search_loop_config.phase_mismatch,
-            doppler_mismatch=search_loop_config.doppler_mismatch,
-            modulation_depth_batch_size=search_loop_config.modulation_depth_batch_size,
+            dtype=np.float64,
         )
-        for injection, band_data in zip(injections, source_data, strict=True)
-    ]
+    )
 
-    # result tracking: one recovery curve per threshold, all fed by the same loudest
-    # statistics
     thresholds = setup.thresholds
-    curves = [RecoveryCurve(efficiency=curve_config.efficiency) for _ in thresholds]
     run_logger.injection_summary(
         setup, search_data, setup_path=args.setup, seed=args.seed
     )
 
-    # every h0 tried, in order, with the statistics at each
-    h0_values: list[float] = []
-    loudest_statistics: list[list[float]] = []
-
-    def search_injections_at(h0: float) -> None:
-        # noise + h0 x signal around every source, its floor taken before the injection,
-        # then the search loop over its bank, only the loudest template of each match
-        # kept
-        loudest = np.zeros(len(sources))
-        for source_idx, (source, band_data, harmonic_bank) in enumerate(
-            zip(sources, source_data, source_harmonic_banks, strict=True)
-        ):
-            injected_data = SearchData(
-                source.injected_sfts(band_data.sfts, h0=h0),
-                floor=band_data.floor,
-                t_ref=band_data.t_ref,
-            )
-            n_sky_points = int(harmonic_bank.bank.alpha.size)
-            sky_batch_size = search_loop_config.sky_batch_size
-            loudest[source_idx] = max(
-                float(top.max_statistic[0])
-                for sky_start_idx in range(0, n_sky_points, sky_batch_size)
-                for top in top_templates_at_sky_points(
-                    injected_data,
-                    harmonic_bank,
-                    sky_idxs=range(
-                        sky_start_idx, min(sky_start_idx + sky_batch_size, n_sky_points)
-                    ),
-                    f0_batch_size=search_loop_config.f0_batch_size,
-                    n_top=1,
-                    # one toplist over every f0 point
-                    toplist_f0_edges=np.array([-np.inf, np.inf]),
-                )
-            )
-        h0_values.append(h0)
-        loudest_statistics.append(loudest.tolist())
-        for curve, threshold in zip(curves, thresholds, strict=True):
-            curve.add(h0, loudest >= threshold)
-        recovered = ", ".join(
-            f"{np.mean(loudest >= threshold):.1%}" for threshold in thresholds
-        )
-        run_logger.info(
-            f"  h0 {h0:.4e}  sensitivity depth {search_data.sqrt_sn / h0:>6.1f}  "
-            f"recovered {recovered}"
-        )
-
-    # h0 loop: the first scan, then per threshold one point at its fitted h0_ul until
-    # it is known to tolerance; every point added feeds every curve
-    loud_depth, weak_depth = curve_config.sensitivity_depth
-    for h0 in search_data.sqrt_sn / np.geomspace(
-        weak_depth, loud_depth, curve_config.n_amplitudes
+    # noise + h0 x signal around each injection, its floor taken before the injection,
+    # then the search loop over the bank around it, the top in-range template kept
+    tiling = LatticeTiling.from_dict(setup.tiling)
+    top_statistic = np.zeros(len(injections))
+    for injection_idx, (injection, injection_h0) in enumerate(
+        zip(injections, h0, strict=True)
     ):
-        search_injections_at(float(h0))
+        bank = TemplateBank.around_point(
+            tiling,
+            injection.parameters,
+            velocity=search_data.velocity,
+            window=setup.data.window,
+            n_sky_neighbours=trials_config.n_sky_neighbours,
+            n_steps=trials_config.n_steps,
+        )
+        freq_low, freq_high = freq_band_edges(
+            bank.f0[0],
+            bank.f0_high,
+            max_modulation_depth=bank.max_modulation_depth,
+            tsft=bank.tsft,
+        )
+        band_data = search_data.subband(freq_low, freq_high)
+        injected_data = SearchData(
+            [
+                sft_with_simulated_signal(
+                    sft,
+                    np.asarray(
+                        simulated_signal_sft_data(sft, injection, t_ref=band_data.t_ref)
+                    ),
+                    h0=float(injection_h0),
+                )
+                for sft in band_data.sfts
+            ],
+            floor=band_data.floor,
+            t_ref=band_data.t_ref,
+        )
+        band_search = BandSearch(
+            bank,
+            injected_data,
+            search_loop_config,
+            n_top=1,
+            # one toplist over every f0 point
+            toplist_f0_edges=np.array([-np.inf, np.inf]),
+        )
+        top_statistic[injection_idx] = max(
+            float(top.max_statistic[0])
+            for sky_idxs in band_search.layout.sky_batches(
+                search_loop_config.sky_batch_size
+            )
+            for top in band_search.search_sky_batch(sky_idxs)
+        )
+        n_searched = injection_idx + 1
+        if n_searched % N_INJECTIONS_PER_PROGRESS_LINE == 0:
+            run_logger.info(
+                f"  {n_searched} / {len(injections)} injections searched, "
+                f"{time.perf_counter() - started:.0f} s"
+            )
+
+    # per threshold, the sigmoid of the recoveries against h0, read at the efficiency;
+    # NaN where every injection is recovered or none is
     h0_ul = np.full(len(thresholds), np.nan)
     h0_ul_error = np.full(len(thresholds), np.nan)
-    for threshold_idx, curve in enumerate(curves):
-        h0_ul[threshold_idx], h0_ul_error[threshold_idx] = curve.fit()
-        for _ in range(curve_config.n_refinements):
-            if (
-                np.isfinite(h0_ul[threshold_idx])
-                and h0_ul_error[threshold_idx] / h0_ul[threshold_idx]
-                <= curve_config.tolerance
-            ):
-                break
-            search_injections_at(curve.next_h0(h0_ul[threshold_idx]))
-            h0_ul[threshold_idx], h0_ul_error[threshold_idx] = curve.fit()
+    for threshold_idx, threshold in enumerate(thresholds):
+        recovered = top_statistic >= threshold
+        if recovered.all() or not recovered.any():
+            continue
+        fit = fit_efficiency(h0, recovered)
+        h0_ul[threshold_idx], h0_ul_error[threshold_idx] = (
+            float(value) for value in fit.h0_at(setup.efficiency)
+        )
     elapsed = time.perf_counter() - started
 
     sensitivity_depth = search_data.sqrt_sn / h0_ul
@@ -178,7 +162,8 @@ def measure_sensitivity_depth(
     ):
         run_logger.info(
             f"Sensitivity depth at S {threshold:.4g}: {threshold_depth:.1f} "
-            f"+- {threshold_depth_error:.1f} (h0_ul {threshold_h0_ul:.3e})"
+            f"+- {threshold_depth_error:.1f} (h0_ul {threshold_h0_ul:.3e}), "
+            f"{np.mean(top_statistic >= threshold):.1%} of the injections recovered"
         )
     run_logger.info(f"Done: time used {elapsed:.1f} s")
 
@@ -192,9 +177,8 @@ def measure_sensitivity_depth(
             "t_ref": search_data.t_ref,
             "sqrt_sn": search_data.sqrt_sn,
             "search_loop": search_loop_config.model_dump(),
-            "efficiency": curve_config.efficiency,
+            "efficiency": setup.efficiency,
             "seconds": elapsed,
-            # every source, and at each h0 how loud it came out and whether that counted
             "injections": [
                 {
                     "f0": float(injection.parameters.f0),
@@ -208,14 +192,12 @@ def measure_sensitivity_depth(
                 }
                 for injection in injections
             ],
-            # in the order tried
-            "h0": h0_values,
-            # [h0, source]
-            "loudest": loudest_statistics,
-            # [threshold, h0, source]
+            # per injection
+            "h0": h0.tolist(),
+            "top_statistic": top_statistic.tolist(),
+            # [threshold, injection]
             "recovered": [
-                (np.array(loudest_statistics) >= threshold).tolist()
-                for threshold in thresholds
+                (top_statistic >= threshold).tolist() for threshold in thresholds
             ],
             # per threshold
             "h0_ul": h0_ul.tolist(),
